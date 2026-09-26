@@ -128,7 +128,10 @@ jobs:
             Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
           }
 
-      - uses: actions/upload-artifact@v5
+      # v6 is the first release that runs on Node 24 by default; v5 only had
+      # preliminary support and still ran on Node 20, which the runner forced
+      # forward and warned about on every run.
+      - uses: actions/upload-artifact@v6
         with:
           name: TabAgent-windows
           path: dist/TabAgent.exe
