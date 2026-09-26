@@ -38,13 +38,13 @@ jobs:
     name: Type-check and test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # No `cache: npm` input here on purpose — the cache key is derived from
       # package-lock.json and this repo has one, so it would work, but the
       # install is a 3-package dev tree that finishes in seconds. A cache that
       # can go stale is not worth the seconds it saves.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: '24'
 
@@ -78,9 +78,9 @@ jobs:
     needs: test
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: '24'
 
@@ -128,7 +128,7 @@ jobs:
             Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
           }
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: TabAgent-windows
           path: dist/TabAgent.exe
