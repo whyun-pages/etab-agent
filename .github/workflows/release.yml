@@ -1,0 +1,159 @@
+# Tag-driven release: build the Windows executable and attach it to a GitHub
+# Release.
+#
+#   git tag v0.1.0 && git push origin v0.1.0
+#
+# Kept separate from ci.yml on purpose. CI runs on every push with read-only
+# permissions; a release runs once per tag and needs to write. Folding the two
+# together would make "why does CI need contents: write" a question that has to
+# be answered every time someone reads the file.
+#
+# The build job is duplicated rather than shared. The alternative is passing an
+# artifact between workflows (upload here, download there, plus a cross-workflow
+# token dance), which adds a moving part to save ~40s of runner time. A release
+# asset is the thing users download and run, so it is built and smoke-tested in
+# the same job that uploads it — there is no window where "the artifact we
+# verified" and "the asset we published" could be different objects.
+
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (must already exist, e.g. v0.1.0)'
+        required: true
+
+# Set on the job, not at the top: the compile and smoke-test steps need no
+# token at all, and only the final publish step needs to write.
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: Build and publish
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+
+      # Resolve the tag once. On a tag push it is GITHUB_REF_NAME; on a manual
+      # run it is the input. Everything downstream reads this rather than
+      # re-deriving it, so a manual run cannot drift from the published name.
+      - name: Resolve the tag
+        id: tag
+        shell: pwsh
+        run: |
+          $tag = if ('${{ github.event_name }}' -eq 'workflow_dispatch') { '${{ inputs.tag }}' } else { '${{ github.ref_name }}' }
+          if (-not $tag) { throw 'no tag resolved' }
+          if ($tag -notmatch '^v\d+\.\d+\.\d+') {
+            throw "tag '$tag' is not of the form vX.Y.Z - refusing to publish a release with an unparseable version"
+          }
+          "value=$tag" >> $env:GITHUB_OUTPUT
+          Write-Host "releasing $tag"
+
+      # The tag and package.json are two independent places that carry the
+      # version, and nothing keeps them in step. Publishing a v0.1.1 release
+      # built from a package.json that still says 0.1.0 produces an artifact
+      # whose own metadata contradicts its filename — the kind of thing nobody
+      # notices until a user reports the version in an About box.
+      - name: Check the tag matches package.json
+        shell: pwsh
+        run: |
+          $tag = '${{ steps.tag.outputs.value }}'
+          $pkg = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $expected = $tag -replace '^v', ''
+          if ($pkg -ne $expected) {
+            throw "tag says $expected but package.json says $pkg - bump one to match the other"
+          }
+          Write-Host "version $pkg agrees with tag $tag"
+
+      - name: Install dependencies
+        run: npm ci
+
+      # build-exe.js compiles TypeScript first (step 0) and is not optional:
+      # the bundler reads `.build/js/`, which does not exist until tsc has run.
+      - name: Build executable
+        run: npm run build
+
+      # Verify what we are about to publish, not merely that a file appeared.
+      # The size floor is a floor, not an exact match: the carrier is a full
+      # node.exe and its size tracks the Node release, so pinning a byte count
+      # would go red on a Node patch bump for no real reason.
+      - name: Verify the artifact
+        shell: pwsh
+        run: |
+          $exe = "dist/TabAgent.exe"
+          if (-not (Test-Path $exe)) { throw "no executable at $exe" }
+          $mb = (Get-Item $exe).Length / 1MB
+          Write-Host "TabAgent.exe = $([math]::Round($mb, 1)) MB"
+          if ($mb -lt 50) { throw "suspiciously small ($mb MB) - injection probably failed" }
+
+      # The smoke test that would have caught the staticDir bug (NOTES.md #17):
+      # an exe that booted, answered the API, and served an empty page. Users
+      # download this file and run it with no build step to fall back on, so it
+      # is launched and queried here before it is published.
+      - name: Smoke test the packaged exe
+        shell: pwsh
+        run: |
+          $env:TAB_AGENT_HOME = Join-Path $env:RUNNER_TEMP "tab-agent-smoke"
+          $exe = Resolve-Path "dist/TabAgent.exe"
+          $proc = Start-Process -FilePath $exe -ArgumentList "--headless","--port","3199" -PassThru
+          try {
+            $deadline = (Get-Date).AddSeconds(30)
+            $health = $null
+            while ((Get-Date) -lt $deadline -and -not $health) {
+              try { $health = Invoke-RestMethod -Uri "http://127.0.0.1:3199/api/health" -TimeoutSec 2 }
+              catch { Start-Sleep -Milliseconds 500 }
+            }
+            if (-not $health) { throw "the exe never answered /api/health" }
+            $health | ConvertTo-Json -Compress | Write-Host
+            if ($health.app -ne 'tab-agent') { throw "wrong app identity: $($health.app)" }
+          } finally {
+            Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+          }
+
+      # Rename for the release asset. The tag goes in the filename so two
+      # downloads sitting in the same folder can be told apart — a user who
+      # grabs v0.1.0 and later v0.2.0 otherwise has two files called
+      # TabAgent.exe and no way to know which is which.
+      - name: Name the asset
+        id: asset
+        shell: pwsh
+        run: |
+          $name = "TabAgent-${{ steps.tag.outputs.value }}-windows-x64.exe"
+          Copy-Item dist/TabAgent.exe $name
+          "path=$name" >> $env:GITHUB_OUTPUT
+          Write-Host "asset: $name"
+
+      # A checksum alongside the binary: the exe is unsigned, so this is the
+      # only way a user can confirm the download arrived intact.
+      - name: Checksum
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash '${{ steps.asset.outputs.path }}' -Algorithm SHA256).Hash.ToLower()
+          "$hash  ${{ steps.asset.outputs.path }}" | Out-File -Encoding ascii SHA256SUMS.txt
+          Get-Content SHA256SUMS.txt
+
+      - name: Publish the release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.value }}
+          name: ${{ steps.tag.outputs.value }}
+          files: |
+            ${{ steps.asset.outputs.path }}
+            SHA256SUMS.txt
+          generate_release_notes: true
+          # Re-running the workflow for an existing tag replaces the assets
+          # rather than failing. Tags get re-pushed while a release is being
+          # set up, and failing on that would mean deleting a release by hand.
+          fail_on_unmatched_files: true
+          draft: false
+          prerelease: false
