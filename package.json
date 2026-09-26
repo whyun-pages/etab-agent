@@ -1,0 +1,23 @@
+{
+  "name": "tab-agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "说一句中文要什么表，模型给出工作簿，代码校验后落笔。运行时零依赖。",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node --require ./tools/dev-resolve.js server.js",
+    "desktop": "node --require ./tools/dev-resolve.js desktop.js",
+    "typecheck": "tsc --noEmit",
+    "build:js": "node --no-warnings tools/build-js.js",
+    "check:imports": "node .verify/check-imports.cjs",
+    "verify:live": "node --require ./tools/dev-resolve.js .verify/live-totals.js && node --require ./tools/dev-resolve.js .verify/live-controls.js && node --require ./tools/dev-resolve.js .verify/live-attach.js && node .verify/live-delete-exe.js && node .verify/live-attach-exe.js",
+    "test": "node .verify/check-imports.cjs && node --require ./tools/dev-resolve.js --test \"tests/*.test.js\"",
+    "bundle": "node tools/verify-bundle.js",
+    "build": "node tools/build-exe.js"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.3",
+    "postject": "^1.0.0-alpha.6",
+    "typescript": "^7.0.2"
+  }
+}

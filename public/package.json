@@ -1,0 +1,5 @@
+{
+  "private": true,
+  "type": "module",
+  "description": "浏览器端 ES 模块。此文件只让 Node 以 ESM 解析 public/js/*.js，便于在测试里做导入自检；不参与打包，不影响服务端。"
+}

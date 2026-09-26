@@ -1,0 +1,28 @@
+{
+  "compilerOptions": {
+    "target": "es2023",
+    "lib": ["es2023"],
+    "module": "commonjs",
+    "types": ["node"],
+
+    "outDir": ".build/js",
+    "rootDir": ".",
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
+    "erasableSyntaxOnly": true,
+    "esModuleInterop": true,
+    "verbatimModuleSyntax": false,
+
+    "strict": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+
+    "resolveJsonModule": true
+  },
+  "include": ["lib/**/*.ts", "desktop.ts", "server.ts"],
+  "exclude": ["node_modules", ".build", "dist", ".verify", ".Trash", "public"]
+}

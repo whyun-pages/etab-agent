@@ -1,0 +1,21 @@
+# Build output — regenerate with: node tools/build-exe.js
+dist/
+.build/
+
+# Development-only tooling (postject for the SEA build)
+node_modules/
+
+# Runtime state. Sessions, attachments and model settings are per-user data; a
+# packaged build keeps them under %APPDATA%\ExcelAgent instead.
+data/
+
+# Verification scratch
+.verify/out/
+.verify/node_modules/
+
+# Editor / OS
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini
+*.log

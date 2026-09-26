@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tab Agent</title>
+<link rel="stylesheet" href="/css/app.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' rx='3' fill='%2309b6d4'/></svg>">
+</head>
+<body>
+
+<!-- ── title bar ─────────────────────────────────────────────────────── -->
+<header class="titlebar">
+  <div class="titlebar__brand">
+    <svg class="brand__mark" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M4 3h11l5 5v13a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/>
+      <path d="M15 3v5h5" class="brand__fold"/>
+      <path d="M7 13h10M7 17h6" class="brand__line"/>
+    </svg>
+    <span class="brand__name">Tab Agent</span>
+  </div>
+
+  <div class="titlebar__title" id="titlebar-title"></div>
+
+  <div class="titlebar__right">
+    <button class="btn btn--ghost btn--sm" id="btn-new-session" type="button">新会话</button>
+    <button class="iconbtn" id="btn-settings" type="button" title="模型设置">
+      <span data-icon="gear"></span>
+    </button>
+  </div>
+</header>
+
+<!-- ── work area ─────────────────────────────────────────────────────── -->
+<div class="shell" id="shell">
+  <aside class="rail" id="rail" aria-label="会话列表"></aside>
+
+  <div class="splitter" id="split-rail" role="separator" aria-orientation="vertical"
+       aria-label="调整会话列表宽度" tabindex="0" title="拖动调整宽度（双击复位）"></div>
+
+  <main class="pane" id="pane">
+    <div class="pane__error" id="error-banner" hidden></div>
+    <div class="pane__body" id="pane-body"></div>
+  </main>
+
+  <div class="splitter" id="split-preview" role="separator" aria-orientation="vertical"
+       aria-label="调整表格预览宽度" tabindex="0" title="拖动调整宽度（双击复位）"></div>
+
+  <section class="preview" id="preview-pane" aria-label="表格预览"></section>
+</div>
+
+<!-- ── status bar ────────────────────────────────────────────────────── -->
+<footer class="statusbar">
+  <span class="status__item" id="status-msg">就绪</span>
+  <span class="status__group">
+    <span class="status__item" id="status-busy"></span>
+    <span class="status__item status__item--ok" id="status-server">
+      <span class="dot dot--ok"></span>服务端就绪
+    </span>
+  </span>
+</footer>
+
+<!-- ── overlays ──────────────────────────────────────────────────────── -->
+<div class="drag-overlay" id="drag-overlay">
+  <div class="drag-overlay__card">
+    <span data-icon="upload"></span>
+    <span>松开，把文件交给助手</span>
+  </div>
+</div>
+
+<div class="toasts" id="toasts" role="status" aria-live="polite"></div>
+
+<div class="modal" id="modal" hidden>
+  <div class="modal__backdrop" data-close></div>
+  <div class="modal__box" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="modal__head">
+      <span id="modal-title">标题</span>
+      <button class="iconbtn" data-close title="关闭"><span data-icon="x"></span></button>
+    </div>
+    <div class="modal__body" id="modal-body"></div>
+    <div class="modal__foot" id="modal-foot"></div>
+  </div>
+</div>
+
+<script type="module" src="/js/app.js"></script>
+</body>
+</html>
