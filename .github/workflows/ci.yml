@@ -54,6 +54,15 @@ jobs:
       - name: Type-check
         run: npm run typecheck
 
+      # `npm test` resolves `require('../lib/x')` into `.build/js/` via
+      # tools/dev-resolve.js, which exits rather than run against nothing when
+      # that tree is absent. So the compile step is a prerequisite for the
+      # suite, not just for the build job — on a fresh checkout there is no
+      # `.build/` at all. (It failed here the first time this workflow ran; the
+      # local failure mode is invisible because `.build/` is already warm.)
+      - name: Compile TypeScript
+        run: npm run build:js
+
       # `npm test` runs the import checker first, then the suite. That order
       # matters: the checker catches an ES module that imports a name it never
       # declared — a fault that otherwise only surfaces when a user clicks the
