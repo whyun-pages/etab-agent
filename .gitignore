@@ -13,6 +13,11 @@ data/
 .verify/out/
 .verify/node_modules/
 
+# Working safety net. Backups written before a destructive edit (a rename, a
+# rewrite) land here. They are insurance for the minutes a change is in flight,
+# not history worth keeping — and git already holds the durable copy.
+.Trash/
+
 # Editor / OS
 .vscode/
 .idea/

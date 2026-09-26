@@ -1,0 +1,126 @@
+# Test on Linux, build the desktop executable on Windows.
+#
+# The two jobs are split by what they actually need, not by habit:
+#
+#   test  — `tests/**` and the static import check are self-contained. They use
+#           `node:http` against a server bound to 127.0.0.1 and inject fake
+#           `fetch` implementations where a provider would be. No network, no
+#           Edge, no PowerShell — so they run on the cheapest runner, and on
+#           every push rather than only on main.
+#
+#   build — a SEA executable is platform-specific, and the packaging pipeline
+#           drives `postject` against a copy of `node.exe`. It has to run on
+#           Windows to produce something a Windows user can double-click.
+#           It depends on `test` so a broken build never produces an artifact.
+#
+# What is deliberately NOT here: `.verify/live-*.js`. Those probes are the real
+# ones — they launch an actual Edge window and click with real mouse events over
+# CDP. They are also written against PowerShell (`Get-CimInstance
+# Win32_Process`) and a logged-in desktop session, neither of which a hosted
+# runner has. Running a subset of them here would mean maintaining a second,
+# weaker verification path; the honest thing is to keep them local and let CI
+# cover what CI can actually prove.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Read-only is enough for both jobs; the build uploads an artifact, not a release.
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Type-check and test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # No `cache: npm` input here on purpose — the cache key is derived from
+      # package-lock.json and this repo has one, so it would work, but the
+      # install is a 3-package dev tree that finishes in seconds. A cache that
+      # can go stale is not worth the seconds it saves.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check
+        run: npm run typecheck
+
+      # `npm test` runs the import checker first, then the suite. That order
+      # matters: the checker catches an ES module that imports a name it never
+      # declared — a fault that otherwise only surfaces when a user clicks the
+      # thing that calls it. See NOTES.md #52.
+      - name: Test
+        run: npm test
+
+      - name: Bundle smoke check
+        run: npm run bundle
+
+  build:
+    name: Build Windows executable
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # build-exe.js compiles TypeScript first (step 0) and is not optional:
+      # the bundler reads `.build/js/`, which does not exist until tsc has run.
+      - name: Build executable
+        run: npm run build
+
+      # Prove the artifact is the one we meant to ship, not just that a file
+      # appeared. The size check is a floor, not an exact match — the carrier is
+      # a full node.exe and its size tracks the Node release, so pinning a byte
+      # count here would go red on a Node patch bump for no real reason.
+      - name: Verify the artifact
+        shell: pwsh
+        run: |
+          $exe = "dist/TabAgent.exe"
+          if (-not (Test-Path $exe)) { throw "no executable at $exe" }
+          $mb = (Get-Item $exe).Length / 1MB
+          Write-Host "TabAgent.exe = $([math]::Round($mb, 1)) MB"
+          if ($mb -lt 50) { throw "suspiciously small ($mb MB) - injection probably failed" }
+
+      # The smoke test that would have caught the staticDir bug (NOTES.md #17):
+      # the exe starts its own server, so launch it headless and read /api/health.
+      # #17 was an exe that booted, answered the API, and served an empty page.
+      - name: Smoke test the packaged exe
+        shell: pwsh
+        run: |
+          $env:TAB_AGENT_HOME = Join-Path $env:RUNNER_TEMP "tab-agent-smoke"
+          $exe = Resolve-Path "dist/TabAgent.exe"
+          $proc = Start-Process -FilePath $exe -ArgumentList "--headless","--port","3199" -PassThru
+          try {
+            $deadline = (Get-Date).AddSeconds(30)
+            $health = $null
+            while ((Get-Date) -lt $deadline -and -not $health) {
+              try { $health = Invoke-RestMethod -Uri "http://127.0.0.1:3199/api/health" -TimeoutSec 2 }
+              catch { Start-Sleep -Milliseconds 500 }
+            }
+            if (-not $health) { throw "the exe never answered /api/health" }
+            $health | ConvertTo-Json -Compress | Write-Host
+            if ($health.app -ne 'tab-agent') { throw "wrong app identity: $($health.app)" }
+          } finally {
+            Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+          }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TabAgent-windows
+          path: dist/TabAgent.exe
+          if-no-files-found: error
