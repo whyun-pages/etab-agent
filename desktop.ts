@@ -92,19 +92,57 @@ function resolveDataDir(args: Args): string {
   return path.join(base, 'TabAgent');
 }
 
-/** Edge candidates, most specific first. */
+/**
+ * Edge candidates, most specific first, per platform.
+ *
+ * Windows keeps the three install locations it has always used. On macOS the
+ * browser binary lives inside the .app bundle rather than at a bare path, and
+ * the per-user install under ~/Applications is real enough to check. On Linux
+ * there is no single canonical location — a distro package and a snap/flatpak
+ * install land in different places — so the list is the common ones, with
+ * /usr/bin symlinked on most systems.
+ *
+ * A missing browser is not fatal: main() falls back to printing the address so
+ * the page can be opened by hand. That is deliberate — the server is the
+ * product, the window is a convenience.
+ */
 function findEdge(): string | null {
-  const candidates = [
-    path.join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
-    path.join(process.env.ProgramFiles || 'C:\\Program Files', 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
-    path.join(process.env.LOCALAPPDATA || '', 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
-  ];
+  const candidates: string[] = [];
+  if (process.platform === 'win32') {
+    candidates.push(
+      path.join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+      path.join(process.env.ProgramFiles || 'C:\\Program Files', 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+      path.join(process.env.LOCALAPPDATA || '', 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+    );
+  } else if (process.platform === 'darwin') {
+    candidates.push(
+      '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+      path.join(os.homedir(), 'Applications', 'Microsoft Edge.app', 'Contents', 'MacOS', 'Microsoft Edge'),
+    );
+  } else {
+    candidates.push(
+      '/usr/bin/microsoft-edge',
+      '/usr/bin/microsoft-edge-stable',
+      '/opt/microsoft/msedge/microsoft-edge',
+      '/snap/bin/microsoft-edge',
+      '/var/lib/flatpak/exports/bin/com.microsoft.Edge',
+    );
+  }
   for (const c of candidates) {
     try {
       if (fs.statSync(c).isFile()) return c;
     } catch { /* keep looking */ }
   }
   return null;
+}
+
+/**
+ * Is this the Edge binary? The `--disable-features=msEdgeAutoLaunch` flag is
+ * Edge-specific: passing it to another Chromium browser is harmless but
+ * meaningless, so it goes on only when it applies.
+ */
+function isEdge(bin: string): boolean {
+  return /msedge|microsoft.?edge/i.test(path.basename(bin));
 }
 
 /** Wait for the server to report a bound address. */
@@ -252,13 +290,27 @@ const EARLY_EXIT_MS = 1500;
  */
 function openWindow(edge: string, url: string, profileDir: string, detach = true): ChildProcess {
   fs.mkdirSync(profileDir, { recursive: true });
-  return spawn(edge, [
+  const flags = [
     `--app=${url}`,
     `--user-data-dir=${profileDir}`,
     '--no-first-run',
     '--no-default-browser-check',
-    '--disable-features=msEdgeAutoLaunch',
-  ], { stdio: 'ignore', detached: detach });
+  ];
+  // Edge-only flag; see isEdge().
+  if (isEdge(edge)) flags.push('--disable-features=msEdgeAutoLaunch');
+  return spawn(edge, flags, { stdio: 'ignore', detached: detach });
+}
+
+/**
+ * The message shown when no Edge was found. The address is printed on its own
+ * line so it can be copied or clicked; the wording names no platform, because
+ * the reason we got here differs (not installed, installed somewhere unusual,
+ * or a Linux distro we did not guess).
+ */
+function openInBrowserHint(url: string): void {
+  console.log('未找到 Microsoft Edge，请手动在浏览器打开：');
+  console.log('  ' + url);
+  console.log('服务保持运行；关闭本进程即可退出。');
 }
 
 // --------------------------------------------------------------------- main
@@ -322,7 +374,7 @@ async function main(): Promise<void> {
         return;
       }
       if (!edge) {
-        console.log('未找到 Microsoft Edge，请手动打开上面的地址。');
+        openInBrowserHint(url);
         return;
       }
       // Fire and forget: this process is only a launcher and should exit
@@ -364,8 +416,7 @@ async function main(): Promise<void> {
 
   if (!edge) {
     console.log('');
-    console.log('未找到 Microsoft Edge，请手动打开上面的地址。');
-    console.log('服务保持运行；关闭本进程即可退出。');
+    openInBrowserHint(url);
     await new Promise(() => {});
     return;
   }
