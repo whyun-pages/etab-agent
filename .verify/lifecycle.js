@@ -48,7 +48,7 @@ function readRecord() {
 function launch(extraArgs = []) {
   const cmd = USE_EXE
     ? { file: path.join(ROOT, 'dist', 'TabAgent.exe'), args: ['--data-dir', DATA, ...extraArgs] }
-    : { file: process.execPath, args: [path.join(ROOT, 'desktop.js'), '--data-dir', DATA, ...extraArgs] };
+    : { file: process.execPath, args: [path.join(ROOT, '.build', 'js', 'desktop.js'), '--data-dir', DATA, ...extraArgs] };
   const child = spawn(cmd.file, cmd.args, { stdio: ['ignore', 'pipe', 'pipe'] });
   const rec = { child, output: '', exitedAt: null };
   const t0 = Date.now();
@@ -82,7 +82,7 @@ function check(label, actual, expected) {
 }
 
 async function main() {
-  console.log('target: ' + (USE_EXE ? 'dist/TabAgent.exe' : 'desktop.js (source)'));
+  console.log('target: ' + (USE_EXE ? 'dist/TabAgent.exe' : '.build/js/desktop.js (dev build)'));
   console.log('data:   ' + DATA + '\n');
 
   // ---------------------------------------------------------- stale record

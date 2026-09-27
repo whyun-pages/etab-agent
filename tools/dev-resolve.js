@@ -7,7 +7,7 @@
  * `lib/` is TypeScript source only. There are no `.js` twins any more — they
  * were deleted on purpose, because a stale build product sitting next to its
  * source is exactly how a `.js` file survives a rename (NOTES.md #40). The
- * runtime tree is `.build/js/`, produced by `tools/build-js.js`.
+ * runtime tree is `.build/js/`, produced by `tsc` (`pnpm build:js`).
  *
  * The test suite and the `.verify/` scripts all say `require('../lib/xlsx')`,
  * which is the right thing for them to say: `lib/` IS the module, conceptually.
@@ -61,7 +61,7 @@ if (!fs.existsSync(path.join(BUILT, 'desktop.js'))) {
   // against nothing and report a misleading green.
   console.error(
     'tools/dev-resolve.js: .build/js/ is missing.\n' +
-      'Run `npm run build:js` (or `node tools/build-js.js`) first.',
+      'Run `pnpm build:js` first.',
   );
   process.exit(1);
 }
@@ -91,13 +91,13 @@ module_.registerHooks({
     }
     // This is a source-tree module we were supposed to reroute, but the build
     // tree does not have it. Falling through here would silently load the
-    // UNBUILT source — which "works" for an un-migrated .js and hides a missing
-    // entry in tools/build-js.js's COPY_THROUGH. Fail instead.
+    // UNBUILT source — which "works" for a stray .js dropped into lib/ and hides
+    // that tsc never compiled it (tsconfig.json includes only .ts). Fail instead.
     if (redirectable) {
       throw new Error(
         `tools/dev-resolve.js: ${specifier} (from ${parent}) is a source module of this ` +
           `project but is missing from the build tree (${path.relative(ROOT, BUILT)}).\n` +
-          'Run `npm run build:js` — if it is still absent, add it to COPY_THROUGH in tools/build-js.js.',
+          'Run `pnpm build:js` — if it is still absent, it has no .ts source that tsconfig.json includes.',
       );
     }
     return nextResolve(specifier, context);

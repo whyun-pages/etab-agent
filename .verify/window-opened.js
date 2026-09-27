@@ -80,7 +80,7 @@ function check(label, actual, expected) {
 }
 
 async function main() {
-  console.log('target: ' + (USE_EXE ? 'dist/TabAgent.exe' : 'desktop.js (source)'));
+  console.log('target: ' + (USE_EXE ? 'dist/TabAgent.exe' : '.build/js/desktop.js (dev build)'));
 
   fs.rmSync(DATA, { recursive: true, force: true });
   fs.rmSync(SHADOW, { recursive: true, force: true });
@@ -94,7 +94,7 @@ async function main() {
     args = [file];
   } else {
     file = process.execPath;
-    args = [path.join(ROOT, 'desktop.js')];
+    args = [path.join(ROOT, '.build', 'js', 'desktop.js')];
   }
 
   console.log('\n=== A) headless server (no window) ===');

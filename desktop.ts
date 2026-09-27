@@ -40,6 +40,15 @@ import { isPackaged, embeddedKeys, readAsset, assetKeyFor } from './lib/assets.t
 import type { AddressInfo } from 'node:net';
 import type { ChildProcess } from 'node:child_process';
 
+// Where a development run reads the UI from. Unpackaged, this file runs either
+// as tsc output at `.build/js/desktop.js` (`public/` two levels up) or as source
+// via tsx (`public/` alongside) — the same split as `root` in server.ts, and
+// recognised the same way. Only meaningful unpackaged: a SEA build reads its
+// assets from the executable, and `__dirname` there points inside the blob.
+const DEV_STATIC_DIR = path.basename(__dirname) === 'js' && path.basename(path.dirname(__dirname)) === '.build'
+  ? path.join(__dirname, '..', '..', 'public')
+  : path.join(__dirname, 'public');
+
 /** The flags this entry understands, after parsing. */
 interface Args {
   headless: boolean;
@@ -345,10 +354,10 @@ async function main(): Promise<void> {
     // module could not be loaded at all", which is a different diagnosis.
     console.log('sea.isSea()         = ' + (sea ? sea.isSea() : 'n/a'));
     console.log('embeddedKeys()      = ' + JSON.stringify(embeddedKeys()));
-    console.log('staticDir           = ' + String(isPackaged() ? undefined : path.join(__dirname, 'public')));
+    console.log('staticDir           = ' + String(isPackaged() ? undefined : DEV_STATIC_DIR));
     for (const p of ['/', '/index.html', '/css/app.css', '/sample/contract.xlsx']) {
       console.log(`assetKeyFor(${p.padEnd(22)}) = ${JSON.stringify(assetKeyFor(p))}`);
-      const a = readAsset({ dir: isPackaged() ? undefined : path.join(__dirname, 'public'), pathname: p });
+      const a = readAsset({ dir: isPackaged() ? undefined : DEV_STATIC_DIR, pathname: p });
       console.log(`   readAsset -> ${a ? a.body.length + ' bytes (' + a.type + ')' : 'null'}`);
     }
     return;
@@ -390,7 +399,7 @@ async function main(): Promise<void> {
   // Packaged builds read assets from the executable itself; a development run
   // reads them from public/. Passing staticDir when packaged is harmless but
   // meaningless, so only pass it when assets are actually on disk.
-  const staticDir = isPackaged() ? undefined : path.join(__dirname, 'public');
+  const staticDir = isPackaged() ? undefined : DEV_STATIC_DIR;
 
   const server = createServer({ dataDir, staticDir });
   const addr = await listen(server, resolvePort(args), args.host);

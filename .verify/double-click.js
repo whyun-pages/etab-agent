@@ -87,7 +87,7 @@ function check(label, actual, expected) {
 }
 
 async function main() {
-  console.log('target: ' + (USE_EXE ? 'dist/TabAgent.exe' : 'desktop.js (source)'));
+  console.log('target: ' + (USE_EXE ? 'dist/TabAgent.exe' : '.build/js/desktop.js (dev build)'));
   if (!EDGE) { console.log('no Edge found — cannot reproduce the double-click path'); process.exit(1); }
 
   fs.rmSync(DATA, { recursive: true, force: true });
@@ -104,7 +104,7 @@ async function main() {
   } else {
     aFile = bFile = process.execPath;
   }
-  const aArgs = USE_EXE ? [path.join(SHADOW, 'TabAgent.exe')] : [path.join(ROOT, 'desktop.js')];
+  const aArgs = USE_EXE ? [path.join(SHADOW, 'TabAgent.exe')] : [path.join(ROOT, '.build', 'js', 'desktop.js')];
 
   const base = `"${aFile}" ${aArgs.map((a) => `"${a}"`).join(' ')}`;
 

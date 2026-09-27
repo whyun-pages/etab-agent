@@ -40,38 +40,46 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      # No `cache: npm` input here on purpose — the cache key is derived from
-      # package-lock.json and this repo has one, so it would work, but the
-      # install is a 3-package dev tree that finishes in seconds. A cache that
+      # pnpm before setup-node: the version comes from package.json's
+      # `packageManager` field, so the runner uses exactly the pnpm that wrote
+      # pnpm-lock.yaml — a different major can refuse the lockfile.
+      - uses: pnpm/action-setup@v4
+
+      # No `cache: pnpm` input here on purpose — the cache key is derived from
+      # pnpm-lock.yaml and this repo has one, so it would work, but the
+      # install is a small dev tree that finishes in seconds. A cache that
       # can go stale is not worth the seconds it saves.
       - uses: actions/setup-node@v5
         with:
           node-version: '24'
 
+      # `--filter tab-agent` installs the root package only. `.verify/` is a
+      # workspace package too, but its exceljs tree (80-odd packages) serves the
+      # local probes, none of which run here — see the header comment.
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile --filter tab-agent
 
       - name: Type-check
-        run: npm run typecheck
+        run: pnpm run typecheck
 
-      # `npm test` resolves `require('../lib/x')` into `.build/js/` via
+      # `pnpm test` resolves `require('../lib/x')` into `.build/js/` via
       # tools/dev-resolve.js, which exits rather than run against nothing when
       # that tree is absent. So the compile step is a prerequisite for the
       # suite, not just for the build job — on a fresh checkout there is no
       # `.build/` at all. (It failed here the first time this workflow ran; the
       # local failure mode is invisible because `.build/` is already warm.)
       - name: Compile TypeScript
-        run: npm run build:js
+        run: pnpm run build:js
 
-      # `npm test` runs the import checker first, then the suite. That order
+      # `pnpm test` runs the import checker first, then the suite. That order
       # matters: the checker catches an ES module that imports a name it never
       # declared — a fault that otherwise only surfaces when a user clicks the
       # thing that calls it. See NOTES.md #52.
       - name: Test
-        run: npm test
+        run: pnpm test
 
       - name: Bundle smoke check
-        run: npm run bundle
+        run: pnpm run bundle
 
   build:
     name: Build Windows executable
@@ -80,17 +88,19 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - uses: pnpm/action-setup@v4
+
       - uses: actions/setup-node@v5
         with:
           node-version: '24'
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile --filter tab-agent
 
       # build-exe.js compiles TypeScript first (step 0) and is not optional:
       # the bundler reads `.build/js/`, which does not exist until tsc has run.
       - name: Build executable
-        run: npm run build
+        run: pnpm run build
 
       # Prove the artifact is the one we meant to ship, not just that a file
       # appeared. The size check is a floor, not an exact match — the carrier is

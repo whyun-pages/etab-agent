@@ -50,7 +50,7 @@ async function waitForHealth(timeoutMs = 20000) {
 }
 
 async function main() {
-  if (!fs.existsSync(EXE)) { console.error(`no exe at ${EXE} — run npm run build`); process.exit(1); }
+  if (!fs.existsSync(EXE)) { console.error(`no exe at ${EXE} — run pnpm build`); process.exit(1); }
   fs.mkdirSync(OUT, { recursive: true });
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'xldel-exe-'));
 

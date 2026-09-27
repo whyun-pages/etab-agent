@@ -58,7 +58,7 @@ function listeningPortsOf(pid) {
 function launch(label, extraArgs = []) {
   const cmd = USE_EXE
     ? { file: path.join(ROOT, 'dist', 'TabAgent.exe'), args: ['--data-dir', DATA, ...extraArgs] }
-    : { file: process.execPath, args: [path.join(ROOT, 'desktop.js'), '--data-dir', DATA, ...extraArgs] };
+    : { file: process.execPath, args: [path.join(ROOT, '.build', 'js', 'desktop.js'), '--data-dir', DATA, ...extraArgs] };
 
   const child = spawn(cmd.file, cmd.args, { stdio: ['ignore', 'pipe', 'pipe'] });
   const rec = { label, child, output: '', exitedAt: null, code: null, started: Date.now() };
@@ -81,7 +81,7 @@ function check(label, actual, expected) {
 }
 
 async function main() {
-  console.log('target: ' + (USE_EXE ? 'dist/TabAgent.exe' : 'desktop.js (source)'));
+  console.log('target: ' + (USE_EXE ? 'dist/TabAgent.exe' : '.build/js/desktop.js (dev build)'));
   console.log('data:   ' + DATA + '\n');
 
   console.log('=== A) first launch ===');

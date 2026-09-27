@@ -30,7 +30,7 @@ const PROFILE = path.join(OUT, 'probe-focus-profile');
 
 async function main() {
   fs.rmSync(PROFILE, { recursive: true, force: true });
-  const server = spawn(process.execPath, [path.join(ROOT, 'server.js'), '--port', String(PORT)],
+  const server = spawn(process.execPath, [path.join(ROOT, '.build', 'js', 'server.js'), '--port', String(PORT)],
     { stdio: 'ignore', cwd: ROOT });
   await sleep(900);
 

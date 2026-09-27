@@ -34,7 +34,7 @@ function launch({ env = {}, args = [] } = {}) {
   // of the parent shell having one.
   delete baseEnv.TAB_AGENT_PORT;
 
-  const proc = spawn(NODE, [path.join(ROOT, 'server.js'), ...args], {
+  const proc = spawn(NODE, [path.join(ROOT, '.build', 'js', 'server.js'), ...args], {
     cwd: ROOT,
     env: { ...baseEnv, ...env },
     windowsHide: true,

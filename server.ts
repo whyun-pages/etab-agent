@@ -3,7 +3,8 @@
  * Entry point.
  *
  * Usage:
- *   node server.js [--port 3179] [--static public] [--data-dir <path>]
+ *   node .build/js/server.js [--port 3179] [--static public] [--data-dir <path>]
+ *   (or `pnpm start`, which compiles first; `pnpm start:dev` runs this source via tsx)
  *
  * The listening port can also come from `TAB_AGENT_PORT`. Precedence is
  * explicit flag, then the environment variable, then the built-in default —
@@ -67,7 +68,15 @@ function parseArgs(argv: string[]): Args {
 }
 
 const args = parseArgs(process.argv.slice(2));
-const root = __dirname;
+// The repository root, which is not always `__dirname`. This file runs two
+// ways: as tsc output at `.build/js/server.js` (`pnpm start`), and as source
+// at `server.ts` (`pnpm start:dev`, via tsx). Taking `__dirname` as-is broke the
+// first — no `public/` there, so every page was a 404 while `/api/health` still
+// answered. Hard-coding "two levels up" broke the second, and worse, put `data/`
+// OUTSIDE the repository. So recognise the build tree by name instead.
+const root = path.basename(__dirname) === 'js' && path.basename(path.dirname(__dirname)) === '.build'
+  ? path.join(__dirname, '..', '..')
+  : __dirname;
 
 /**
  * Resolve the listening port.

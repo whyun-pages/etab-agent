@@ -56,7 +56,7 @@ async function main() {
   const payload = sheetPreview(writeSpec(spec), '订单明细');
 
   // ── a real server so the module graph is fetched the way the app fetches it
-  const srv = spawn(process.execPath, [path.join(ROOT, 'server.js'), '--port', String(PORT)], {
+  const srv = spawn(process.execPath, [path.join(ROOT, '.build', 'js', 'server.js'), '--port', String(PORT)], {
     cwd: ROOT,
     env: { ...process.env, TAB_AGENT_HOME: path.join(OUT, 'sheet-render-data') },
     stdio: 'ignore',

@@ -40,6 +40,11 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # pnpm before setup-node: the version comes from package.json's
+      # `packageManager` field, so the runner uses exactly the pnpm that wrote
+      # pnpm-lock.yaml — a different major can refuse the lockfile.
+      - uses: pnpm/action-setup@v4
+
       - uses: actions/setup-node@v5
         with:
           node-version: '24'
@@ -76,12 +81,12 @@ jobs:
           Write-Host "version $pkg agrees with tag $tag"
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile --filter tab-agent
 
       # build-exe.js compiles TypeScript first (step 0) and is not optional:
       # the bundler reads `.build/js/`, which does not exist until tsc has run.
       - name: Build executable
-        run: npm run build
+        run: pnpm run build
 
       # Verify what we are about to publish, not merely that a file appeared.
       # The size floor is a floor, not an exact match: the carrier is a full

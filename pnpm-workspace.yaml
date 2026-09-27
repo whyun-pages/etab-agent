@@ -1,0 +1,11 @@
+# `.verify/` is a workspace package so its one dependency (exceljs, the
+# independent reference implementation the offline probes compare against)
+# lives in the same lockfile as everything else. It is never bundled: the root
+# package's `dependencies` stays empty, and `.verify/` is not on the release path.
+packages:
+  - .verify
+
+allowBuilds:
+  # esbuild (via tsx) ships its binary as a per-platform optional dependency;
+  # its install script only re-verifies that binary, so it is not needed.
+  esbuild: false

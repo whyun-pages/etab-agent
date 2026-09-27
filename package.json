@@ -4,12 +4,17 @@
   "private": true,
   "description": "说一句中文要什么表，模型给出工作簿，代码校验后落笔。运行时零依赖。",
   "type": "commonjs",
+  "packageManager": "pnpm@11.0.9",
   "scripts": {
-    "start": "node --require ./tools/dev-resolve.js server.js",
-    "desktop": "node --require ./tools/dev-resolve.js desktop.js",
+    "prestart": "tsc",
+    "start": "node .build/js/server.js",
+    "start:dev": "tsx server.ts",
+    "predesktop": "tsc",
+    "desktop": "node .build/js/desktop.js",
     "typecheck": "tsc --noEmit",
-    "build:js": "node --no-warnings tools/build-js.js",
+    "build:js": "tsc",
     "check:imports": "node .verify/check-imports.cjs",
+    "preverify:live": "node tools/build-exe.js",
     "verify:live": "node --require ./tools/dev-resolve.js .verify/live-totals.js && node --require ./tools/dev-resolve.js .verify/live-controls.js && node --require ./tools/dev-resolve.js .verify/live-attach.js && node .verify/live-delete-exe.js && node .verify/live-attach-exe.js",
     "test": "node .verify/check-imports.cjs && node --require ./tools/dev-resolve.js --test \"tests/*.test.js\"",
     "bundle": "node tools/verify-bundle.js",
@@ -18,6 +23,7 @@
   "devDependencies": {
     "@types/node": "^26.6.3",
     "postject": "^1.0.0-alpha.6",
+    "tsx": "^4.23.15",
     "typescript": "^7.0.2"
   }
 }

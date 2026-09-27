@@ -3,7 +3,7 @@
  * Build the single-file desktop executable.
  *
  * Pipeline:
- *   0. compile TypeScript into .build/js/ (tools/build-js.js)
+ *   0. compile TypeScript into .build/js/ (tsc -p tsconfig.json)
  *   1. bundle desktop.js + lib/*.js into one CommonJS script
  *      (a packaged executable's own require resolves builtins only, so the
  *      graph must be joined before it is embedded)
@@ -76,12 +76,24 @@ function main() {
   fs.mkdirSync(path.dirname(args.out), { recursive: true });
 
   step(0, 'compile TypeScript');
-  // Run as a child process rather than requiring it, so the build step keeps
-  // its own CLI contract (and its --check mode stays usable on its own).
-  execFileSync(process.execPath, ['--no-warnings', path.join(__dirname, 'build-js.js')], {
-    stdio: 'inherit',
-    cwd: ROOT,
-  });
+  // The same command as `pnpm build:js`: tsconfig.json alone decides what is
+  // compiled and where it lands. Run the local install through this Node so a
+  // global tsc of another version can never be picked up instead.
+  const tsc = path.join(ROOT, 'node_modules', 'typescript', 'bin', 'tsc');
+  if (!fs.existsSync(tsc)) {
+    console.error('typescript not found. Run `pnpm install` first.');
+    process.exit(1);
+  }
+  try {
+    execFileSync(process.execPath, [tsc, '-p', path.join(ROOT, 'tsconfig.json')], {
+      stdio: 'inherit',
+      cwd: ROOT,
+    });
+  } catch {
+    // tsc already printed the diagnostics; the child-process stack is noise.
+    console.error('\ncompile failed: see the errors above');
+    process.exit(1);
+  }
 
   step(1, 'bundle modules');
   // Bundle from the STRIPPED tree: lib/*.js live there, not next to the .ts.
@@ -166,7 +178,7 @@ function resolvePostject() {
   } catch { /* fall through to the error below */ }
   throw new Error(
     'postject not found. Install it first:\n' +
-    '  npm install postject --strict-ssl=false --no-audit --no-fund',
+    '  pnpm install  (postject is a devDependency)',
   );
 }
 
