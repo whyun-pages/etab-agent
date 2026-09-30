@@ -1,9 +1,15 @@
 {
-  "name": "tab-agent",
+  "name": "@whyun/etab-agent",
   "version": "0.1.0",
-  "private": true,
   "description": "说一句中文要什么表，模型给出工作簿，代码校验后落笔。运行时零依赖。",
   "type": "commonjs",
+  "bin": {
+    "etab": ".build/js/desktop.js"
+  },
+  "files": [
+    ".build/js/",
+    "public/"
+  ],
   "packageManager": "pnpm@11.0.9",
   "scripts": {
     "prestart": "tsc",
@@ -11,6 +17,7 @@
     "start:dev": "tsx server.ts",
     "predesktop": "tsc",
     "desktop": "node .build/js/desktop.js",
+    "desktop:dev": "tsx desktop.ts",
     "typecheck": "tsc --noEmit",
     "build:js": "tsc",
     "check:imports": "node .verify/check-imports.cjs",

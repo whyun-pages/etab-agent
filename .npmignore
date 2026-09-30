@@ -1,0 +1,31 @@
+# Source (compiled output in .build/js/ is what ships)
+*.ts
+lib/
+server.ts
+desktop.ts
+tsconfig.json
+
+# Development & build tooling
+tools/
+tests/
+.verify/
+.github/
+dist/
+
+# Runtime state
+data/
+
+# Editor / OS
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini
+*.log
+
+# Package manager
+pnpm-lock.yaml
+pnpm-workspace.yaml
+
+# Project docs (not needed at runtime)
+AGENTS.md
+NOTES.md
