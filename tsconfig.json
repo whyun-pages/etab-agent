@@ -23,6 +23,6 @@
 
     "resolveJsonModule": true
   },
-  "include": ["lib/**/*.ts", "desktop.ts", "server.ts"],
+  "include": ["lib/**/*.ts", "cli.ts", "desktop.ts", "server.ts"],
   "exclude": ["node_modules", ".build", "dist", ".verify", ".Trash", "public"]
 }

@@ -13,7 +13,7 @@
   },
   "type": "commonjs",
   "bin": {
-    "etab": ".build/js/desktop.js"
+    "etab": ".build/js/cli.js"
   },
   "files": [
     ".build/js/",

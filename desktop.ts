@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 'use strict';
 /**
  * Desktop entry point for the packaged build.

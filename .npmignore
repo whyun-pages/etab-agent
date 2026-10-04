@@ -3,6 +3,7 @@
 lib/
 server.ts
 desktop.ts
+cli.ts
 tsconfig.json
 
 # Development & build tooling
