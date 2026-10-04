@@ -1,6 +1,6 @@
 {
   "name": "@whyun/etab-agent",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "说一句中文要什么表，模型给出工作簿，代码校验后落笔。运行时零依赖。",
   "license": "MIT",
   "repository": {
