@@ -2,6 +2,15 @@
   "name": "@whyun/etab-agent",
   "version": "0.1.0",
   "description": "说一句中文要什么表，模型给出工作簿，代码校验后落笔。运行时零依赖。",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/whyun-pages/etab-agent.git"
+  },
+  "homepage": "https://github.com/whyun-pages/etab-agent#readme",
+  "bugs": {
+    "url": "https://github.com/whyun-pages/etab-agent/issues"
+  },
   "type": "commonjs",
   "bin": {
     "etab": ".build/js/desktop.js"
@@ -12,6 +21,7 @@
   ],
   "packageManager": "pnpm@11.0.9",
   "scripts": {
+    "prepack": "tsc",
     "prestart": "tsc",
     "start": "node .build/js/server.js",
     "start:dev": "tsx server.ts",
