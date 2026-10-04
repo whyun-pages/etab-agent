@@ -1,0 +1,103 @@
+# Tag-driven npm publish: the same `v*` tag that release.yml turns into a GitHub
+# Release also publishes `@whyun/etab-agent` to the npm registry.
+#
+#   git tag v0.1.1 && git push origin v0.1.1
+#
+# Kept separate from release.yml on purpose. The two publish different things to
+# different places with different credentials — a Windows SEA executable to
+# GitHub, a compiled JS tree to npm — and one failing should not block the other.
+# A broken postject injection is no reason to hold back the npm package, and an
+# npm outage is no reason to hold back the exe.
+#
+# Authentication: npm trusted publishing (OIDC) is the intended path — configure
+# it on npmjs.com under the package's settings, pointing at this repository and
+# this workflow file name (`publish.yml`). No long-lived token then exists to
+# leak. `NPM_TOKEN` is read as a fallback so the workflow also works before that
+# is set up; when OIDC is available npm prefers it and the token is ignored.
+
+name: Publish to npm
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to publish (must already exist, e.g. v0.1.1)'
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Test and publish
+    # Linux, not Windows: the npm package is plain JS and the test suite is
+    # self-contained (see ci.yml). Nothing here needs Edge or postject.
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Required for trusted publishing and for `--provenance`: npm exchanges
+      # the workflow's OIDC token for a short-lived publish credential and
+      # signs a provenance statement linking the tarball to this run.
+      id-token: write
+    steps:
+      # On a manual run, check out the tag itself, not the default branch —
+      # otherwise the version check below compares the tag against whatever
+      # main happens to say today.
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+
+      # pnpm before setup-node: the version comes from package.json's
+      # `packageManager` field, so the runner uses exactly the pnpm that wrote
+      # pnpm-lock.yaml — a different major can refuse the lockfile.
+      - uses: pnpm/action-setup@v4
+
+      # `registry-url` makes setup-node write an .npmrc that reads
+      # NODE_AUTH_TOKEN. Node 24 ships npm 11, which is new enough for trusted
+      # publishing (11.5.1+).
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      # Same reasoning as release.yml: the tag and package.json both carry the
+      # version and nothing keeps them in step. npm would happily publish
+      # whatever package.json says under a tag that says something else.
+      - name: Check the tag matches package.json
+        run: |
+          tag='${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}'
+          case "$tag" in
+            v[0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "tag '$tag' is not of the form vX.Y.Z" >&2; exit 1 ;;
+          esac
+          pkg=$(node -p "require('./package.json').version")
+          if [ "$pkg" != "${tag#v}" ]; then
+            echo "tag says ${tag#v} but package.json says $pkg - bump one to match the other" >&2
+            exit 1
+          fi
+          echo "version $pkg agrees with tag $tag"
+
+      # devDependencies are needed: `prepack` runs tsc, and tsc is a dev dep.
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --filter @whyun/etab-agent
+
+      # The published tree is exactly what the tests run against, so test it
+      # here rather than trusting that ci.yml passed on this commit — a tag can
+      # be pushed on a commit CI never saw.
+      - name: Compile TypeScript
+        run: pnpm run build:js
+
+      - name: Test
+        run: pnpm test
+
+      # `npm publish`, not `pnpm publish`: pnpm refuses to publish from a
+      # detached HEAD (its git-checks want a branch), and a tag checkout is
+      # always detached. `prepack` recompiles .build/js/ either way, which is
+      # what keeps the shebang on the `etab` bin — 0.1.0 shipped a stale build
+      # without it, and Windows users got an "Open with" dialog instead of node.
+      - name: Publish
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -81,7 +81,7 @@ jobs:
           Write-Host "version $pkg agrees with tag $tag"
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile --filter tab-agent
+        run: pnpm install --frozen-lockfile --filter @whyun/etab-agent
 
       # build-exe.js compiles TypeScript first (step 0) and is not optional:
       # the bundler reads `.build/js/`, which does not exist until tsc has run.
