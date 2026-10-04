@@ -212,40 +212,6 @@ git push origin v0.1.0
 `.verify/live-*.js` 不在 CI 里：它们要开真实的 Edge 窗口、用 CDP 发真实鼠标事件，
 还依赖 PowerShell 和已登录的桌面会话，托管 runner 都没有。
 
-## 目录
-
-```
-lib/                 零依赖核心（TypeScript 源，14 个模块）
-  zip.ts                 ZIP 容器读写（ZIP64、data descriptor、deflate）
-  xlsx.ts                SpreadsheetML 读取
-  xlsx-writer.ts         工作簿写入（从零构建 + styles）
-  workbook.ts            spec 归一化 / 校验 / 落笔
-  workbook-preview.ts    网格预览 + 格式码
-  agent.ts               对话轮：三道闸都在这里
-  session-store.ts       会话持久化（存 spec 不存字节，每实例一条写队列）
-  attachments.ts         附件解析（CSV / JSON / docx；PDF 显式标记不支持）
-  extract.ts             中文取值抽取
-  formula.ts             公式缓存重算
-  llm.ts                 模型调用（OpenAI 兼容，错误原文透传）
-  settings.ts            配置读写（key 不回客户端）
-  assets.ts              UI 资源注册表（内嵌 / 磁盘二选一）
-  server.ts              HTTP API
-public/              前端（原生 ES 模块，无构建步骤，16 个文件嵌入 exe）
-  index.html             外壳
-  css/app.css            主题
-  js/app.js              控制器
-  js/{api,state,dom,ui,icons,colname,composer,splitters}.js
-  js/views/{chat,sessions,preview,sheet,settings}.js
-server.ts            开发入口（只起服务，默认端口 3179）
-desktop.ts           桌面入口（起服务 + Edge 窗口，也是 SEA 的 main）
-tools/               开发工具（解析钩子 + 打包器 + 合并器 + 示例生成）
-tests/               node:test 测试
-.verify/             开发期外部验证（exceljs 对照 + 真机 + 打包 exe + CDP 点击）
-.github/workflows/    CI 与发布
-.build/js/           编译产物（不入库）
-dist/                打包产物（不入库）
-```
-
 ## 验证
 
 ```powershell
