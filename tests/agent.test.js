@@ -369,6 +369,54 @@ test('agentMessages: history is reference material, not a conversation', () => {
   assert.ok(messages[1].content.trimEnd().endsWith('再加一列税率'));
 });
 
+test('agentMessages: history keeps as many recent rounds as the budget allows', () => {
+  // The old rule kept the last 4 messages no matter how short they were.
+  const history = [];
+  for (let i = 0; i < 10; i++) {
+    history.push({ role: 'user', content: `问题${i}` });
+    history.push({ role: 'assistant', content: `回答${i}` });
+  }
+  const content = agentMessages({ message: 'x', history })[1].content;
+  assert.match(content, /用户：问题0\n助手：回答0/);
+  assert.match(content, /助手：回答9/);
+  assert.doesNotMatch(content, /未列出/);
+});
+
+test('agentMessages: older messages beyond the budget are dropped and announced', () => {
+  const history = Array.from({ length: 6 }, (_, i) => ({
+    role: i % 2 ? 'assistant' : 'user',
+    content: `第${i}条` + '字'.repeat(40),
+  }));
+  const content = agentMessages({ message: 'x', history, historyBudget: 100 })[1].content;
+  assert.match(content, /第5条/);
+  assert.match(content, /第4条/);
+  assert.doesNotMatch(content, /第3条/, 'stops at the first message that does not fit');
+  assert.match(content, /更早的 4 条消息未列出/);
+  assert.match(content, /早先有 3 条用户消息/, 'the count still covers the whole history');
+});
+
+test('agentMessages: a long assistant reply is capped, a user message is kept whole', () => {
+  const longUser = '要'.repeat(1500);
+  const longReply = '答'.repeat(1500);
+  const content = agentMessages({
+    message: 'x',
+    history: [{ role: 'user', content: longUser }, { role: 'assistant', content: longReply }],
+  })[1].content;
+  assert.ok(content.includes(`用户：${longUser}\n`), 'user message not truncated');
+  assert.ok(content.includes(`助手：${'答'.repeat(800)}…（已截断）`));
+  assert.ok(!content.includes('答'.repeat(801)));
+});
+
+test('agentMessages: the newest message is sent even if it alone exceeds the budget', () => {
+  const content = agentMessages({
+    message: 'x',
+    history: [{ role: 'user', content: '旧' }, { role: 'assistant', content: '新'.repeat(50) }],
+    historyBudget: 10,
+  })[1].content;
+  assert.match(content, /助手：新{50}/);
+  assert.doesNotMatch(content, /用户：旧/);
+});
+
 test('agentMessages: no history means no preamble', () => {
   const messages = agentMessages({ message: '做一个表', history: [] });
   assert.strictEqual(messages.length, 2);

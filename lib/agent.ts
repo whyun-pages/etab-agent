@@ -90,6 +90,7 @@ export interface AgentMessagesArgs {
   message: string;
   spec?: import('./workbook.ts').WorkbookSpec | null;
   rowBudget?: number;
+  historyBudget?: number;
 }
 
 /** What `guardChange` decides. */
@@ -139,6 +140,34 @@ export interface TurnResult {
 
 /** Rows sent to the model. Enough to see the shape, not enough to blow the budget. */
 export const DEFAULT_ROW_BUDGET = 200;
+
+/**
+ * How much prior conversation goes to the model, in characters.
+ *
+ * Characters, not tokens: counting tokens properly means shipping a tokenizer
+ * per provider, and this is an OpenAI-compatible client that does not know which
+ * model is behind it. For Chinese one character is roughly one token; for Latin
+ * text a character is well under one, so counting characters over-estimates and
+ * errs toward sending less, never toward overflowing.
+ *
+ * Replaces a fixed "last 4 messages, 300 characters each". That kept two rounds
+ * at most, and cut an assistant answer mid-sentence even when the budget had
+ * plenty of room — the model then saw half a reply and, from the user's side,
+ * "forgot" what it had just said. A budget keeps as many recent rounds as fit.
+ */
+export const DEFAULT_HISTORY_BUDGET = 4000;
+
+/**
+ * Per-message caps inside the history budget.
+ *
+ * A user message is what the user meant, so it is kept nearly whole. An
+ * assistant reply is capped harder: what later turns need from it is what it
+ * said or changed, and a long explanation would otherwise crowd out the rounds
+ * before it. Both caps sit well under the budget, so the newest message always
+ * fits.
+ */
+export const HISTORY_USER_CAP = 2000;
+export const HISTORY_ASSISTANT_CAP = 800;
 
 export const SYSTEM = [
   '你是一个 Excel 助手。用户可以跟你聊天，也可以让你创建或修改一个表格。',
@@ -228,6 +257,31 @@ export function specSummary(spec: import('./workbook.ts').WorkbookSpec | null | 
 }
 
 /**
+ * The most recent history that fits the budget, oldest first.
+ *
+ * Walks from the newest message back and stops at the first one that does not
+ * fit, rather than skipping it and packing in older, shorter ones: a transcript
+ * with a hole in the middle reads as a conversation that never happened. The
+ * cut is marked in the text, so the model knows it is reading an excerpt.
+ */
+function historyLines(turns: HistoryMessage[], budget: number): string[] {
+  const out: string[] = [];
+  let used = 0;
+  for (let i = turns.length - 1; i >= 0; i--) {
+    const m = turns[i];
+    const isUser = m.role === 'user';
+    const cap = isUser ? HISTORY_USER_CAP : HISTORY_ASSISTANT_CAP;
+    const text = String(m.content);
+    const body = text.length > cap ? `${text.slice(0, cap)}…（已截断）` : text;
+    const line = `${isUser ? '用户' : '助手'}：${body}`;
+    if (used + line.length > budget && out.length) break;
+    out.push(line);
+    used += line.length + 1;
+  }
+  return out.reverse();
+}
+
+/**
  * The message list for one turn.
  *
  * History is a labelled block on the latest user message, never alternating
@@ -238,7 +292,13 @@ export function specSummary(spec: import('./workbook.ts').WorkbookSpec | null | 
  * reason, and the instruction to judge only the latest sentence has something
  * concrete to point at.
  */
-export function agentMessages({ history = [], message, spec = null, rowBudget = DEFAULT_ROW_BUDGET }: AgentMessagesArgs): AgentMessage[] {
+export function agentMessages({
+  history = [],
+  message,
+  spec = null,
+  rowBudget = DEFAULT_ROW_BUDGET,
+  historyBudget = DEFAULT_HISTORY_BUDGET,
+}: AgentMessagesArgs): AgentMessage[] {
   const context = specSummary(spec, rowBudget);
   const system = context ? `${SYSTEM}\n\n--- 当前状态 ---\n${context}` : SYSTEM;
 
@@ -251,9 +311,11 @@ export function agentMessages({ history = [], message, spec = null, rowBudget = 
     userParts.push(changed
       ? `早先有 ${asked} 条用户消息，其中 ${changed} 次成功修改了表格。`
       : `早先有 ${asked} 条用户消息，还没有修改过表格。`);
-    userParts.push(turns.slice(-4)
-      .map((m) => `${m.role === 'user' ? '用户' : '助手'}：${String(m.content).slice(0, 300)}`)
-      .join('\n'));
+    const lines = historyLines(turns, historyBudget);
+    if (lines.length < turns.length) {
+      userParts.push(`（更早的 ${turns.length - lines.length} 条消息未列出）`);
+    }
+    userParts.push(lines.join('\n'));
     userParts.push('');
     userParts.push('【本轮用户输入】');
   }
