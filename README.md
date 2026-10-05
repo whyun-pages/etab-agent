@@ -173,6 +173,7 @@ pnpm build                         # -> dist/TabAgent.exe（约 90 MB）
 | `--data-dir <p>` | 覆盖数据目录 |
 | `--debug-assets` | 打印资源解析诊断后退出（排查页面空白用） |
 | `--new-instance` | 无视已在运行的实例，强行再起一个 |
+| `--extensions` | 应用窗口加载浏览器插件（默认不加载；也可设 `TAB_AGENT_EXTENSIONS=1`）。需先关掉所有应用窗口才生效 |
 
 **打包是怎么回事**（[tools/build-exe.js](tools/build-exe.js)）：
 
