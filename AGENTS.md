@@ -142,8 +142,6 @@ silently went from atomic to racy.
   in the emitted require. A bare `require()` call is NOT rewritten, so do not add
   new ones. The single deliberate exception is the guarded `require('node:sea')`
   in `lib/assets.ts`, which must stay lazy so its `try/catch` still works.
-- **Zero runtime dependencies.** `dependencies` stays empty. Anything new goes in
-  `devDependencies` and must not reach the release path.
 - **Determinism is a feature.** Same input, same output bytes. Do not introduce
   clocks, random ordering, or `Object.keys` iteration over unordered input into
   anything that produces a file.
