@@ -15,7 +15,7 @@ const os = require('node:os');
 const path = require('node:path');
 
 const { Settings, mask } = require('../lib/settings');
-const { chat, LlmError, parseJsonReply, imagePart } = require('../lib/llm');
+const { chat, LlmError, parseJsonReply, repairStrings, imagePart } = require('../lib/llm');
 
 function scratch() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'tab-agent-settings-'));
@@ -298,6 +298,25 @@ test('parseJsonReply accepts a bare object', () => {
 test('parseJsonReply digs the object out of fences and prose', () => {
   assert.deepEqual(parseJsonReply('Sure!\n```json\n{"a":1}\n```'), { a: 1 });
   assert.deepEqual(parseJsonReply('Here you go: {"a":1} hope that helps'), { a: 1 });
+});
+
+test('parseJsonReply repairs bare quotes inside a string value', () => {
+  // The live MiniMax-M3 shape: the reply quotes a word with ASCII quotes.
+  const raw = '{"intent":"answer","reply":"没有一个参考系是"绝对"的。","reason":"提问","spec":null}';
+  const v = parseJsonReply(raw);
+  assert.equal(v.intent, 'answer');
+  assert.equal(v.reply, '没有一个参考系是"绝对"的。');
+  assert.equal(v.spec, null);
+});
+
+test('parseJsonReply repairs raw newlines inside a string value', () => {
+  const v = parseJsonReply('{"intent":"answer","reply":"第一行\n第二行"}');
+  assert.equal(v.reply, '第一行\n第二行');
+});
+
+test('repairStrings leaves valid JSON byte-for-byte unchanged', () => {
+  const valid = JSON.stringify({ a: 'x "q" y', b: ['1,2', { c: 'd\ne' }], n: 1 });
+  assert.equal(repairStrings(valid), valid);
 });
 
 test('parseJsonReply fails loudly, keeping the raw text', () => {

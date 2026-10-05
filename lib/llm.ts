@@ -356,7 +356,13 @@ export function parseJsonReply(content: string): Record<string, unknown> {
 
   const first = cleaned.indexOf('{');
   const last = cleaned.lastIndexOf('}');
-  if (first !== -1 && last > first) attempts.push(cleaned.slice(first, last + 1));
+  if (first !== -1 && last > first) {
+    attempts.push(cleaned.slice(first, last + 1));
+    // Last resort, after every faithful reading: the same span with stray
+    // quotes and raw newlines inside strings escaped. Repairing valid JSON is
+    // the identity, so this can only add a candidate, never change one.
+    attempts.push(repairStrings(cleaned.slice(first, last + 1)));
+  }
 
   // Later candidates win: the answer comes after the thinking.
   let best: Record<string, unknown> | null = null;
@@ -372,6 +378,55 @@ export function parseJsonReply(content: string): Record<string, unknown> {
   if (best) return best;
 
   throw new LlmError('模型返回的内容无法解析为 JSON', { body: truncate(content) });
+}
+
+/**
+ * Escape what a model leaves unescaped inside JSON strings.
+ *
+ * Seen live with MiniMax-M3, roughly one answer in three on a prose-heavy
+ * question: `"reply":"…没有一个参考系是"绝对"的…"`. The bare quotes end the
+ * string early, the parse fails, and the whole envelope — braces, `intent`,
+ * `reason` — was shown to the user as the reply. Raw newlines inside a string
+ * are the same class of mistake.
+ *
+ * The rule for a quote inside a string: it closes the string only when the next
+ * non-space character could follow a JSON value (`,` `}` `]` `:`) or the text
+ * ends. Anything else is content, and is escaped. A quote in the content that
+ * happens to be followed by a comma is misread — the repair then still fails to
+ * parse, and the caller falls back exactly as it did before. It can make a bad
+ * reply readable; it cannot make a good reply worse.
+ */
+export function repairStrings(s: string): string {
+  let out = '';
+  let inStr = false;
+  let esc = false;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (!inStr) {
+      if (ch === '"') inStr = true;
+      out += ch;
+      continue;
+    }
+    if (esc) { esc = false; out += ch; continue; }
+    if (ch === '\\') { esc = true; out += ch; continue; }
+    if (ch === '"') {
+      let j = i + 1;
+      while (j < s.length && /\s/.test(s[j])) j++;
+      const next = s[j];
+      if (next === undefined || next === ',' || next === '}' || next === ']' || next === ':') {
+        inStr = false;
+        out += ch;
+      } else {
+        out += '\\"';
+      }
+      continue;
+    }
+    if (ch === '\n') { out += '\\n'; continue; }
+    if (ch === '\r') { out += '\\r'; continue; }
+    if (ch === '\t') { out += '\\t'; continue; }
+    out += ch;
+  }
+  return out;
 }
 
 /** How much a parsed object looks like the extraction payload we asked for. */
