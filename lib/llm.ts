@@ -52,7 +52,12 @@ export interface ChatArgs {
   messages: ChatMessage[];
   /** request a JSON object response */
   json?: boolean;
+  /** total time allowed, from request to the last byte */
   timeoutMs?: number;
+  /** stream the reply (server-sent events) instead of waiting for it whole */
+  stream?: boolean;
+  /** when streaming: abort after this long with no chunk at all */
+  idleTimeoutMs?: number;
   maxTokens?: number;
   temperature?: number;
   /** caller cancellation (user pressed stop) */
@@ -100,6 +105,25 @@ function truncate(s: unknown): string {
 /**
  * POST a chat completion and return the assistant's text.
  *
+ * Two ways to wait
+ * ----------------
+ * Without `stream`, the provider answers once, when generation is finished, so
+ * the only clock available is a total one: `timeoutMs` from request to reply.
+ * That is fine for short calls (the connection test, attachment extraction) and
+ * wrong for a session turn. A turn returns a WHOLE workbook spec, and a reasoning
+ * model thinks before it writes it; with a fixed 60s cap a healthy model that was
+ * still writing got cut off, and the user saw "请求超时" for a request that would
+ * have succeeded.
+ *
+ * With `stream`, the reply arrives as server-sent events and the useful question
+ * becomes "is it still producing anything?" — `idleTimeoutMs` restarts on every
+ * chunk, reasoning chunks included, so a model that is thinking out loud is
+ * never mistaken for a dead one. `timeoutMs` stays as an outer cap so a model
+ * that trickles forever still ends.
+ *
+ * A provider that ignores `stream: true` and answers with plain JSON is handled:
+ * the response's content type decides how it is read, not what we asked for.
+ *
  * @returns the message content
  */
 export async function chat({
@@ -107,6 +131,8 @@ export async function chat({
   messages,
   json = false,
   timeoutMs = DEFAULT_TIMEOUT_MS,
+  idleTimeoutMs,
+  stream = false,
   maxTokens = 4096,
   temperature = 0,
   signal,
@@ -126,20 +152,29 @@ export async function chat({
     max_tokens: maxTokens,
   };
   if (json) body.response_format = { type: 'json_object' };
+  if (stream) body.stream = true;
 
-  // Two cancellation sources: the caller's signal, and our own clock. AbortSignal.any
-  // is not available everywhere, so chain them by hand.
+  // Three cancellation sources: the caller's signal, the total clock, and (when
+  // streaming) the idle clock. AbortSignal.any is not available everywhere, so
+  // chain them by hand. The clocks cover reading the body too, not just waiting
+  // for headers — a streamed reply sends its headers first and its content later.
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(new Error('timeout')), timeoutMs);
+  let idle: ReturnType<typeof setTimeout> | undefined;
+  const touch = (): void => {
+    if (!stream || !idleTimeoutMs) return;
+    if (idle) clearTimeout(idle);
+    idle = setTimeout(() => ctrl.abort(new Error('idle')), idleTimeoutMs);
+  };
   const onCallerAbort = (): void => ctrl.abort(signal!.reason);
   if (signal) {
     if (signal.aborted) onCallerAbort();
     else signal.addEventListener('abort', onCallerAbort, { once: true });
   }
 
-  let res: Response;
   try {
-    res = await fetch(url, {
+    touch();
+    const res = await fetch(url, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -148,35 +183,46 @@ export async function chat({
       body: JSON.stringify(body),
       signal: ctrl.signal,
     });
+
+    if (!res.ok) {
+      // Surface status AND the provider's own words. A 401 says "your key",
+      // a 404 usually says "your model or base URL", a 429 says "slow down or
+      // pay up" — all three are actionable and all three are the user's to fix.
+      const text = await res.text();
+      const detail = truncate(describeErrorBody(text));
+      throw new LlmError(`模型服务返回 ${res.status}${detail ? `：${detail}` : ''}`, {
+        status: res.status,
+        body: truncate(text),
+      });
+    }
+
+    const type = (res.headers && res.headers.get('content-type')) || '';
+    if (stream && res.body && /text\/event-stream/i.test(type)) {
+      return await readStream(res.body, touch);
+    }
+    return contentOf(await res.text());
   } catch (err) {
-    // Network-level failure: DNS, TLS, refused, or our timeout. The proxy case
-    // lands here too — undici honours HTTPS_PROXY/HTTP_PROXY/NO_PROXY from the
-    // environment, which is how a user behind a MITM proxy gets through.
+    if (err instanceof LlmError) throw err;
+    // Network-level failure: DNS, TLS, refused, or one of our clocks. The proxy
+    // case lands here too — undici honours HTTPS_PROXY/HTTP_PROXY/NO_PROXY from
+    // the environment, which is how a user behind a MITM proxy gets through.
     const e = err as Error & { cause?: { code?: string; message?: string } };
     const cause = e && e.cause ? ` (${e.cause.code || e.cause.message})` : '';
     const aborted = ctrl.signal.aborted;
-    const reason = aborted && ctrl.signal.reason && (ctrl.signal.reason as Error).message === 'timeout'
-      ? `请求超时（${Math.round(timeoutMs / 1000)} 秒）`
-      : aborted ? '请求已取消' : '无法连接模型服务';
+    const why = aborted && ctrl.signal.reason ? (ctrl.signal.reason as Error).message : '';
+    const reason = why === 'timeout' ? `请求超时（${Math.round(timeoutMs / 1000)} 秒）`
+      : why === 'idle' ? `模型 ${Math.round((idleTimeoutMs || 0) / 1000)} 秒没有任何输出，已中断`
+        : aborted ? '请求已取消' : '无法连接模型服务';
     throw new LlmError(`${reason}${cause}`, { code: aborted ? 'aborted' : 'network' });
   } finally {
     clearTimeout(timer);
+    if (idle) clearTimeout(idle);
     if (signal) signal.removeEventListener('abort', onCallerAbort);
   }
+}
 
-  const text = await res.text();
-
-  if (!res.ok) {
-    // Surface status AND the provider's own words. A 401 says "your key",
-    // a 404 usually says "your model or base URL", a 429 says "slow down or
-    // pay up" — all three are actionable and all three are the user's to fix.
-    const detail = truncate(describeErrorBody(text));
-    throw new LlmError(`模型服务返回 ${res.status}${detail ? `：${detail}` : ''}`, {
-      status: res.status,
-      body: truncate(text),
-    });
-  }
-
+/** The assistant's text out of a complete (non-streamed) response body. */
+function contentOf(text: string): string {
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
@@ -190,6 +236,78 @@ export async function chat({
   if (typeof content !== 'string') {
     throw new LlmError('模型没有返回内容', { body: truncate(text) });
   }
+  return content;
+}
+
+/** One server-sent chunk of a streamed completion, as far as we read it. */
+interface StreamChunk {
+  choices?: Array<{ delta?: { content?: unknown } }>;
+  error?: unknown;
+}
+
+/**
+ * Collect a streamed reply into the same string `contentOf` would return.
+ *
+ * Only `delta.content` is kept. A provider that streams its reasoning in a
+ * separate field (`reasoning_content`, DeepSeek-style) is NOT folded in: the
+ * non-streamed response never included it either, and `parseJsonReply` should
+ * see the same text whichever way it arrived. A provider that puts its
+ * `<think>` block inside `content` (MiniMax) keeps it there, exactly as before.
+ * Every chunk still counts as activity for the idle clock, reasoning included.
+ */
+async function readStream(bodyStream: ReadableStream<Uint8Array>, touch: () => void): Promise<string> {
+  const reader = bodyStream.getReader();
+  const decoder = new TextDecoder();
+  let buffered = '';
+  let content = '';
+  let sawChoice = false;
+
+  /** Fold one SSE line in; true when the stream says it is finished. */
+  const handle = (line: string): boolean => {
+    const m = /^data:\s?(.*)$/.exec(line.trimEnd());
+    if (!m) return false;
+    const data = m[1];
+    if (data === '[DONE]') return true;
+    let chunk: StreamChunk;
+    try {
+      chunk = JSON.parse(data) as StreamChunk;
+    } catch {
+      return false; // a keep-alive or a provider comment; not ours to judge
+    }
+    // Some gateways report a failure mid-stream rather than with a status code.
+    if (chunk && chunk.error) {
+      throw new LlmError(`模型服务返回错误：${truncate(describeErrorBody(data))}`, { body: truncate(data) });
+    }
+    if (chunk && Array.isArray(chunk.choices) && chunk.choices.length) {
+      sawChoice = true;
+      const delta = chunk.choices[0] && chunk.choices[0].delta;
+      if (delta && typeof delta.content === 'string') content += delta.content;
+    }
+    return false;
+  };
+
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      touch();
+      buffered += decoder.decode(value, { stream: true });
+      let nl: number;
+      while ((nl = buffered.indexOf('\n')) !== -1) {
+        const line = buffered.slice(0, nl);
+        buffered = buffered.slice(nl + 1);
+        if (handle(line)) return content;
+      }
+    }
+    buffered += decoder.decode();
+    if (buffered) handle(buffered);
+  } finally {
+    // Cancel rather than just release: after an early [DONE] or a mid-stream
+    // error the connection would otherwise stay open until the provider closes it.
+    reader.cancel().catch(() => {});
+  }
+
+  if (!sawChoice) throw new LlmError('模型没有返回内容');
   return content;
 }
 

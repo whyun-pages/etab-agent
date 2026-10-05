@@ -175,6 +175,120 @@ test('json mode asks the provider for a JSON object', async () => {
   assert.equal(body.temperature, 0, 'parsing wants repeatability, not creativity');
 });
 
+// ---------------------------------------------------------------- streaming
+//
+// Against a real local HTTP server rather than a fetch stub: what can go wrong
+// here is chunk boundaries, a body that arrives after the headers, and a socket
+// that goes quiet — none of which a stub that returns a finished string exercises.
+
+const http = require('node:http');
+
+/** Serve one scripted SSE response; `script(res)` writes it. Returns creds. */
+function sseServer(t, script) {
+  const seen = [];
+  const server = http.createServer((req, res) => {
+    let raw = '';
+    req.on('data', (c) => { raw += c; });
+    req.on('end', () => {
+      seen.push(JSON.parse(raw));
+      script(res);
+    });
+  });
+  return new Promise((resolve) => {
+    server.listen(0, '127.0.0.1', () => {
+      t.after(() => { server.closeAllConnections(); server.close(); });
+      resolve({
+        creds: { baseUrl: `http://127.0.0.1:${server.address().port}/v1`, apiKey: 'k', model: 'm' },
+        seen,
+      });
+    });
+  });
+}
+
+const sseHead = (res) => res.writeHead(200, { 'content-type': 'text/event-stream' });
+const delta = (d) => `data: ${JSON.stringify({ choices: [{ delta: d }] })}\n\n`;
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+test('a streamed reply is assembled from its deltas, split anywhere', async (t) => {
+  const { creds, seen } = await sseServer(t, async (res) => {
+    sseHead(res);
+    // Split one event across two writes: a line is only complete at its newline.
+    const first = delta({ content: '{"intent":' });
+    res.write(first.slice(0, 10));
+    await wait(20);
+    res.write(first.slice(10));
+    res.write(delta({ content: '"answer"}' }));
+    res.end('data: [DONE]\n\n');
+  });
+  const out = await chat({ credentials: creds, messages: [], stream: true, idleTimeoutMs: 1000 });
+  assert.equal(out, '{"intent":"answer"}');
+  assert.equal(seen[0].stream, true);
+});
+
+test('separate reasoning deltas keep the stream alive but are not part of the answer', async (t) => {
+  const { creds } = await sseServer(t, async (res) => {
+    sseHead(res);
+    for (let i = 0; i < 4; i++) {
+      res.write(delta({ reasoning_content: '想' }));
+      await wait(80);
+    }
+    res.end(delta({ content: '好' }) + 'data: [DONE]\n\n');
+  });
+  // 320ms of reasoning with an idle limit of 200ms: only alive because each
+  // reasoning chunk counts as activity.
+  const out = await chat({ credentials: creds, messages: [], stream: true, idleTimeoutMs: 200 });
+  assert.equal(out, '好');
+});
+
+test('a stream that goes quiet is aborted by the idle clock, not the total one', async (t) => {
+  const { creds } = await sseServer(t, (res) => {
+    sseHead(res);
+    res.write(delta({ content: '{' }));
+    // ...and then nothing, with the connection held open.
+  });
+  await assert.rejects(
+    () => chat({ credentials: creds, messages: [], stream: true, idleTimeoutMs: 150, timeoutMs: 5000 }),
+    (err) => {
+      assert.ok(err instanceof LlmError);
+      assert.equal(err.code, 'aborted');
+      assert.match(err.message, /没有任何输出/);
+      return true;
+    },
+  );
+});
+
+test('a stream that never stops still ends at the total cap', async (t) => {
+  const { creds } = await sseServer(t, (res) => {
+    sseHead(res);
+    const tick = setInterval(() => res.write(delta({ content: '.' })), 30);
+    res.on('close', () => clearInterval(tick));
+  });
+  await assert.rejects(
+    () => chat({ credentials: creds, messages: [], stream: true, idleTimeoutMs: 200, timeoutMs: 400 }),
+    (err) => /请求超时/.test(err.message),
+  );
+});
+
+test('an error reported mid-stream surfaces the provider message', async (t) => {
+  const { creds } = await sseServer(t, (res) => {
+    sseHead(res);
+    res.end(`data: ${JSON.stringify({ error: { message: 'quota exhausted' } })}\n\n`);
+  });
+  await assert.rejects(
+    () => chat({ credentials: creds, messages: [], stream: true, idleTimeoutMs: 1000 }),
+    (err) => err instanceof LlmError && /quota exhausted/.test(err.message),
+  );
+});
+
+test('a provider that ignores stream:true and answers whole is still read', async (t) => {
+  const { creds } = await sseServer(t, (res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ choices: [{ message: { content: 'whole' } }] }));
+  });
+  const out = await chat({ credentials: creds, messages: [], stream: true, idleTimeoutMs: 1000 });
+  assert.equal(out, 'whole');
+});
+
 // -------------------------------------------------------------- json parsing
 
 test('parseJsonReply accepts a bare object', () => {

@@ -171,6 +171,15 @@ export const DEFAULT_HISTORY_BUDGET = 4000;
 export const HISTORY_USER_CAP = 2000;
 export const HISTORY_ASSISTANT_CAP = 800;
 
+/**
+ * How long a turn may wait. Idle: no chunk at all, reasoning included — a model
+ * that has gone quiet for a minute is not coming back. Total: the outer cap, so
+ * a model that keeps trickling still ends; generous, because an 8192-token spec
+ * from a slow provider is a legitimate few minutes.
+ */
+export const TURN_IDLE_TIMEOUT_MS = 60_000;
+export const TURN_TOTAL_TIMEOUT_MS = 300_000;
+
 export const SYSTEM = [
   '你是一个 Excel 助手。用户可以跟你聊天，也可以让你创建或修改一个表格。',
   '',
@@ -460,6 +469,13 @@ export async function runTurn({
     // model did not understand" when the truth is "we cut it off".
     maxTokens: 8192,
     temperature: 0,
+    // Streamed, and judged by silence rather than by total time. A whole spec
+    // from a reasoning model routinely takes longer than the old fixed 60s, and
+    // the user got "请求超时" for a turn that was still being written. See
+    // `chat` in lib/llm.ts.
+    stream: true,
+    idleTimeoutMs: TURN_IDLE_TIMEOUT_MS,
+    timeoutMs: TURN_TOTAL_TIMEOUT_MS,
     signal,
   });
 
