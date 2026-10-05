@@ -33,6 +33,9 @@ async function boot() {
   bindKeyboard();
   bindFileInput();
 
+  // Before the first paint, so a folded rail does not flash open on load.
+  state.railCollapsed = readRailCollapsed();
+
   subscribe(render);
   render();
 
@@ -73,6 +76,11 @@ function bindKeyboard() {
     if (e.key.toLowerCase() === 'n') {
       e.preventDefault();
       createSession();
+    }
+    // Ctrl+B, the sidebar toggle in VS Code and most editors.
+    if (e.key.toLowerCase() === 'b') {
+      e.preventDefault();
+      toggleRail();
     }
   });
 }
@@ -595,11 +603,32 @@ function renderError() {
 }
 
 function renderRail() {
+  // The grid track is set by a class on the shell, not by the rail itself: the
+  // column width belongs to the layout, and the splitter beside it has to go too.
+  $('#shell').classList.toggle('is-rail-collapsed', state.railCollapsed);
   mount($('#rail'), sessionsView(state, {
     onOpen: openSession,
     onRemove: confirmRemoveSession,
     onCreate: createSession,
+    onToggle: toggleRail,
   }));
+}
+
+// ── rail folding ────────────────────────────────────────────────────
+// Per window, like the column widths in splitters.js, so localStorage rather
+// than the server. Every access is guarded: storage can be unavailable, and a
+// preference that cannot be read is simply the default.
+
+const RAIL_KEY = 'tab-agent:rail-collapsed';
+
+function readRailCollapsed() {
+  try { return localStorage.getItem(RAIL_KEY) === '1'; } catch { return false; }
+}
+
+function toggleRail() {
+  const railCollapsed = !state.railCollapsed;
+  try { localStorage.setItem(RAIL_KEY, railCollapsed ? '1' : '0'); } catch { /* not fatal */ }
+  set({ railCollapsed });
 }
 
 function renderPane() {

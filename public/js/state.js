@@ -55,6 +55,13 @@ export const state = {
   /** Result of the last connection test: { ok, reply | error } */
   settingsTest: null,
 
+  /**
+   * Whether the session list is folded down to a narrow strip. A property of
+   * this window, like the column widths, so it is restored from localStorage
+   * (see app.js) rather than kept on the server.
+   */
+  railCollapsed: false,
+
   /** Which surface is showing: 'chat' | 'settings'. */
   view: 'chat',
   /** Busy flags so buttons can disable and show a spinner. */
