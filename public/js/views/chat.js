@@ -124,6 +124,21 @@ function bubble(message) {
   }
   body.append(text);
 
+  // Which files went with this message. Names only: the content was context
+  // for that turn, not something the user said.
+  if (message.attachments && message.attachments.length) {
+    const files = el('div', { class: 'chat__files' });
+    for (const name of message.attachments) {
+      // Not `.chip`: that class means "attached to the NEXT message, removable",
+      // and the composer's code and probes count it as such.
+      files.append(el('span', { class: 'chat__file', title: name }, [
+        el('span', { class: 'chat__file-icon', html: icon('paperclip') }),
+        el('span', { class: 'chat__file-name', text: name }),
+      ]));
+    }
+    body.append(files);
+  }
+
   // A refused change is the most important thing on the screen when it
   // happens, so it gets its own line rather than being folded into the prose.
   if (message.guarded) {

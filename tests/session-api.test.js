@@ -29,7 +29,7 @@ const tmpdir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'sess-api-'));
  * out means the test asked for more turns than it scripted, which is a test bug
  * and should be loud.
  */
-function startServer(t, { configured = true, replies = [], chatCanEdit = true, chatConfirmEdits = true } = {}) {
+function startServer(t, { configured = true, replies = [], chatCanEdit = true, chatConfirmEdits = true, seen = null } = {}) {
   const dataDir = tmpdir();
   const queue = [...replies];
 
@@ -37,7 +37,8 @@ function startServer(t, { configured = true, replies = [], chatCanEdit = true, c
     dataDir,
     staticDir: path.join(__dirname, '..', 'public'),
     // The transport override the server accepts for exactly this purpose.
-    transport: async () => {
+    transport: async (args) => {
+      if (seen) seen.push(args.messages.map((m) => m.content).join('\n'));
       if (!queue.length) throw new Error('test ran out of scripted replies');
       return queue.shift();
     },
@@ -338,4 +339,54 @@ test('a session survives a server restart', async (t) => {
   assert.strictEqual(back.json.session.spec.title, '销售台账');
   assert.strictEqual(back.json.session.messages.length, 2);
   assert.ok(back.json.preview, 'the preview is rebuilt from the stored spec');
+});
+
+// ── attachments ─────────────────────────────────────────────────────
+
+/** Upload one file the way the browser's paperclip does. */
+async function upload(base, filename, text) {
+  const fd = new FormData();
+  fd.append('files', new Blob([text], { type: 'text/csv' }), filename);
+  const res = await fetch(`${base}/api/attachments`, { method: 'POST', body: fd });
+  return res.json();
+}
+
+test('attachment content reaches the model but is not stored as what the user said', async (t) => {
+  // It used to be folded into the message by the client, so the server saved
+  // it: the block showed in the chat bubble, was saved again on every turn the
+  // file stayed attached, and was replayed in history after that.
+  const seen = [];
+  const { base } = await startServer(t, { replies: [ANSWER, ANSWER], seen });
+  const { json: created } = await post(base, '/api/sessions', {});
+  const id = created.session.id;
+  const up = await upload(base, '客户.csv', '客户名称,金额\n北京甲公司,100\n');
+  assert.strictEqual(up.ok, true);
+
+  const turn = await post(base, `/api/sessions/${id}/turn`, { message: '照着这个做表' });
+  assert.strictEqual(turn.status, 200);
+  assert.match(seen[0], /--- 附件资料 ---/);
+  assert.match(seen[0], /【附件：客户\.csv】/);
+  assert.match(seen[0], /北京甲公司/);
+
+  const user = turn.json.messages[0];
+  assert.strictEqual(user.content, '照着这个做表', 'the stored message is what was typed');
+  assert.deepStrictEqual(user.attachments, ['客户.csv']);
+
+  // Next turn, file still attached: the model sees it again in full, and the
+  // history line carries the name only, not a second copy of the content.
+  await post(base, `/api/sessions/${id}/turn`, { message: '再加一列' });
+  assert.strictEqual(seen[1].split('北京甲公司').length - 1, 1, 'content appears once, from this turn');
+  assert.match(seen[1], /用户：照着这个做表（附件：客户\.csv）/);
+
+  const back = await get(base, `/api/sessions/${id}`);
+  assert.ok(back.json.session.messages.every((m) => !/附件资料/.test(m.content)));
+});
+
+test('a turn with no attachments sends the message unchanged and records no names', async (t) => {
+  const seen = [];
+  const { base } = await startServer(t, { replies: [ANSWER], seen });
+  const { json: created } = await post(base, '/api/sessions', {});
+  const turn = await post(base, `/api/sessions/${created.session.id}/turn`, { message: '你好' });
+  assert.doesNotMatch(seen[0], /附件/);
+  assert.strictEqual(turn.json.messages[0].attachments, undefined);
 });

@@ -303,6 +303,7 @@ function publicMessages(messages: StoredMessage[] | null | undefined): Array<Rec
     content: m.content,
     intent: m.intent,
     guarded: m.guarded === true ? true : undefined,
+    attachments: m.attachments,
     at: m.at,
   }));
 }
@@ -522,11 +523,16 @@ function createHandler({ state, staticDir, imageExtractor, textExtractor, onMode
         const message = String(body.message || '').trim();
         if (!message) return fail(res, 400, '消息不能为空');
 
+        // Snapshotted before the model call: an upload or a clear landing while
+        // the turn is in flight must not change what this turn says it read.
+        const files = attachmentNames(state.uploads);
+        const context = attachmentContext(state.uploads);
+
         let turn;
         try {
           turn = await runAgentTurn({
             settings: state.settings,
-            message,
+            message: context ? `${message}\n\n${context}` : message,
             spec: session.spec,
             history: session.messages,
             transport: state.agentTransport,
@@ -574,7 +580,12 @@ function createHandler({ state, staticDir, imageExtractor, textExtractor, onMode
           spec: applied ? spec : current.spec,
           messages: [
             ...current.messages,
-            { role: 'user', content: message, at: new Date().toISOString() },
+            {
+              role: 'user',
+              content: message,
+              at: new Date().toISOString(),
+              attachments: files.length ? files : undefined,
+            },
             {
               role: 'assistant',
               content: turn.reply + (note ? `\n${note}` : ''),
@@ -748,6 +759,46 @@ function publicAttachment(att: Attachment): Record<string, unknown> {
     textPreview: rest.text ? String(rest.text).slice(0, 800) : undefined,
     preview: rest.table ? rest.table.rows.slice(0, 5) : undefined,
   };
+}
+
+/**
+ * The current attachments, as the text the model reads this turn.
+ *
+ * Composed HERE, per turn, and never stored. It used to be composed in the
+ * client (NOTES.md #59) and sent as part of the user's message, which meant the
+ * server saved it as what the user said: the block showed up in the chat bubble,
+ * was saved again on every turn while the file stayed attached, and then ate the
+ * history budget on every turn after that. The user's message is what they
+ * typed; the attachment is context for the turn, the same way the spec is.
+ *
+ * Built from `publicAttachment` so the model sees exactly what the chips
+ * describe — the same five preview rows, the same text cap — not a richer view
+ * the user has no way to check.
+ */
+function attachmentContext(uploads: UploadedAttachment[]): string {
+  const blocks = uploads.map((u) => {
+    const a = publicAttachment(u);
+    const head = `【附件：${a.name}】`;
+    if (a.kind === 'table' || a.kind === 'sheet') {
+      const cols = ((a.columns as Array<{ label: string }> | undefined) || []).map((c) => c.label).join('、');
+      const rows = ((a.preview as unknown[][] | undefined) || []).map((r) => r.join('\t')).join('\n');
+      const more = a.rowCount ? `（共 ${a.rowCount} 行，下面只给前几行）` : '';
+      return `${head}${more}\n列：${cols}\n${rows}`;
+    }
+    if (a.textPreview) return `${head}\n${String(a.textPreview)}`;
+    return `${head}（${a.note || '无法预览内容'}）`;
+  });
+  return blocks.length ? `--- 附件资料 ---\n${blocks.join('\n\n')}` : '';
+}
+
+/**
+ * Names of the attachments a turn was sent with, for the stored message.
+ *
+ * No error filter here or above: a file that failed to parse is reported in
+ * the upload response and never enters `state.uploads`.
+ */
+function attachmentNames(uploads: UploadedAttachment[]): string[] {
+  return uploads.map((u) => u.name);
 }
 
 /**

@@ -363,6 +363,26 @@ body {
 
 .chat__time { margin-top: 4px; font-size: 10px; color: var(--fg-faint); }
 
+/* Files sent with a message. Looks like the composer's chips, minus the remove
+   button, but is its own class: `.chip` means "goes with the next message". */
+.chat__files { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.chat__file {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 220px;
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-panel);
+  color: var(--fg-dim);
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+.chat__file-icon { display: inline-flex; flex: none; color: var(--fg-faint); }
+.chat__file-icon svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.chat__file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 /* A guard firing is the most important line on the screen when it happens. */
 .chat__guard {
   margin-top: 8px;

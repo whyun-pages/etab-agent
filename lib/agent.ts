@@ -76,6 +76,8 @@ export interface HistoryMessage {
   role?: string;
   content?: string;
   intent?: string;
+  /** Files attached when the message was sent; their content is not in history. */
+  attachments?: string[];
 }
 
 /** One entry in the message list the model receives. */
@@ -273,7 +275,10 @@ function historyLines(turns: HistoryMessage[], budget: number): string[] {
     const cap = isUser ? HISTORY_USER_CAP : HISTORY_ASSISTANT_CAP;
     const text = String(m.content);
     const body = text.length > cap ? `${text.slice(0, cap)}…（已截断）` : text;
-    const line = `${isUser ? '用户' : '助手'}：${body}`;
+    // Only the names: the content went to the model on that turn and is not
+    // replayed. Naming them still lets "按刚才那个文件" resolve to something.
+    const files = m.attachments && m.attachments.length ? `（附件：${m.attachments.join('、')}）` : '';
+    const line = `${isUser ? '用户' : '助手'}：${body}${files}`;
     if (used + line.length > budget && out.length) break;
     out.push(line);
     used += line.length + 1;

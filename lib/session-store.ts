@@ -87,6 +87,8 @@ export interface StoredMessage {
   intent?: string;
   guarded?: boolean;
   notes?: string[];
+  /** Names of the files attached when this was sent. Their content is not kept. */
+  attachments?: string[];
 }
 
 /** An incoming message before cleaning: anything at all may be handed in. */
@@ -97,6 +99,7 @@ export interface MessageInput {
   intent?: unknown;
   guarded?: unknown;
   notes?: unknown;
+  attachments?: unknown;
 }
 
 /** A whole session as stored and returned. */
@@ -140,6 +143,15 @@ function safeId(id: unknown): string | null {
 }
 
 /** Trim a stored message to what is worth keeping, or null if it is not one. */
+/** Attachment names as stored: strings only, bounded like everything else here. */
+function cleanNames(v: unknown): string[] | undefined {
+  if (!Array.isArray(v)) return undefined;
+  const names = v.filter((n): n is string => typeof n === 'string' && n.length > 0)
+    .slice(0, 20)
+    .map((n) => n.slice(0, 200));
+  return names.length ? names : undefined;
+}
+
 function cleanMessage(m: MessageInput): StoredMessage | null {
   if (!m || typeof m.content !== 'string') return null;
   // A message with no role is not a message. The first version defaulted it to
@@ -156,6 +168,7 @@ function cleanMessage(m: MessageInput): StoredMessage | null {
     intent: typeof m.intent === 'string' ? m.intent : undefined,
     guarded: m.guarded === true ? true : undefined,
     notes: Array.isArray(m.notes) && m.notes.length ? m.notes.slice(0, 20) as string[] : undefined,
+    attachments: cleanNames(m.attachments),
   };
 }
 

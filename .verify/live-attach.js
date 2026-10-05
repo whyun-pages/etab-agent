@@ -219,6 +219,14 @@ async function main() {
       seen.length ? `messages=${seen.length}, first=${JSON.stringify(seen[0].slice(0, 120))}` : 'transport never called');
     check('the user text is still in the message', seen.some((m) => /照着这个做一个表/.test(m)));
 
+    // The content is context for the model, not something the user said: the
+    // bubble shows what was typed plus the file's name, never the block.
+    await sleep(800);
+    const bubbleText = await page.evaluate(`[...document.querySelectorAll('.chat__row--me .chat__text')].map((n) => n.textContent).join('|')`);
+    check('the chat bubble does not show the attachment block', !/附件资料/.test(bubbleText), JSON.stringify(bubbleText.slice(0, 120)));
+    const bubbleFiles = await page.evaluate(`[...document.querySelectorAll('.chat__row--me .chat__file')].map((n) => n.textContent).join('|')`);
+    check('the chat bubble names the attached file', /附件探针/.test(bubbleFiles), JSON.stringify(bubbleFiles));
+
     // ── 4. removing the chip clears it ─────────────────────────────────
     const removeX = await page.evaluate(`(() => {
       const b = document.querySelector('.chip__x');

@@ -278,36 +278,6 @@ async function removeAttachment(index) {
   }
 }
 
-/**
- * Fold the current attachments into the outgoing message.
- *
- * The agent's `runTurn` takes a plain string and its system prompt already
- * knows how to read data the user supplies, so the boundary stays a message.
- * Each attachment is rendered as a labelled block the model can quote back.
- * Text is capped: one big CSV must not crowd out the user's actual request.
- */
-function composeMessage(text) {
-  const list = state.attachments || [];
-  if (!list.length) return text;
-
-  const MAX_PER_FILE = 6000;
-  const blocks = list.map((a) => {
-    if (a.kind === 'error') return null;
-    const head = `【附件：${a.name}】`;
-    if (a.kind === 'table' || a.kind === 'sheet') {
-      const cols = (a.columns || []).map((c) => c.label).join('、');
-      const rows = (a.preview || []).map((r) => r.join('\t')).join('\n');
-      const more = a.rowCount ? `（共 ${a.rowCount} 行，下面只给前几行）` : '';
-      return `${head}${more}\n列：${cols}\n${rows}`;
-    }
-    if (a.textPreview) return `${head}\n${String(a.textPreview).slice(0, MAX_PER_FILE)}`;
-    return `${head}（${a.note || '无法预览内容'}）`;
-  }).filter(Boolean);
-
-  if (!blocks.length) return text;
-  return `${text}\n\n--- 附件资料 ---\n${blocks.join('\n\n')}`;
-}
-
 // ── conversation ────────────────────────────────────────────────────
 
 /**
@@ -359,13 +329,20 @@ async function send(text) {
   // take seconds, and a box that empties with nothing appearing reads as a
   // dropped message.
   set({
-    messages: [...state.messages, { role: 'user', content: message, at: new Date().toISOString() }],
+    // The server folds attachment content into the model's message itself and
+    // stores only the names; the optimistic bubble shows the same names.
+    messages: [...state.messages, {
+      role: 'user',
+      content: message,
+      attachments: attachedNames(),
+      at: new Date().toISOString(),
+    }],
     error: null,
     status: '正在想…',
   });
 
   try {
-    const res = await api.turn(state.activeId, composeMessage(message));
+    const res = await api.turn(state.activeId, message);
 
     if (!res.ok) {
       // A provider failure is not a turn: drop the optimistic message and give
@@ -397,6 +374,12 @@ async function send(text) {
     setBusy('turn', false);
     focusComposer();
   }
+}
+
+/** Names of the attached files that parsed, as the server will record them. */
+function attachedNames() {
+  const names = (state.attachments || []).filter((a) => a.kind !== 'error').map((a) => a.name);
+  return names.length ? names : undefined;
 }
 
 /** Put the user's text back after a failed turn, with the reason shown. */

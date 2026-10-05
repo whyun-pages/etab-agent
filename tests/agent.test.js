@@ -417,6 +417,14 @@ test('agentMessages: the newest message is sent even if it alone exceeds the bud
   assert.doesNotMatch(content, /用户：旧/);
 });
 
+test('agentMessages: attachments in history are named, not replayed', () => {
+  const content = agentMessages({
+    message: 'x',
+    history: [{ role: 'user', content: '照着做', attachments: ['a.csv', 'b.xlsx'] }],
+  })[1].content;
+  assert.match(content, /用户：照着做（附件：a\.csv、b\.xlsx）/);
+});
+
 test('agentMessages: no history means no preamble', () => {
   const messages = agentMessages({ message: '做一个表', history: [] });
   assert.strictEqual(messages.length, 2);

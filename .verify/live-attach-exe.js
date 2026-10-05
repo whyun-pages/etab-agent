@@ -57,7 +57,7 @@ async function main() {
   const bin = embeddedAppJs();
   check('the embedded app.js has the paperclip wiring', bin.includes('composer__clip'),
     'looked for composer__clip in ' + EXE);
-  check('the embedded app.js folds attachments into the message', bin.includes('composeMessage'));
+  check('the embedded chat view shows attachment names on the message', bin.includes('chat__files'));
   check('the embedded HTML has the drag overlay', bin.includes('drag-overlay'));
 
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'attach-exe-'));
