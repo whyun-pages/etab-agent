@@ -390,3 +390,48 @@ test('a turn with no attachments sends the message unchanged and records no name
   assert.doesNotMatch(seen[0], /附件/);
   assert.strictEqual(turn.json.messages[0].attachments, undefined);
 });
+
+// ── change log ──────────────────────────────────────────────────────
+
+test('an applied change is logged and shown to the model on later turns', async (t) => {
+  const seen = [];
+  const { base, dataDir } = await startServer(t, { replies: [ACTION, ANSWER], chatConfirmEdits: false, seen });
+  const { json: created } = await post(base, '/api/sessions', {});
+  const id = created.session.id;
+
+  await post(base, `/api/sessions/${id}/turn`, { message: '做一个销售台账' });
+  assert.doesNotMatch(seen[0], /已做过的修改/, 'nothing has changed before the first turn');
+
+  await post(base, `/api/sessions/${id}/turn`, { message: '刚才做了什么' });
+  assert.match(seen[1], /已做过的修改（共 1 次/);
+  assert.match(seen[1], /用户：「做一个销售台账」 → 新建工作簿「销售台账」/);
+
+  const stored = JSON.parse(fs.readFileSync(path.join(dataDir, 'sessions', `${id}.json`), 'utf8'));
+  assert.strictEqual(stored.changes.length, 1);
+  assert.strictEqual(stored.changes[0].request, '做一个销售台账');
+});
+
+test('a held change is logged when applied, and not when rejected', async (t) => {
+  const { base, dataDir } = await startServer(t, { replies: [ACTION, ACTION], chatConfirmEdits: true });
+  const read = (id) => JSON.parse(fs.readFileSync(path.join(dataDir, 'sessions', `${id}.json`), 'utf8'));
+
+  const a = (await post(base, '/api/sessions', {})).json.session.id;
+  await post(base, `/api/sessions/${a}/turn`, { message: '做一个销售台账' });
+  assert.deepStrictEqual(read(a).changes, [], 'a proposal is not a change');
+  await post(base, `/api/sessions/${a}/apply`, {});
+  assert.strictEqual(read(a).changes.length, 1);
+  assert.strictEqual(read(a).changes[0].request, '做一个销售台账');
+
+  const b = (await post(base, '/api/sessions', {})).json.session.id;
+  await post(base, `/api/sessions/${b}/turn`, { message: '做一个销售台账' });
+  await post(base, `/api/sessions/${b}/apply`, { accept: false });
+  assert.deepStrictEqual(read(b).changes, []);
+});
+
+test('read-only mode logs no change', async (t) => {
+  const { base, dataDir } = await startServer(t, { replies: [ACTION], chatCanEdit: false });
+  const id = (await post(base, '/api/sessions', {})).json.session.id;
+  await post(base, `/api/sessions/${id}/turn`, { message: '做一个销售台账' });
+  const stored = JSON.parse(fs.readFileSync(path.join(dataDir, 'sessions', `${id}.json`), 'utf8'));
+  assert.deepStrictEqual(stored.changes, []);
+});

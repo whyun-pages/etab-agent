@@ -19,7 +19,7 @@ import { readAttachment } from './attachments.ts';
 import { readAsset } from './assets.ts';
 import { Settings } from './settings.ts';
 import { SessionStore, safeId as safeSessionId } from './session-store.ts';
-import { runTurn as runAgentTurn, INTENT as AGENT_INTENT } from './agent.ts';
+import { runTurn as runAgentTurn, INTENT as AGENT_INTENT, describeChange } from './agent.ts';
 import { normalizeSpec, validateSpec, writeSpec, specStats } from './workbook.ts';
 import { sheetPreview as previewSpec } from './workbook-preview.ts';
 import { chat, stripReasoning } from './llm.ts';
@@ -535,6 +535,7 @@ function createHandler({ state, staticDir, imageExtractor, textExtractor, onMode
             message: context ? `${message}\n\n${context}` : message,
             spec: session.spec,
             history: session.messages,
+            changes: session.changes,
             transport: state.agentTransport,
           });
         } catch (err) {
@@ -578,6 +579,11 @@ function createHandler({ state, staticDir, imageExtractor, textExtractor, onMode
           // First change names the session, unless the user named it earlier.
           title: current.title || (applied && spec && spec.title) || current.title,
           spec: applied ? spec : current.spec,
+          // Recorded against `current.spec`, the freshest one, inside the queue
+          // slot — the same reason the spec itself is written here.
+          changes: applied
+            ? [...current.changes, { request: message, summary: describeChange(current.spec, spec), at: new Date().toISOString() }]
+            : current.changes,
           messages: [
             ...current.messages,
             {
@@ -644,6 +650,10 @@ function createHandler({ state, staticDir, imageExtractor, textExtractor, onMode
           ...current,
           title: current.title || (held.spec && held.spec.title) || '',
           spec: held.spec,
+          changes: [
+            ...current.changes,
+            { request: held.message, summary: describeChange(current.spec, held.spec), at: new Date().toISOString() },
+          ],
         }));
         state.pending.delete(session.id);
         if (!saved) return fail(res, 404, '会话不存在');

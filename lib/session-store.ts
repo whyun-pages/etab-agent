@@ -8,7 +8,7 @@
  * rendered result of that diff. With no template the anchor has to be the
  * CONVERSATION. A session is:
  *
- *   { id, title, messages, spec, updatedAt }
+ *   { id, title, messages, spec, changes, updatedAt }
  *
  * and the workbook is derived from `spec` on demand. That means one source of
  * truth instead of three things that can disagree — there is no "plan" that has
@@ -78,6 +78,7 @@ const DIR_NAME = 'sessions';
 const MAX_SESSIONS = 200;
 const MAX_MESSAGES = 400;
 const MAX_MESSAGE_CHARS = 20_000;
+const MAX_CHANGES = 50;
 
 /** One stored turn. Mirrors what `cleanMessage` keeps. */
 export interface StoredMessage {
@@ -102,12 +103,33 @@ export interface MessageInput {
   attachments?: unknown;
 }
 
+/**
+ * One change that actually reached the spec.
+ *
+ * Kept separately from the messages because the messages cannot answer "what
+ * changed": an `action` reply may have been held for confirmation and then
+ * rejected, downgraded by read-only mode, or refused by the guard. A record is
+ * written only where the spec is replaced, so the list is the document's own
+ * history, not the conversation's account of it. `summary` is computed by code
+ * from the two specs (`describeChange` in lib/agent.ts), not taken from the
+ * model's reply, for the same reason the guard does not trust the reply.
+ */
+export interface ChangeRecord {
+  /** What the user asked for, as typed. */
+  request: string;
+  /** What changed, derived from the before/after specs. */
+  summary: string;
+  at?: string;
+}
+
 /** A whole session as stored and returned. */
 export interface Session {
   id: string;
   title: string;
   spec: WorkbookSpec | null;
   messages: StoredMessage[];
+  /** Applied changes, oldest first. Absent in sessions written before it existed. */
+  changes: ChangeRecord[];
   updatedAt: string | null;
 }
 
@@ -117,6 +139,7 @@ export interface SessionInput {
   title?: unknown;
   spec?: unknown;
   messages?: unknown;
+  changes?: unknown;
 }
 
 /** One row of the sidebar list. */
@@ -150,6 +173,23 @@ function cleanNames(v: unknown): string[] | undefined {
     .slice(0, 20)
     .map((n) => n.slice(0, 200));
   return names.length ? names : undefined;
+}
+
+/** Change records as stored: well-formed entries only, newest kept. */
+function cleanChanges(v: unknown): ChangeRecord[] {
+  if (!Array.isArray(v)) return [];
+  const out: ChangeRecord[] = [];
+  for (const c of v) {
+    if (!c || typeof c !== 'object') continue;
+    const { request, summary, at } = c as Record<string, unknown>;
+    if (typeof request !== 'string' || typeof summary !== 'string') continue;
+    out.push({
+      request: request.slice(0, 500),
+      summary: summary.slice(0, 500),
+      at: typeof at === 'string' ? at : undefined,
+    });
+  }
+  return out.slice(-MAX_CHANGES);
 }
 
 function cleanMessage(m: MessageInput): StoredMessage | null {
@@ -238,6 +278,7 @@ class SessionStore {
         messages: (Array.isArray(parsed.messages) ? parsed.messages : [])
           .map((m: MessageInput) => cleanMessage(m))
           .filter((m: StoredMessage | null): m is StoredMessage => m !== null),
+        changes: cleanChanges(parsed.changes),
         updatedAt: parsed.updatedAt || null,
       };
     } catch {
@@ -266,6 +307,7 @@ class SessionStore {
         .map((m: MessageInput) => cleanMessage(m))
         .filter((m: StoredMessage | null): m is StoredMessage => m !== null)
         .slice(-MAX_MESSAGES),
+      changes: cleanChanges(session.changes),
       updatedAt: new Date().toISOString(),
     };
 
@@ -346,7 +388,7 @@ class SessionStore {
   create(title = ''): Promise<Session> {
     return this.#run(async () => {
       const id = newId();
-      const session: Session = { id, title, spec: null, messages: [], updatedAt: new Date().toISOString() };
+      const session: Session = { id, title, spec: null, messages: [], changes: [], updatedAt: new Date().toISOString() };
       await this.#writeFile(session);
       return session;
     });

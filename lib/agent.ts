@@ -80,6 +80,12 @@ export interface HistoryMessage {
   attachments?: string[];
 }
 
+/** An applied change as this module reads it back (`ChangeRecord` in the store). */
+export interface ChangeLine {
+  request?: string;
+  summary?: string;
+}
+
 /** One entry in the message list the model receives. */
 export interface AgentMessage {
   role: string;
@@ -93,6 +99,7 @@ export interface AgentMessagesArgs {
   spec?: import('./workbook.ts').WorkbookSpec | null;
   rowBudget?: number;
   historyBudget?: number;
+  changes?: ChangeLine[];
 }
 
 /** What `guardChange` decides. */
@@ -117,6 +124,7 @@ export interface RunTurnArgs {
   message: string;
   spec?: import('./workbook.ts').WorkbookSpec | null;
   history?: HistoryMessage[];
+  changes?: ChangeLine[];
   signal?: AbortSignal;
   rowBudget?: number;
   /**
@@ -179,6 +187,15 @@ export const HISTORY_ASSISTANT_CAP = 800;
  */
 export const TURN_IDLE_TIMEOUT_MS = 60_000;
 export const TURN_TOTAL_TIMEOUT_MS = 300_000;
+
+/**
+ * How many applied changes the model sees, and how much of each request. One
+ * line per change, so ten cost a few hundred characters — cheap next to the
+ * spec itself, and enough to cover any session a user is likely to refer back
+ * into.
+ */
+export const RECENT_CHANGES = 10;
+const CHANGE_REQUEST_CAP = 80;
 
 export const SYSTEM = [
   '你是一个 Excel 助手。用户可以跟你聊天，也可以让你创建或修改一个表格。',
@@ -267,6 +284,119 @@ export function specSummary(spec: import('./workbook.ts').WorkbookSpec | null | 
   return lines.join('\n');
 }
 
+type Spec = import('./workbook.ts').WorkbookSpec;
+type Sheet = import('./workbook.ts').SheetSpec;
+
+/**
+ * What a change did to the document, in one line, from the two specs.
+ *
+ * Computed, not quoted from the model. The reply says what the model believes
+ * it did; this says what the spec shows, and the two have disagreed before —
+ * that is why the row guard exists. It is also deterministic: same pair of
+ * specs, same sentence, so a stored record never depends on how a reply was
+ * worded.
+ *
+ * Sheets are matched by name. When exactly one sheet disappeared and one
+ * appeared, that is read as a rename — the far likelier story than "deleted one
+ * and made an unrelated one" — and the two are compared column by column.
+ */
+export function describeChange(before: Spec | null | undefined, after: Spec | null | undefined): string {
+  if (!after || !Array.isArray(after.sheets) || !after.sheets.length) return '清空了表格';
+  if (!before || !Array.isArray(before.sheets) || !before.sheets.length) {
+    const st = specStats(after);
+    return `新建工作簿「${after.title || '(未命名)'}」：${st.sheets} 个工作表，共 ${st.rows} 行`;
+  }
+
+  const parts: string[] = [];
+  if ((before.title || '') !== (after.title || '')) parts.push(`标题改为「${after.title || '(未命名)'}」`);
+
+  const beforeNames = new Set(before.sheets.map((s) => s.name));
+  const afterNames = new Set(after.sheets.map((s) => s.name));
+  const gone = before.sheets.filter((s) => !afterNames.has(s.name));
+  const added = after.sheets.filter((s) => !beforeNames.has(s.name));
+  const renamed = gone.length === 1 && added.length === 1 ? { from: gone[0], to: added[0] } : null;
+  if (renamed) {
+    parts.push(`工作表「${renamed.from.name}」改名为「${renamed.to.name}」`);
+  } else {
+    for (const s of added) parts.push(`新增工作表「${s.name}」（${(s.rows || []).length} 行）`);
+    for (const s of gone) parts.push(`删除工作表「${s.name}」`);
+  }
+
+  // Name the sheet only when there is more than one; "「明细」新增列" on a
+  // one-sheet workbook is noise.
+  const many = before.sheets.length > 1 || after.sheets.length > 1;
+  for (const s of after.sheets) {
+    const prev = before.sheets.find((b) => b.name === s.name) || (renamed && renamed.to === s ? renamed.from : null);
+    if (prev) parts.push(...sheetChanges(prev, s, many ? `「${s.name}」` : ''));
+  }
+
+  return parts.length ? parts.join('；') : '内容没有变化';
+}
+
+/** Column, row and totals differences between two versions of one sheet. */
+function sheetChanges(before: Sheet, after: Sheet, label: string): string[] {
+  const out: string[] = [];
+  const bCols = before.columns || [];
+  const aCols = after.columns || [];
+  const bHeaders = bCols.map((c) => c.header);
+  const aHeaders = aCols.map((c) => c.header);
+
+  const addedCols = aHeaders.filter((h) => !bHeaders.includes(h));
+  const removedCols = bHeaders.filter((h) => !aHeaders.includes(h));
+  if (addedCols.length) out.push(`${label}新增列：${addedCols.join('、')}`);
+  if (removedCols.length) out.push(`${label}删除列：${removedCols.join('、')}`);
+
+  const common = aHeaders.filter((h) => bHeaders.includes(h));
+  for (const h of common) {
+    const bt = bCols.find((c) => c.header === h)!.type;
+    const at = aCols.find((c) => c.header === h)!.type;
+    if (bt !== at) out.push(`${label}列「${h}」类型 ${bt}→${at}`);
+  }
+  const bOrder = bHeaders.filter((h) => common.includes(h));
+  if (bOrder.join('\u0000') !== common.join('\u0000')) out.push(`${label}调整了列顺序`);
+
+  const bRows = before.rows || [];
+  const aRows = after.rows || [];
+  if (bRows.length !== aRows.length) {
+    out.push(`${label}行数 ${bRows.length}→${aRows.length}`);
+  } else {
+    // Compare only the columns both versions have: adding a column changes
+    // every row's shape, and that is already said above.
+    const project = (rows: unknown[][], headers: string[]): string => JSON.stringify(
+      rows.map((r) => common.map((h) => r[headers.indexOf(h)] ?? null)),
+    );
+    if (project(bRows, bHeaders) !== project(aRows, aHeaders)) out.push(`${label}修改了数据`);
+  }
+
+  const bTotals = Boolean(before.totals && before.totals.enabled);
+  const aTotals = Boolean(after.totals && after.totals.enabled);
+  if (bTotals !== aTotals) out.push(`${label}${aTotals ? '加上' : '去掉'}合计行`);
+  return out;
+}
+
+/**
+ * The tail of the change log, for the state section of the system message.
+ *
+ * This is what outlives the history window. History is a budget of recent
+ * conversation and drops old rounds; the change log is one line per change
+ * that actually landed, so "改回之前的样子" or "第一次建表时那几列" still has
+ * something to point at twenty rounds later.
+ */
+export function changesSummary(changes: ChangeLine[] | null | undefined, limit = RECENT_CHANGES): string {
+  const list = (changes || []).filter((c) => c && c.summary);
+  if (!list.length) return '';
+  const shown = list.slice(-limit);
+  const head = list.length > shown.length
+    ? `最近的修改（共 ${list.length} 次，列出最近 ${shown.length} 次，从早到晚）：`
+    : `已做过的修改（共 ${list.length} 次，从早到晚）：`;
+  const lines = shown.map((c, i) => {
+    const req = String(c.request || '');
+    const asked = req.length > CHANGE_REQUEST_CAP ? `${req.slice(0, CHANGE_REQUEST_CAP)}…` : req;
+    return `${i + 1}. 用户：「${asked}」 → ${c.summary}`;
+  });
+  return [head, ...lines].join('\n');
+}
+
 /**
  * The most recent history that fits the budget, oldest first.
  *
@@ -312,8 +442,9 @@ export function agentMessages({
   spec = null,
   rowBudget = DEFAULT_ROW_BUDGET,
   historyBudget = DEFAULT_HISTORY_BUDGET,
+  changes = [],
 }: AgentMessagesArgs): AgentMessage[] {
-  const context = specSummary(spec, rowBudget);
+  const context = [specSummary(spec, rowBudget), changesSummary(changes)].filter(Boolean).join('\n\n');
   const system = context ? `${SYSTEM}\n\n--- 当前状态 ---\n${context}` : SYSTEM;
 
   const turns = (history || []).filter((m) => m && m.role && m.content);
@@ -449,6 +580,7 @@ export async function runTurn({
   message,
   spec = null,
   history = [],
+  changes = [],
   signal,
   rowBudget = DEFAULT_ROW_BUDGET,
   transport,
@@ -462,7 +594,7 @@ export async function runTurn({
 
   const raw = await send({
     credentials: await settings.secrets(),
-    messages: agentMessages({ history, message, spec, rowBudget }),
+    messages: agentMessages({ history, message, spec, rowBudget, changes }),
     json: true,
     // A spec is bigger than a key/value list. Under-budgeting here truncates the
     // JSON mid-object, which arrives as an unparseable reply and reads as "the
