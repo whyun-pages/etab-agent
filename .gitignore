@@ -6,7 +6,7 @@ dist/
 node_modules/
 
 # Runtime state. Sessions, attachments and model settings are per-user data; a
-# packaged build keeps them under %APPDATA%\TabAgent instead.
+# packaged build keeps them under %APPDATA%\ETabAgent instead.
 data/
 
 # Verification scratch

@@ -22,7 +22,7 @@ const os = require('node:os');
 const ROOT = path.join(__dirname, '..');
 const OUT = path.join(__dirname, 'out');
 
-const LIVE_DATA = path.join(process.env.APPDATA || '', 'TabAgent');
+const LIVE_DATA = path.join(process.env.APPDATA || '', 'ETabAgent');
 const HAS_LIVE = fs.existsSync(path.join(LIVE_DATA, 'settings.json'));
 
 const { createServer } = require(path.join(ROOT, 'lib', 'server'));

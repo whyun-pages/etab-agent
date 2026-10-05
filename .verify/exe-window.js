@@ -36,7 +36,7 @@ function countProcesses(name) {
 }
 
 async function main() {
-  const dataDir = path.join(os.homedir(), 'AppData', 'Roaming', 'TabAgent');
+  const dataDir = path.join(os.homedir(), 'AppData', 'Roaming', 'ETabAgent');
   const edgeBefore = countProcesses('msedge.exe');
   console.log('Edge processes before : ' + edgeBefore);
   console.log('data dir exists before: ' + fs.existsSync(dataDir));

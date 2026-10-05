@@ -34,7 +34,7 @@ function realHome() {
   if (process.env.TAB_AGENT_HOME) return process.env.TAB_AGENT_HOME;
   const appData = process.env.APPDATA;
   if (!appData) return null;
-  const dir = path.join(appData, 'TabAgent');
+  const dir = path.join(appData, 'ETabAgent');
   return fs.existsSync(path.join(dir, 'settings.json')) ? dir : null;
 }
 

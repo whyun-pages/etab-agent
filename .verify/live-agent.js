@@ -27,7 +27,7 @@ const path = require('node:path');
 const ROOT = path.join(__dirname, '..');
 const OUT = path.join(ROOT, '.verify', 'out');
 
-const LIVE_DATA = path.join(process.env.APPDATA || '', 'TabAgent');
+const LIVE_DATA = path.join(process.env.APPDATA || '', 'ETabAgent');
 const DATA = fs.existsSync(path.join(LIVE_DATA, 'settings.json')) ? LIVE_DATA : path.join(OUT, 'live-agent-data');
 
 const { Settings } = require(path.join(ROOT, 'lib', 'settings'));

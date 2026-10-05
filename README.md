@@ -160,9 +160,9 @@ pnpm build                         # -> dist/TabAgent.exe（约 90 MB）
 
 | 平台 | 默认位置 |
 |---|---|
-| Windows | `%APPDATA%\TabAgent\` |
-| macOS | `~/Library/Application Support/TabAgent/` |
-| Linux | `~/.local/share/TabAgent/` |
+| Windows | `%APPDATA%\ETabAgent\` |
+| macOS | `~/Library/Application Support/ETabAgent/` |
+| Linux | `~/.local/share/ETabAgent/` |
 
 命令行开关：
 

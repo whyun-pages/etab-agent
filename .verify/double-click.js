@@ -16,7 +16,7 @@
  * handoff logic under test does not depend on A having a window of its own.
  *
  * The exe is shadowed into a temp dir under its own name so the default data
- * dir ($APPDATA/TabAgent) is untouched — a real double-click would use that
+ * dir ($APPDATA/ETabAgent) is untouched — a real double-click would use that
  * dir, and we must not delete the user's actual skills/runs.
  *
  * Usage: node .verify/double-click.js [--exe]

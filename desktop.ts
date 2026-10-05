@@ -98,7 +98,9 @@ function resolveDataDir(args: Args): string {
     || (process.platform === 'darwin'
       ? path.join(os.homedir(), 'Library', 'Application Support')
       : path.join(os.homedir(), '.local', 'share'));
-  return path.join(base, 'TabAgent');
+  // Renamed from 'TabAgent' to match the etab package name. No migration: an
+  // existing %APPDATA%\TabAgent is left alone, and the user starts fresh here.
+  return path.join(base, 'ETabAgent');
 }
 
 /**
