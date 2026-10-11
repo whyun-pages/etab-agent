@@ -31,6 +31,7 @@ const path = require('node:path');
 const ROOT = path.join(__dirname, '..');
 const OUT = path.join(__dirname, 'out');
 const { createServer } = require(path.join(ROOT, 'lib', 'server.js'));
+const { modelFromTransport } = require('./transport-model');
 const { openPage, closePage, findEdge, sleep } = require('./cdp.js');
 
 let passed = 0;
@@ -88,7 +89,7 @@ async function main() {
     dataDir,
     staticDir: path.join(ROOT, 'public'),
     settingsOverride: fakeSettings(),
-    transport: specTransport(),
+    model: await modelFromTransport(specTransport()),
   });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   const base = `http://127.0.0.1:${server.address().port}`;
@@ -168,7 +169,7 @@ async function main() {
     // Type a baseUrl into the FIRST text input and save; the settings object is
     // the server's, so a successful save is observable by re-reading it.
     const typed = await page.evaluate(`(() => {
-      const inp = document.querySelector('.settings__input');
+      const inp = document.querySelector('input.settings__input');
       if (!inp) return false;
       inp.focus();
       const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
@@ -181,6 +182,9 @@ async function main() {
     const saveBox = await page.evaluate(`(() => {
       const b = [...document.querySelectorAll('.settings button')].find((x) => /保存/.test(x.textContent));
       if (!b) return null;
+      // The form is taller than the probe window since the protocol selector
+      // was added; a user scrolls to the button, and so does the probe.
+      b.scrollIntoView({ block: 'center' });
       const r = b.getBoundingClientRect();
       return JSON.stringify({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
     })()`).then((s) => (s ? JSON.parse(s) : null));

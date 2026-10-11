@@ -171,7 +171,7 @@ async function main() {
   await sleep(900);
   const opened = await cdp.eval(
     'JSON.stringify({panel: !!document.querySelector(".settings"),'
-    + ' fields: document.querySelectorAll(".settings__input").length,'
+    + ' fields: document.querySelectorAll("input.settings__input").length,'
     + ' toggles: document.querySelectorAll(".settings__toggle").length,'
     + ' notice: !!document.querySelector(".settings__notice")})',
   );
@@ -200,7 +200,7 @@ async function main() {
 
   console.log('\n=== 3) the saved key is hinted, never shown ===');
   const shown = await cdp.eval(
-    'JSON.stringify({keyValue: document.querySelectorAll(".settings__input")[1].value,'
+    'JSON.stringify({keyValue: document.querySelectorAll("input.settings__input")[1].value,'
     + ' hints: Array.from(document.querySelectorAll(".settings__hint")).map(h=>h.textContent),'
     + ' bodyHasSecret: document.body.innerHTML.includes("sk-shot-abcdef123456")})',
   );
@@ -213,7 +213,7 @@ async function main() {
   console.log('\n=== 4) a failing connection test reads as an error ===');
   // Point at an unroutable host so the test fails fast and deterministically.
   await cdp.eval(`(() => {
-    const inputs = document.querySelectorAll('.settings__input');
+    const inputs = document.querySelectorAll('input.settings__input');
     const set = (el, v) => {
       const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
       setter.call(el, v);

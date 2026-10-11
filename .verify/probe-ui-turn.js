@@ -22,6 +22,7 @@ const ROOT = path.join(__dirname, '..');
 const OUT = path.join(__dirname, 'out');
 
 const { createServer } = require(path.join(ROOT, 'lib', 'server.js'));
+const { modelFromTransport } = require('./transport-model');
 const { SessionStore } = require(path.join(ROOT, 'lib', 'session-store.js'));
 const { Settings } = require(path.join(ROOT, 'lib', 'settings.js'));
 const { openPage, closePage, findEdge } = require('./cdp.js');
@@ -71,19 +72,19 @@ async function main() {
 
   // A configured model, in a directory that is thrown away. The key is not
   // real and never leaves this process.
-  new Settings(dataDir).save({
+  await new Settings(dataDir).save({
     baseUrl: 'https://api.example.invalid/v1',
     apiKey: 'sk-probe-not-real-0000',
     model: 'demo-model',
   });
 
   const store = new SessionStore(dataDir);
-  const session = store.create('');
+  const session = await store.create('');
 
   const server = createServer({
     dataDir,
     staticDir: path.join(ROOT, 'public'),
-    transport: fakeTransport(),
+    model: await modelFromTransport(fakeTransport()),
   });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   const port = server.address().port;
@@ -164,7 +165,7 @@ async function main() {
   check('the session list learned the row count', s2.railRows.some((t) => /行/.test(t)), s2.railRows.join(' | '));
 
   // The stored spec is the real proof: the click had to reach disk.
-  const saved = store.load(session.id);
+  const saved = await store.load(session.id);
   check('the change reached the stored spec', Boolean(saved && saved.spec), saved && saved.spec ? saved.spec.title : 'no spec');
   check('the transcript has both turns', saved.messages.length === 2, `${saved.messages.length} messages`);
 

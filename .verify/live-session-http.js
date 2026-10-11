@@ -27,6 +27,7 @@ const os = require('node:os');
 const path = require('node:path');
 
 const { createServer } = require('../lib/server');
+const { modelFromTransport } = require('./transport-model');
 
 let passed = 0;
 let failed = 0;
@@ -99,7 +100,7 @@ async function main() {
   const server = createServer({
     dataDir,
     settingsOverride: fakeSettings(),
-    transport: specTransport(),
+    model: await modelFromTransport(specTransport()),
   });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   const base = `http://127.0.0.1:${server.address().port}`;

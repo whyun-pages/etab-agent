@@ -418,8 +418,13 @@ async function applyPending() {
     }
     await openSession(state.activeId);
     await refreshSessions();
-    set({ pending: null, status: '已写进表格' });
-    toast('已写进表格', 'ok');
+    // A save the turn asked for happens here, once the change has landed, and
+    // the apply response is the only place its outcome is reported.
+    const saved = res.saved || [];
+    set({ pending: null, status: saved.length ? `已写进表格，已保存 ${saved.length} 个文件` : '已写进表格' });
+    if (saved.length) toast({ tone: 'ok', title: '已写进表格并保存', body: saved.join('\n'), ms: 7000 });
+    else toast('已写进表格', 'ok');
+    if (res.saveError) toast({ tone: 'err', title: '保存文件失败', body: res.saveError, ms: 7000 });
   } catch (err) {
     fail('应用失败', err);
   } finally {
@@ -443,10 +448,10 @@ async function dismissPending() {
   }
 }
 
-async function downloadWorkbook() {
+async function downloadWorkbook(format = 'xlsx', sheet = null) {
   if (!state.activeId) return;
   try {
-    const { blob, name } = await api.workbook(state.activeId);
+    const { blob, name } = await api.workbook(state.activeId, format, sheet);
     saveBlob(blob, name);
     set({ status: `已下载 ${name}` });
   } catch (err) {
@@ -480,7 +485,8 @@ async function saveSettings(draft) {
   setBusy('settings', true);
   try {
     const patch = {};
-    for (const k of ['baseUrl', 'model', 'useForAttachments', 'chatCanEdit', 'chatConfirmEdits']) {
+    for (const k of ['api', 'baseUrl', 'model', 'useForAttachments', 'chatCanEdit', 'chatConfirmEdits',
+      'chatCanSave', 'exportDir', 'chatCanFetch', 'fetchBlocklist']) {
       if (k in draft) patch[k] = draft[k];
     }
     if (draft.apiKey) patch.apiKey = draft.apiKey;

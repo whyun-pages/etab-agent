@@ -1,31 +1,51 @@
 'use strict';
 /**
- * Verify the bundler before it is trusted in the release path.
+ * Verify the bundle before it is trusted in the release path.
  *
  * Checks:
- *   1. the module graph has no external (non-builtin) requires
- *   2. the graph is acyclic
- *   3. the rendered bundle actually runs and exposes createServer
+ *   1. the shipped entry bundles, and every import left for runtime is a Node
+ *      builtin or a known optional package (see OPTIONAL)
+ *   2. no protocol the settings panel offers is stubbed out (tools/bundle.js)
+ *   3. the bundled server code RUNS somewhere with no node_modules at all: a
+ *      probe bundle is copied to a temp directory outside the repository and
+ *      driven in a child process — one plain call and one full agent turn
+ *      against a local fake provider, and every offered provider module loaded
+ *
+ * Step 3 is the one that matters. An esbuild bundle can build cleanly and
+ * still fail at load — an ESM dependency reading `import.meta.url`, a dynamic
+ * import esbuild could not see, a provider module that pulls in something
+ * missing. Running it far from node_modules is the only way to know that the
+ * executable will not reach for a file that is not there.
  */
 
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
-const vm = require('node:vm');
-const { collectModules, renderBundle, externalSpecs } = require('./bundle');
+const { execFileSync } = require('node:child_process');
+const { bundle, UNSHIPPED_PROVIDERS } = require('./bundle');
 
 const ROOT = path.join(__dirname, '..');
-// Which entry to bundle. The desktop entry is what ships; server.js stays the
-// development entry and is useful for checking the graph in isolation.
-const ENTRY_NAME = process.argv[2] || 'desktop.js';
-// Bundle from the BUILD TREE, not the source tree. `lib/` holds both .ts sources
-// and pre-migration .js twins, and Node resolves an extensionless require to the
-// .ts — so collecting from the source tree would pull raw TypeScript into the
-// bundle and fail to parse. `.build/js/` is the tree that actually ships; the
-// bundler should be checked against it (NOTES.md #40).
 const BUILT = path.join(ROOT, '.build', 'js');
-const ENTRY = fs.existsSync(path.join(BUILT, ENTRY_NAME))
-  ? path.join(BUILT, ENTRY_NAME)
-  : path.join(ROOT, ENTRY_NAME);
+// Which entry to bundle. The desktop entry is what ships.
+const ENTRY_NAME = process.argv[2] || 'desktop.js';
+
+/**
+ * Packages left external that a packaged executable cannot load, and why that
+ * is fine. Each is required inside a try/catch by the package that wants it,
+ * and esbuild leaves exactly those requires external.
+ */
+const OPTIONAL = {
+  bufferutil: 'ws: optional native speed-up for masking frames',
+  'utf-8-validate': 'ws: optional native UTF-8 validator',
+  'supports-color': 'debug: optional terminal colour detection',
+};
+
+/** pi-ai's provider module for each protocol the settings panel offers. */
+const PROVIDER_MODULE = {
+  'openai-completions': 'openai-completions',
+  'anthropic-messages': 'anthropic',
+  'google-generative-ai': 'google',
+};
 
 let failures = 0;
 function check(label, ok, detail) {
@@ -33,66 +53,140 @@ function check(label, ok, detail) {
   if (!ok) failures++;
 }
 
-console.log('===== 1) collect graph =====');
-const { modules, entryId } = collectModules(ENTRY);
-check(`entry id is ${ENTRY_NAME}`, entryId === ENTRY_NAME, entryId);
-check('module count > 1', modules.length > 1, String(modules.length));
-console.log('     modules: ' + modules.map((m) => m.id).join(', '));
+async function main() {
+  if (!fs.existsSync(path.join(BUILT, ENTRY_NAME))) {
+    console.error(`.build/js/${ENTRY_NAME} is missing. Run \`pnpm build:js\` first.`);
+    process.exit(1);
+  }
 
-console.log('\n===== 2) external requires must be node: builtins only =====');
-const externals = [...externalSpecs(modules)].sort();
-console.log('     externals: ' + externals.join(', '));
-const badExternal = externals.filter((s) => !s.startsWith('node:'));
-check('no third-party requires', badExternal.length === 0, badExternal.join(', '));
+  console.log(`===== 1) bundle ${ENTRY_NAME} =====`);
+  const out = path.join(ROOT, '.build', 'bundle.js');
+  const r = await bundle({ entry: path.join(BUILT, ENTRY_NAME), outfile: out });
+  console.log(`     ${r.inputs} inputs, ${r.bytes} bytes`);
+  console.log(`     externals: ${r.externals.join(', ')}`);
+  check('bundle is non-trivial', r.bytes > 20000, `${r.bytes} bytes`);
+  const unexplained = r.thirdParty.filter((s) => !Object.prototype.hasOwnProperty.call(OPTIONAL, s));
+  check('every non-builtin external is a known optional package', unexplained.length === 0, unexplained.join(', '));
+  for (const s of r.thirdParty.filter((x) => OPTIONAL[x])) console.log(`     optional: ${s} — ${OPTIONAL[s]}`);
+  for (const w of r.warnings) console.log(`     warning: ${w}`);
 
-console.log('\n===== 3) acyclic =====');
-// collectModules would recurse forever on a cycle; it completed, so the graph
-// is a DAG. Assert directly for a clearer signal.
-const byId = new Map(modules.map((m) => [m.id, m]));
-let cycle = null;
-const state = new Map();
-function walk(id, stack) {
-  if (state.get(id) === 'done') return;
-  if (state.get(id) === 'open') { cycle = stack.concat(id).join(' -> '); return; }
-  state.set(id, 'open');
-  for (const dep of byId.get(id).deps) walk(dep, stack.concat(id));
-  state.set(id, 'done');
+  console.log('\n===== 2) offered protocols are bundled =====');
+  const { MODEL_APIS } = require(path.join(BUILT, 'lib', 'model.js'));
+  for (const api of MODEL_APIS) {
+    const mod = PROVIDER_MODULE[api];
+    check(`${api} has a provider module`, Boolean(mod), 'add it to PROVIDER_MODULE');
+    if (mod) check(`${api} (${mod}.js) is not stubbed`, !UNSHIPPED_PROVIDERS.includes(mod));
+  }
+
+  console.log('\n===== 3) bundled server code runs with no node_modules =====');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tab-agent-bundle-'));
+  try {
+    const entry = path.join(ROOT, '.build', 'bundle-probe-entry.js');
+    fs.writeFileSync(entry, [
+      "exports.server = require('./js/lib/server.js');",
+      "exports.llm = require('./js/lib/llm.js');",
+      "exports.agent = require('./js/lib/agent.js');",
+      "exports.pi = require('./js/lib/pi.js');",
+      "exports.model = require('./js/lib/model.js');",
+      '',
+    ].join('\n'));
+    await bundle({ entry, outfile: path.join(dir, 'probe-bundle.js') });
+    fs.rmSync(entry, { force: true });
+    fs.writeFileSync(path.join(dir, 'run.js'), RUNNER);
+    let output = '';
+    try {
+      output = execFileSync(process.execPath, ['run.js'], { cwd: dir, encoding: 'utf8', timeout: 60_000, env: { ...process.env, NODE_PATH: '' } });
+    } catch (e) {
+      output = String(e.stdout || '') + String(e.stderr || '') + `\n[runner exited: ${e.status ?? e.message}]`;
+    }
+    for (const line of output.trim().split('\n')) {
+      const m = /^(ok|FAIL) (.*?)(?: -> (.*))?$/.exec(line);
+      if (m) check(m[2], m[1] === 'ok', m[3]);
+      else console.log('     ' + line);
+    }
+    check('runner reported results', /^(ok|FAIL) /m.test(output), 'no output');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+
+  console.log('\n' + (failures === 0 ? 'BUNDLER CHECKS PASSED' : failures + ' CHECK(S) FAILED'));
+  process.exit(failures === 0 ? 0 : 1);
 }
-walk(entryId, []);
-check('no circular dependency', cycle === null, cycle || '');
 
-console.log('\n===== 4) rendered bundle runs in a bare context =====');
-const code = renderBundle(modules, { entryId });
-check('bundle is non-trivial', code.length > 20000, String(code.length) + ' bytes');
+/**
+ * Runs in the temp directory against the probe bundle. Prints one `ok`/`FAIL`
+ * line per check; the parent turns those into its own checks.
+ */
+const RUNNER = String.raw`'use strict';
+const http = require('node:http');
+const report = (label, ok, detail) => console.log((ok ? 'ok ' : 'FAIL ') + label + (ok || !detail ? '' : ' -> ' + detail));
 
-// A packaged executable receives only builtins for its own require, so give the
-// sandbox a require that can reach builtins and nothing else.
-const sandboxRequire = (spec) => {
-  if (!spec.startsWith('node:')) throw new Error('third-party module in SEA: ' + spec);
-  return require(spec);
-};
-const sandbox = { require: sandboxRequire, console, process, Buffer, setTimeout, clearTimeout, setInterval, clearInterval, URL, TextDecoder, TextEncoder };
-sandbox.globalThis = sandbox;
-const ctx = vm.createContext(sandbox);
-try {
-  vm.runInContext(code, ctx, { filename: 'bundle.js' });
-  check('bundle executed', true);
-} catch (e) {
-  check('bundle executed', false, e.message);
-}
+(async () => {
+  let b;
+  try {
+    b = require('./probe-bundle.js');
+    report('probe bundle loads', true);
+  } catch (e) {
+    report('probe bundle loads', false, e.message);
+    return;
+  }
+  report('lib/server exports createServer', typeof b.server.createServer === 'function');
+  report('lib/server exports AppState', typeof b.server.AppState === 'function');
 
-// The bundle's modules register via __require; expose the entry's exports to
-// the sandbox by re-running with a probe appended. Registry keys carry the .js
-// suffix — `lib/server`, not `lib/server.js`, is a miss.
-const probe = code + '\n;globalThis.__probe = __require("lib/server.js");\n';
-try {
-  vm.runInContext(probe, ctx, { filename: 'bundle-probe.js' });
-  const api = ctx.__probe;
-  check('lib/server exports createServer', typeof api.createServer === 'function');
-  check('lib/server exports AppState', typeof api.AppState === 'function');
-} catch (e) {
-  check('entry exports reachable', false, e.message);
-}
+  // A fake OpenAI-compatible provider: the first call of a turn asks for a
+  // tool, the second answers in text.
+  const chunk = (d, f = null) => 'data: ' + JSON.stringify({ id: 'c', object: 'chat.completion.chunk', created: 0, model: 'm', choices: [{ index: 0, delta: d, finish_reason: f }] }) + '\n\n';
+  const server = http.createServer((req, res) => {
+    let raw = '';
+    req.on('data', (c) => { raw += c; });
+    req.on('end', () => {
+      const body = JSON.parse(raw);
+      res.writeHead(200, { 'content-type': 'text/event-stream' });
+      const hasTools = Array.isArray(body.tools) && body.tools.length;
+      const answered = body.messages.some((m) => m.role === 'tool');
+      if (hasTools && !answered) {
+        const args = JSON.stringify({ title: 'T', sheets: [{ name: 'S', columns: [{ header: '客户', type: 'text' }], rows: [['甲']] }] });
+        res.write(chunk({ role: 'assistant', tool_calls: [{ index: 0, id: 'call_1', type: 'function', function: { name: 'create_workbook', arguments: args } }] }));
+        res.end(chunk({}, 'tool_calls') + 'data: [DONE]\n\n');
+      } else {
+        res.write(chunk({ role: 'assistant', content: hasTools ? '建好了。' : 'ok' }));
+        res.end(chunk({}, 'stop') + 'data: [DONE]\n\n');
+      }
+    });
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const baseUrl = 'http://127.0.0.1:' + server.address().port + '/v1';
+  const secrets = { api: 'openai-completions', baseUrl, apiKey: 'k', model: 'm' };
 
-console.log('\n' + (failures === 0 ? 'BUNDLER CHECKS PASSED' : failures + ' CHECK(S) FAILED'));
-process.exit(failures === 0 ? 0 : 1);
+  try {
+    const text = await b.llm.chat({ credentials: secrets, messages: [{ role: 'user', content: 'hi' }], timeoutMs: 10000 });
+    report('chat over the bundled OpenAI provider', text === 'ok', JSON.stringify(text));
+  } catch (e) { report('chat over the bundled OpenAI provider', false, e.message); }
+
+  try {
+    const settings = { isConfigured: async () => true, secrets: async () => secrets };
+    const turn = await b.agent.runTurn({ settings, message: '做一个表' });
+    report('agent turn with a tool call', turn.intent === 'action' && turn.spec && turn.spec.sheets[0].rows[0][0] === '甲', turn.intent + ' ' + turn.raw);
+  } catch (e) { report('agent turn with a tool call', false, e.message); }
+  server.close();
+
+  // The other offered providers: each must LOAD. Pointed at a closed port, a
+  // loaded provider fails with a connection error; a stubbed or broken one
+  // fails with something else.
+  const { ai } = await b.pi.loadPi();
+  for (const api of b.model.MODEL_APIS.filter((a) => a !== 'openai-completions')) {
+    const model = b.model.modelFromSecrets({ api, baseUrl: 'http://127.0.0.1:9/v1', apiKey: 'k', model: 'm' });
+    try {
+      const res = await ai.complete(model, { messages: [{ role: 'user', content: 'x', timestamp: 0 }] }, { apiKey: 'k', maxRetries: 0 });
+      const msg = String(res.errorMessage || '');
+      const loaded = res.stopReason === 'error' && !/not included in this build|Cannot find module|is not a function/i.test(msg);
+      report(api + ' provider loads', loaded, msg.slice(0, 200));
+    } catch (e) { report(api + ' provider loads', false, e.message); }
+  }
+})().catch((e) => { report('runner', false, e.stack || e.message); });
+`;
+
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

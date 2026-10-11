@@ -17,9 +17,13 @@ import crypto from 'node:crypto';
 
 import { readAttachment } from './attachments.ts';
 import { readAsset } from './assets.ts';
-import { Settings } from './settings.ts';
+import { Settings, resolveExportDir } from './settings.ts';
 import { SessionStore, safeId as safeSessionId } from './session-store.ts';
-import { runTurn as runAgentTurn, INTENT as AGENT_INTENT, describeChange } from './agent.ts';
+import { runTurn as runAgentTurn, INTENT as AGENT_INTENT, describeChange, guardChange } from './agent.ts';
+import { applyOps } from './spec-ops.ts';
+import { isModelApi } from './model.ts';
+import { exportSpec, writeExports, isExportFormat, ExportError } from './export.ts';
+import { parseBlocklist } from './fetch-url.ts';
 import { normalizeSpec, validateSpec, writeSpec, specStats } from './workbook.ts';
 import { sheetPreview as previewSpec } from './workbook-preview.ts';
 import { chat, stripReasoning } from './llm.ts';
@@ -36,7 +40,12 @@ type Session = import('./session-store.ts').Session;
 type StoredMessage = import('./session-store.ts').StoredMessage;
 type SettingsPatch = import('./settings.ts').SettingsPatch;
 type SettingsLike = import('./settings.ts').Settings;
-type Transport = import('./agent.ts').Transport;
+type SpecOp = import('./spec-ops.ts').SpecOp;
+type ExportRequest = import('./agent.ts').ExportRequest;
+type ExportFile = import('./export.ts').ExportFile;
+type FetchOptions = import('./fetch-url.ts').FetchOptions;
+/** A pi-ai model, for the test seam that replaces the configured one. */
+type PiModel = import('@mariozechner/pi-ai').Model<any>;
 
 // `lib/attachments.ts` does not export its `Attachment`/`Extractor` shapes, so
 // the ones this file needs are derived from the function it calls rather than
@@ -78,7 +87,12 @@ interface UploadedAttachment extends Attachment {
 
 /** A change held for confirmation, per session. */
 interface PendingChange {
+  /** what the preview showed, computed from the turn's snapshot */
   spec: WorkbookSpec | null;
+  /** how to get there; replayed against the stored spec on apply */
+  ops: SpecOp[];
+  /** saves the turn asked for, performed once the change is applied */
+  exports: ExportRequest[];
   message: string;
   at: number;
 }
@@ -243,10 +257,16 @@ class AppState {
   /** Model credentials, read from settings.json in the data directory. */
   settings: SettingsLike;
   /**
-   * Reaches the model for a session turn. Absent means the agent's own
-   * default (`llm.chat`); `createServer` sets it from the `transport` seam.
+   * The model a session turn drives. Absent means the one built from settings;
+   * `createServer` sets it from the `model` seam.
    */
-  agentTransport?: Transport;
+  agentModel?: PiModel;
+  /**
+   * Extra options for the agent's `fetch_url`. Test seam: a test sets
+   * `{ allowPrivate: true }` here to fetch from its own 127.0.0.1 server.
+   * Production never sets it, so the SSRF rules in lib/fetch-url.ts hold.
+   */
+  fetchOptions?: FetchOptions;
 
   constructor({ dataDir }: { dataDir: string }) {
     this.dataDir = dataDir;
@@ -415,12 +435,35 @@ function createHandler({ state, staticDir, imageExtractor, textExtractor, onMode
         // Only these keys are writable, and an absent key means "leave it".
         // An empty string for apiKey is meaningful ("clear it"), so test for
         // presence rather than truthiness.
+        if ('api' in body) {
+          // Refused rather than defaulted: a protocol the panel did not offer is
+          // a client bug, and silently saving OpenAI-compatible instead would
+          // leave the user debugging the wrong endpoint.
+          if (!isModelApi(body.api)) return fail(res, 400, `不支持的接口协议：${String(body.api).slice(0, 40)}`);
+          patch.api = body.api;
+        }
         if ('apiKey' in body) patch.apiKey = String(body.apiKey || '').trim();
         if ('baseUrl' in body) patch.baseUrl = String(body.baseUrl || '').trim();
         if ('model' in body) patch.model = String(body.model || '').trim();
         if ('useForAttachments' in body) patch.useForAttachments = Boolean(body.useForAttachments);
         if ('chatCanEdit' in body) patch.chatCanEdit = Boolean(body.chatCanEdit);
         if ('chatConfirmEdits' in body) patch.chatConfirmEdits = Boolean(body.chatConfirmEdits);
+        if ('chatCanFetch' in body) patch.chatCanFetch = Boolean(body.chatCanFetch);
+        if ('chatCanSave' in body) patch.chatCanSave = Boolean(body.chatCanSave);
+        if ('fetchBlocklist' in body) {
+          // Normalised here, once, so the stored list is what the matcher
+          // compares against: bare lower-case hosts, no scheme or path.
+          const list = parseBlocklist(body.fetchBlocklist);
+          if (list.length > 500) return fail(res, 400, '禁止抓取的网站最多 500 条');
+          patch.fetchBlocklist = list;
+        }
+        if ('exportDir' in body) {
+          const dir = String(body.exportDir || '').trim();
+          // Relative would mean "relative to wherever the app was started",
+          // which is not a place the user chose.
+          if (dir && !path.isAbsolute(dir)) return fail(res, 400, '导出目录必须是完整路径，例如 D:\\导出');
+          patch.exportDir = dir;
+        }
 
         // Refuse a base URL that is not http(s): anything else would be sent a
         // bearer token by a client that cannot speak the scheme.
@@ -455,7 +498,7 @@ function createHandler({ state, staticDir, imageExtractor, textExtractor, onMode
           if (!reply) {
             return json(res, 200, {
               ok: false,
-              error: '模型只返回了思考过程，没有给出回答。可能模型名有误，或该模型不支持 chat/completions 接口。',
+              error: '模型只返回了思考过程，没有给出回答。可能模型名有误，或所选接口协议与该模型不匹配。',
               raw: String(raw).slice(0, 400),
             });
           }
@@ -528,6 +571,18 @@ function createHandler({ state, staticDir, imageExtractor, textExtractor, onMode
         const files = attachmentNames(state.uploads);
         const context = attachmentContext(state.uploads);
 
+        // Read once: the same values decide which tools the model is offered
+        // and, below, whether a change may land and where a save goes.
+        const live = await state.settings.load();
+        const canEdit = Boolean(live.chatCanEdit);
+        const canSave = Boolean(live.chatCanSave);
+        const canFetch = Boolean(live.chatCanFetch);
+        const fetchOptions: FetchOptions = {
+          ...state.fetchOptions,
+          blocklist: Array.isArray(live.fetchBlocklist) ? live.fetchBlocklist : [],
+        };
+        const exportDir = resolveExportDir(live);
+
         let turn;
         try {
           turn = await runAgentTurn({
@@ -536,7 +591,11 @@ function createHandler({ state, staticDir, imageExtractor, textExtractor, onMode
             spec: session.spec,
             history: session.messages,
             changes: session.changes,
-            transport: state.agentTransport,
+            canEdit,
+            canSave,
+            canFetch,
+            fetchOptions,
+            model: state.agentModel,
           });
         } catch (err) {
           // A provider failure is not recorded: the user's own message is kept
@@ -548,22 +607,27 @@ function createHandler({ state, staticDir, imageExtractor, textExtractor, onMode
           });
         }
 
-        // Read-only mode downgrades a change rather than showing one the user
-        // cannot make. The conversation still happens.
-        const canEdit = Boolean((await state.settings.load()).chatCanEdit);
+        // Read-only mode offers the model no edit tools, so a change cannot
+        // arrive here. Kept as a backstop: if one ever did, it is downgraded
+        // rather than shown as something the user cannot make.
         let spec = turn.spec;
+        let ops = turn.ops;
         let note = '';
         if (spec && !canEdit) {
           spec = null;
+          ops = [];
           note = '（「允许修改」已关闭，本次没有改动表格）';
         }
 
         const confirmEdits = Boolean((await state.settings.load()).chatConfirmEdits);
         const pending = Boolean(spec) && confirmEdits;
-        const applied = Boolean(spec) && !confirmEdits;
+        let applied = Boolean(spec) && !confirmEdits;
+        // Backstop like the one above: the tool is not offered when saving is
+        // off, so a request cannot arrive — and if one did, it is dropped.
+        const exportsWanted = canSave ? (turn.exports || []) : [];
 
         if (pending) {
-          state.pending.set(session.id, { spec, message, at: Date.now() });
+          state.pending.set(session.id, { spec, ops, exports: exportsWanted, message, at: Date.now() });
         } else {
           state.pending.delete(session.id);
         }
@@ -574,60 +638,111 @@ function createHandler({ state, staticDir, imageExtractor, textExtractor, onMode
         // otherwise each save a transcript that predates the other, and one
         // turn's messages would vanish with no error (measured: 12 concurrent
         // turns left 4 of 26 messages). `update` loads and writes in one slot.
-        const saved = await state.sessions.update(session.id, (current: Session) => ({
-          ...current,
-          // First change names the session, unless the user named it earlier.
-          title: current.title || (applied && spec && spec.title) || current.title,
-          spec: applied ? spec : current.spec,
-          // Recorded against `current.spec`, the freshest one, inside the queue
-          // slot — the same reason the spec itself is written here.
-          changes: applied
-            ? [...current.changes, { request: message, summary: describeChange(current.spec, spec), at: new Date().toISOString() }]
-            : current.changes,
-          messages: [
-            ...current.messages,
-            {
-              role: 'user',
-              content: message,
-              at: new Date().toISOString(),
-              attachments: files.length ? files : undefined,
-            },
-            {
-              role: 'assistant',
-              content: turn.reply + (note ? `\n${note}` : ''),
-              at: new Date().toISOString(),
-              intent: turn.intent,
-              guarded: turn.guarded === true,
-              // `notes` on the stored message is `StoredMessage['notes']`
-              // (`string[]`); the turn produces `SpecNote[]`. The two have been
-              // passed through unchanged since before the migration — the value
-              // is what a live session serves and what a reloaded one compares
-              // against — so the cast records the existing shape rather than
-              // changing it. Flattening to strings here would alter what a
-              // session stores.
-              notes: turn.notes as unknown as string[],
-            },
-          ],
-        }));
+        //
+        // The same holds for the spec. `turn.spec` was computed from the
+        // snapshot, so writing it back would erase a change another turn made
+        // meanwhile. The turn's OPERATIONS are replayed against `current.spec`
+        // instead, and the row guard re-run on the result. When nothing raced,
+        // the replay reproduces `turn.spec` exactly (the operations are pure).
+        // When something did and the operations no longer fit — a row number
+        // past the end, a column renamed away — nothing lands, and the reply
+        // says so rather than applying an edit to rows it was not aimed at.
+        // Saves are computed in the slot (pure: bytes from the spec that is
+        // actually stored after this turn) and written after it, so slow disk
+        // I/O does not hold the session queue. The reply gets the outcome in a
+        // second, small update — see below.
+        let exportFiles: ExportFile[] = [];
+        let replyIndex = -1;
+        const saved = await state.sessions.update(session.id, (current: Session) => {
+          let landed: WorkbookSpec | null = null;
+          if (applied) {
+            let conflict = '';
+            try {
+              const next = applyOps(current.spec, ops).spec;
+              const verdict = next ? guardChange({ current: current.spec, next, message }) : { ok: false, reason: '修改结果为空' };
+              if (verdict.ok) landed = next;
+              else conflict = verdict.reason;
+            } catch (err) {
+              conflict = String((err as Error).message || err);
+            }
+            if (!landed) {
+              applied = false;
+              note = `${note}（表格在这期间被改动过，本次修改没有应用：${conflict}）`;
+            }
+          }
+          if (exportsWanted.length) {
+            exportFiles = [];
+            if (pending) {
+              note = `${note}（确认修改后会保存文件。）`;
+            } else if (spec && !landed) {
+              // The edit the user wanted saved did not happen; saving the old
+              // table under their request would be the wrong file.
+              note = `${note}（没有保存文件：本次修改没有应用。）`;
+            } else {
+              const target = landed || current.spec;
+              if (!target) note = `${note}（没有保存文件：还没有表格。）`;
+              else {
+                try {
+                  exportFiles = exportsWanted.flatMap((r) => exportSpec(target, r));
+                } catch (err) {
+                  note = `${note}（没有保存文件：${String((err as Error).message || err)}）`;
+                }
+              }
+            }
+          }
+          replyIndex = current.messages.length + 1;
+          return {
+            ...current,
+            // First change names the session, unless the user named it earlier.
+            title: current.title || (landed && landed.title) || current.title,
+            spec: landed || current.spec,
+            // Recorded against `current.spec`, the freshest one, inside the queue
+            // slot — the same reason the spec itself is written here.
+            changes: landed
+              ? [...current.changes, { request: message, summary: describeChange(current.spec, landed), at: new Date().toISOString() }]
+              : current.changes,
+            messages: [
+              ...current.messages,
+              {
+                role: 'user',
+                content: message,
+                at: new Date().toISOString(),
+                attachments: files.length ? files : undefined,
+              },
+              {
+                role: 'assistant',
+                content: turn.reply + (note ? `\n${note}` : ''),
+                at: new Date().toISOString(),
+                intent: turn.intent,
+                guarded: turn.guarded === true,
+                // `notes` on the stored message is `StoredMessage['notes']`
+                // (`string[]`); the turn produces `SpecNote[]`. The two have been
+                // passed through unchanged since before the migration — the value
+                // is what a live session serves and what a reloaded one compares
+                // against — so the cast records the existing shape rather than
+                // changing it. Flattening to strings here would alter what a
+                // session stores.
+                notes: turn.notes as unknown as string[],
+              },
+            ],
+          };
+        });
         if (!saved) return fail(res, 404, '会话不存在');
 
-        // Named once so the ternary below stays a `WorkbookSpec | null` instead
-        // of being re-evaluated twice — same value, same branches, but the
-        // narrowing survives into the guard. `Boolean(...) &&` would not narrow
-        // inside the true branch.
-        const shown = applied ? spec : saved.spec;
+        const { session: final, paths } = await saveAndNote(state, saved, replyIndex, exportDir, exportFiles);
 
         return json(res, 200, {
           ok: true,
           intent: turn.intent,
-          reply: saved.messages[saved.messages.length - 1].content,
+          reply: final.messages[replyIndex] ? final.messages[replyIndex].content : final.messages[final.messages.length - 1].content,
+          saved: paths,
           guarded: turn.guarded === true,
           lostRows: turn.lostRows || 0,
           notes: turn.notes || [],
           pending,
           applied,
-          messages: publicMessages(saved.messages),
-          preview: shown ? previewSpec(writeSpec(shown)) : null,
+          messages: publicMessages(final.messages),
+          preview: saved.spec ? previewSpec(writeSpec(saved.spec)) : null,
           proposed: pending && spec ? { rows: specStats(spec).rows, preview: previewSpec(writeSpec(spec)) } : null,
         });
       }
@@ -646,27 +761,68 @@ function createHandler({ state, staticDir, imageExtractor, textExtractor, onMode
           return json(res, 200, { ok: true, applied: false, messages: publicMessages(session.messages) });
         }
 
-        const saved = await state.sessions.update(session.id, (current: Session) => ({
-          ...current,
-          title: current.title || (held.spec && held.spec.title) || '',
-          spec: held.spec,
-          changes: [
-            ...current.changes,
-            { request: held.message, summary: describeChange(current.spec, held.spec), at: new Date().toISOString() },
-          ],
-        }));
+        // Replayed against the stored spec inside the queue slot, for the same
+        // reason as in the turn route: the proposal was computed from a
+        // snapshot, and the table may have changed since.
+        let conflict = '';
+        let files: ExportFile[] = [];
+        let saveError = '';
+        const saved = await state.sessions.update(session.id, (current: Session) => {
+          let landed: WorkbookSpec | null = null;
+          try {
+            const next = applyOps(current.spec, held.ops).spec;
+            const verdict = next ? guardChange({ current: current.spec, next, message: held.message }) : { ok: false, reason: '修改结果为空' };
+            if (verdict.ok) landed = next;
+            else conflict = verdict.reason;
+          } catch (err) {
+            conflict = String((err as Error).message || err);
+          }
+          if (!landed) return current;
+          if (held.exports.length) {
+            const target = landed;
+            try {
+              files = held.exports.flatMap((r) => exportSpec(target, r));
+            } catch (err) {
+              saveError = String((err as Error).message || err);
+            }
+          }
+          return {
+            ...current,
+            title: current.title || landed.title || '',
+            spec: landed,
+            changes: [
+              ...current.changes,
+              { request: held.message, summary: describeChange(current.spec, landed), at: new Date().toISOString() },
+            ],
+          };
+        });
         state.pending.delete(session.id);
         if (!saved) return fail(res, 404, '会话不存在');
+        if (conflict) return fail(res, 409, `表格在这期间被改动过，这条修改已无法应用：${conflict}`);
+        let paths: string[] = [];
+        if (files.length) {
+          try {
+            paths = await writeExports(resolveExportDir(await state.settings.load()), files);
+          } catch (err) {
+            saveError = String((err as Error).message || err);
+          }
+        }
         return json(res, 200, {
           ok: true,
           applied: true,
+          saved: paths,
+          saveError: saveError || undefined,
           session: publicSession(saved),
           preview: saved.spec ? previewSpec(writeSpec(saved.spec)) : null,
         });
       }
 
-      /** The current workbook as bytes. Derived from the spec, never cached. */
-      const sessFile = /^GET \/api\/sessions\/([^/]+)\/workbook\.xlsx$/.exec(route);
+      /**
+       * The current workbook as bytes, in any export format. Derived from the
+       * spec, never cached. CSV holds one table: `?sheet=` names it, and the
+       * first sheet is the default.
+       */
+      const sessFile = /^GET \/api\/sessions\/([^/]+)\/workbook\.(xlsx|csv|json)$/.exec(route);
       if (sessFile) {
         const session = await state.sessions.load(decodeURIComponent(sessFile[1]));
         if (!session) return fail(res, 404, '会话不存在');
@@ -677,14 +833,22 @@ function createHandler({ state, staticDir, imageExtractor, textExtractor, onMode
         const spec = session.spec;
         if (!spec) return fail(res, 404, '这个会话还没有生成表格');
 
-        const buffer = writeSpec(spec);
-        const name = `${spec.title || session.title || '工作簿'}.xlsx`.replace(/[\\/:*?"<>|]/g, '_');
+        const format = sessFile[2];
+        if (!isExportFormat(format)) return fail(res, 404, '不支持的格式');
+        const sheet = url.searchParams.get('sheet') || (format === 'csv' ? spec.sheets[0].name : null);
+        let file: ExportFile;
+        try {
+          [file] = exportSpec(spec, { format, sheet, filename: spec.title || session.title || '工作簿' });
+        } catch (err) {
+          if (err instanceof ExportError) return fail(res, 404, err.message);
+          throw err;
+        }
         res.writeHead(200, {
-          'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-          'Content-Length': buffer.length,
-          'Content-Disposition': contentDisposition(name),
+          'Content-Type': file.mime,
+          'Content-Length': file.bytes.length,
+          'Content-Disposition': contentDisposition(file.name),
         });
-        res.end(buffer);
+        res.end(file.bytes);
         return;
       }
 
@@ -735,6 +899,41 @@ function createHandler({ state, staticDir, imageExtractor, textExtractor, onMode
       return fail(res, status, String((err as HttpError).message || err));
     }
   };
+}
+
+/**
+ * Write a turn's exports and tell the user how it went, in the turn's reply.
+ *
+ * Runs after the session write, outside the store's queue: the files were
+ * computed in the slot, and only the disk I/O happens here. The outcome is
+ * appended to the reply with a second `update`, addressed by index — messages
+ * are only ever appended, so the index recorded in the slot still names the
+ * same message. Nothing to write means nothing to update.
+ */
+async function saveAndNote(
+  state: AppState,
+  session: Session,
+  replyIndex: number,
+  dir: string,
+  files: ExportFile[],
+): Promise<{ session: Session; paths: string[] }> {
+  if (!files.length) return { session, paths: [] };
+  let paths: string[] = [];
+  let note: string;
+  try {
+    paths = await writeExports(dir, files);
+    note = `（已保存：${paths.join('、')}）`;
+  } catch (err) {
+    note = `（保存文件失败：${String((err as Error).message || err)}）`;
+  }
+  const updated = await state.sessions.update(session.id, (current: Session) => {
+    const target = current.messages[replyIndex];
+    if (!target) return current;
+    const messages = [...current.messages];
+    messages[replyIndex] = { ...target, content: `${target.content}\n${note}` };
+    return { ...current, messages };
+  });
+  return { session: updated || session, paths };
 }
 
 /** Collect multipart parts, splitting files from plain fields. */
@@ -835,8 +1034,8 @@ function serveStatic(res: http.ServerResponse, dir: string | undefined, pathname
  *
  * `state` and `settingsOverride` are test seams: a caller can hand in a
  * pre-built state, or a whole settings object, so a test can run against a
- * scratch data directory without writing a real key anywhere. `agentTransport`
- * is the third, documented in full below.
+ * scratch data directory without writing a real key anywhere. `model` is the
+ * third, documented in full below.
  */
 interface ServerOptions {
   state?: AppState;
@@ -844,8 +1043,10 @@ interface ServerOptions {
   staticDir?: string;
   imageExtractor?: Extractor;
   textExtractor?: Extractor;
-  transport?: Transport;
+  model?: PiModel;
   settingsOverride?: SettingsLike;
+  /** Test seam for `fetch_url`; see `AppState.fetchOptions`. */
+  fetchOptions?: FetchOptions;
 }
 
 /**
@@ -863,19 +1064,20 @@ function createServer(opts: ServerOptions): ServerWithState {
     dataDir: opts.dataDir || path.join(process.cwd(), 'data'),
   });
   /**
-   * Test seams for the agent transport and settings.
+   * Test seams for the agent model and settings.
    *
-   * `transport` replaces `llm.chat` for the session endpoints, so a test can
-   * exercise the REAL decision logic — intent, the guard, normalisation — with
-   * only the network call faked. Stubbing at the module cache does not work:
-   * `lib/agent.js` destructures `chat` at require time, so the binding survives
-   * any later swap.
+   * `model` replaces the model built from settings for the session endpoints.
+   * A test passes a pi-ai faux model, so the REAL loop runs — tools, intent,
+   * the guard, the replay — with only the provider scripted. Stubbing at the
+   * module level does not work: lib/agent.ts reaches pi through `loadPi()`,
+   * and a swapped module would never be seen by an import already resolved.
    *
-   * `settingsOverride` is here for the same reason: a test needs a configured
+   * `settingsOverride` is here for a related reason: a test needs a configured
    * model without writing a real key to a real data directory.
    */
-  if (opts.transport) state.agentTransport = opts.transport;
+  if (opts.model) state.agentModel = opts.model;
   if (opts.settingsOverride) state.settings = opts.settingsOverride;
+  if (opts.fetchOptions) state.fetchOptions = opts.fetchOptions;
 
   const handler = createHandler({
     state,

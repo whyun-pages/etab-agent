@@ -2,7 +2,7 @@
   "compilerOptions": {
     "target": "es2023",
     "lib": ["es2023"],
-    "module": "commonjs",
+    "module": "nodenext",
     "types": ["node"],
 
     "outDir": ".build/js",

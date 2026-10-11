@@ -1,7 +1,7 @@
 {
   "name": "@whyun/etab-agent",
   "version": "0.1.2",
-  "description": "说一句中文要什么表，模型给出工作簿，代码校验后落笔。运行时零依赖。",
+  "description": "说一句中文要什么表，模型给出工作簿，代码校验后落笔。",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -39,8 +39,13 @@
   },
   "devDependencies": {
     "@types/node": "^26.6.3",
+    "esbuild": "0.28.2",
     "postject": "^1.0.0-alpha.6",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "@mariozechner/pi-agent-core": "0.73.1",
+    "@mariozechner/pi-ai": "0.73.1"
   }
 }

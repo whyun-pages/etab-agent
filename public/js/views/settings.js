@@ -14,6 +14,23 @@
 
 import { esc, el } from '../dom.js';
 
+/**
+ * The wire protocols the server accepts, in display order, with each one's
+ * official endpoint and an example model name.
+ *
+ * Mirrors MODEL_APIS and BASE_URLS in lib/model.ts. Browser code cannot import
+ * that module, and the list is three entries that change only when a protocol
+ * is added — at which point the server refuses an unknown value with a 400, so
+ * a drift between the two shows up the first time someone saves.
+ */
+const PROTOCOLS = [
+  { api: 'openai-completions', label: 'OpenAI 兼容（/chat/completions）', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini', hint: 'OpenAI 兼容的 /v1 地址。国内大多数服务商和自建网关都用这种。' },
+  { api: 'anthropic-messages', label: 'Anthropic Messages', baseUrl: 'https://api.anthropic.com', model: 'claude-sonnet-4-5', hint: 'Anthropic 原生接口地址，不带 /v1。兼容 Anthropic 协议的服务也可以填在这里。' },
+  { api: 'google-generative-ai', label: 'Google Gemini', baseUrl: 'https://generativelanguage.googleapis.com/v1beta', model: 'gemini-2.5-flash', hint: 'Gemini 原生接口地址，带版本号（/v1beta）。' },
+];
+
+const protocolOf = (api) => PROTOCOLS.find((p) => p.api === api) || PROTOCOLS[0];
+
 /** A labelled text input, with the styling the rest of the app uses. */
 function field({ label, hint, value, type = 'text', placeholder, onInput, autocomplete = 'off' }) {
   const wrap = el('label', { class: 'settings__field' });
@@ -84,13 +101,28 @@ export function settingsView({ state, handlers }) {
   // ── the form ───────────────────────────────────────────────────────
   const form = el('div', { class: 'settings__form' });
 
-  form.appendChild(field({
+  const protocol = protocolOf(draft.api ?? s.api);
+
+  const protoWrap = el('label', { class: 'settings__field' });
+  protoWrap.appendChild(el('span', { class: 'settings__label', text: '接口协议' }));
+  protoWrap.appendChild(el('span', { class: 'settings__hint', text: '按服务商提供的接口类型选择。' }));
+  const select = el('select', { class: 'settings__input' });
+  for (const p of PROTOCOLS) {
+    const opt = el('option', { value: p.api, text: p.label });
+    opt.selected = p.api === protocol.api;
+    select.appendChild(opt);
+  }
+  protoWrap.appendChild(select);
+  form.appendChild(protoWrap);
+
+  const baseField = field({
     label: '接口地址 (baseUrl)',
-    hint: 'OpenAI 兼容的 /v1 地址。可换成任何兼容服务。',
+    hint: protocol.hint,
     value: draft.baseUrl ?? s.baseUrl ?? '',
-    placeholder: 'https://api.openai.com/v1',
+    placeholder: protocol.baseUrl,
     onInput: (v) => { draft.baseUrl = v; },
-  }));
+  });
+  form.appendChild(baseField);
 
   form.appendChild(field({
     label: 'API key',
@@ -103,13 +135,40 @@ export function settingsView({ state, handlers }) {
     onInput: (v) => { draft.apiKey = v; },
   }));
 
-  form.appendChild(field({
+  const modelField = field({
     label: '模型名 (model)',
     hint: '必须填服务商支持的模型名。',
     value: draft.model ?? s.model ?? '',
-    placeholder: 'gpt-4o-mini',
+    placeholder: protocol.model,
     onInput: (v) => { draft.model = v; },
-  }));
+  });
+  form.appendChild(modelField);
+
+  // Switching protocol carries the endpoint and the model name along only when
+  // each is still the previous protocol's default (or empty): that value was
+  // never the user's choice, and leaving OpenAI's URL or `gpt-4o-mini` under
+  // "Gemini" would guarantee a failed first request. What the user typed is
+  // theirs and stays.
+  select.addEventListener('change', () => {
+    const before = protocolOf(draft.api ?? s.api);
+    const next = protocolOf(select.value);
+    draft.api = next.api;
+    const baseInput = baseField.querySelector('input');
+    const current = baseInput.value.trim().replace(/\/+$/, '');
+    if (!current || current === before.baseUrl) {
+      baseInput.value = next.baseUrl;
+      draft.baseUrl = next.baseUrl;
+    }
+    baseInput.placeholder = next.baseUrl;
+    baseField.querySelector('.settings__hint').textContent = next.hint;
+    const modelInput = modelField.querySelector('input');
+    const currentModel = modelInput.value.trim();
+    if (!currentModel || currentModel === before.model) {
+      modelInput.value = next.model;
+      draft.model = next.model;
+    }
+    modelInput.placeholder = next.model;
+  });
 
   // ── chat behaviour ─────────────────────────────────────────────────
   form.appendChild(el('div', { class: 'settings__group', text: '对话' }));
@@ -127,6 +186,56 @@ export function settingsView({ state, handlers }) {
     checked: draft.chatConfirmEdits ?? s.chatConfirmEdits ?? true,
     onChange: (v) => { draft.chatConfirmEdits = v; },
   }));
+
+  // ── saving and fetching ────────────────────────────────────────────
+  form.appendChild(el('div', { class: 'settings__group', text: '保存与联网' }));
+
+  form.appendChild(toggle({
+    label: '允许对话保存文件',
+    hint: '可以让对话把表格存成 xlsx / CSV / JSON 到下面的目录。同名文件不会被覆盖，会自动加编号。',
+    checked: draft.chatCanSave ?? s.chatCanSave ?? true,
+    onChange: (v) => { draft.chatCanSave = v; },
+  }));
+
+  form.appendChild(field({
+    label: '导出目录',
+    hint: '填完整路径。留空则保存到下载文件夹。',
+    value: draft.exportDir ?? s.exportDir ?? '',
+    placeholder: s.exportDirResolved || '',
+    onInput: (v) => { draft.exportDir = v; },
+  }));
+
+  // The blocklist only means something while fetching is on, so it is shown
+  // only then — toggled in place, without re-rendering the form and losing
+  // whatever is typed in the other fields.
+  const blockWrap = el('label', { class: 'settings__field' });
+  blockWrap.appendChild(el('span', { class: 'settings__label', text: '禁止抓取的网站' }));
+  blockWrap.appendChild(el('span', {
+    class: 'settings__hint',
+    text: '每行一个域名，同时禁止它的子域名。例如填 example.com，www.example.com 也会被拒绝。',
+  }));
+  const blockInput = el('textarea', {
+    class: 'settings__input',
+    rows: '4',
+    spellcheck: 'false',
+    placeholder: 'example.com',
+  });
+  blockInput.value = draft.fetchBlocklist ?? (s.fetchBlocklist || []).join('\n');
+  blockInput.addEventListener('input', () => { draft.fetchBlocklist = blockInput.value; });
+  blockWrap.appendChild(blockInput);
+
+  const canFetch = draft.chatCanFetch ?? s.chatCanFetch ?? false;
+  blockWrap.hidden = !canFetch;
+  form.appendChild(toggle({
+    label: '允许对话联网抓取',
+    // The risk is stated here because this is where the decision is made:
+    // with no list of allowed sites, nothing stops a fetched page from
+    // talking the model into sending table data to another address.
+    hint: '可以让对话下载网页、CSV、JSON、xlsx 来建表或补数据。请求从本机发出；内网地址一律不抓。注意：抓到的网页内容可能诱导模型把表格数据发到别的网址，表里有敏感数据时不要开启。',
+    checked: canFetch,
+    onChange: (v) => { draft.chatCanFetch = v; blockWrap.hidden = !v; },
+  }));
+  form.appendChild(blockWrap);
 
   root.appendChild(form);
 

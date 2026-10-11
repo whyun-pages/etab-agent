@@ -7,13 +7,14 @@
  * shape it did not expect, a static guard that 404'd everything, a JSON body
  * that arrived as something slightly different from what the handler assumed.
  *
- * The model is stubbed at the transport, so the DECISIONS are the real ones —
- * `runTurn`, `guardChange`, `normalizeSpec` all run — and only the network call
- * is fake.
+ * The model is pi-ai's faux provider, scripted step by step, so the DECISIONS
+ * are the real ones — the agent loop, the tools, `guardChange`, the replay in
+ * the store — and only the provider is fake.
  */
 
 const test = require('node:test');
 const assert = require('node:assert');
+const { listenLocal } = require('./listen');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -22,42 +23,75 @@ const { createServer } = require('../lib/server');
 
 const tmpdir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'sess-api-'));
 
+// pi-ai is ESM-only, so it is reached with import() even from this CommonJS
+// file. One faux provider per file; each server start replaces its script.
+let pi = null;
+async function loadFaux() {
+  if (!pi) {
+    const ai = await import('@mariozechner/pi-ai');
+    pi = { ai, faux: ai.registerFauxProvider() };
+  }
+  return pi;
+}
+
 /**
- * Start a server whose model transport is scripted.
- *
- * `replies` is a queue: the first turn gets the first reply, and so on. Running
- * out means the test asked for more turns than it scripted, which is a test bug
- * and should be loud.
+ * One scripted model response. A string is a final text answer; an object
+ * `{ tool, args }` (or an array of them) is a response that calls tools; a
+ * function is called with the context and returns either of those, possibly
+ * after a delay — that is how a test holds a turn in flight.
  */
-function startServer(t, { configured = true, replies = [], chatCanEdit = true, chatConfirmEdits = true, seen = null } = {}) {
+async function step(ai, s, context) {
+  if (typeof s === 'function') s = await s(context);
+  if (typeof s === 'string') return ai.fauxAssistantMessage(s);
+  const calls = Array.isArray(s) ? s : [s];
+  return ai.fauxAssistantMessage(calls.map((c) => ai.fauxToolCall(c.tool, c.args)), { stopReason: 'toolUse' });
+}
+
+/** What the model was shown on the FIRST call of a turn: system prompt and user message. */
+const promptOf = (context) => [context.systemPrompt, ...context.messages.map((m) => (typeof m.content === 'string' ? m.content : ''))].join('\n');
+
+/**
+ * Start a server whose model is scripted.
+ *
+ * `replies` is a list of turns, each a list of steps (see `step`), consumed in
+ * order across the whole server. Running out makes the faux provider answer
+ * with an error, which is what a dead provider looks like from here.
+ * `seen` collects the prompt of each turn's first call.
+ */
+async function startServer(t, { configured = true, replies = [], chatCanEdit = true, chatConfirmEdits = true, seen = null, extra = {}, fetchOptions } = {}) {
   const dataDir = tmpdir();
-  const queue = [...replies];
+  const { ai, faux } = await loadFaux();
+  faux.setResponses(replies.flat().map((s) => async (context) => {
+    if (seen && context.messages.length === 1) seen.push(promptOf(context));
+    return step(ai, s, context);
+  }));
 
   const server = createServer({
     dataDir,
     staticDir: path.join(__dirname, '..', 'public'),
-    // The transport override the server accepts for exactly this purpose.
-    transport: async (args) => {
-      if (seen) seen.push(args.messages.map((m) => m.content).join('\n'));
-      if (!queue.length) throw new Error('test ran out of scripted replies');
-      return queue.shift();
-    },
-    settingsOverride: {
-      isConfigured: () => configured,
-      load: () => ({ chatCanEdit, chatConfirmEdits, useForAttachments: true }),
-      publicSettings: () => ({ model: 'stub', hasKey: configured }),
-      secrets: () => ({ baseUrl: 'http://stub/v1', apiKey: 'k', model: 'stub' }),
-      save: () => ({}),
-    },
+    // The model override the server accepts for exactly this purpose.
+    model: faux.getModel(),
+    settingsOverride: settingsStub({ configured, chatCanEdit, chatConfirmEdits, extra }),
+    fetchOptions,
   });
 
   return new Promise((resolve) => {
-    server.listen(0, '127.0.0.1', () => {
+    listenLocal(server).then(() => {
       const base = `http://127.0.0.1:${server.address().port}`;
       t.after(() => new Promise((done) => server.close(done)));
       resolve({ base, dataDir });
     });
   });
+}
+
+function settingsStub({ configured = true, chatCanEdit = true, chatConfirmEdits = true, extra = {} } = {}) {
+  return {
+    isConfigured: () => configured,
+    load: () => ({ chatCanEdit, chatConfirmEdits, useForAttachments: true, ...extra }),
+    publicSettings: () => ({ model: 'stub', hasKey: configured }),
+    secrets: () => ({ api: 'openai-completions', baseUrl: 'http://stub/v1', apiKey: 'k', model: 'stub' }),
+    save: () => ({}),
+  };
 }
 
 const post = (base, p, body) => fetch(base + p, {
@@ -80,8 +114,8 @@ const SPEC = {
   }],
 };
 
-const ACTION = JSON.stringify({ intent: 'action', reply: '建好了。', spec: SPEC });
-const ANSWER = JSON.stringify({ intent: 'answer', reply: '我能帮你做表格。' });
+const ACTION = [{ tool: 'create_workbook', args: SPEC }, '建好了。'];
+const ANSWER = ['我能帮你做表格。'];
 
 // ── sessions ────────────────────────────────────────────────────────
 
@@ -206,7 +240,9 @@ test('an action turn with confirmation OFF applies immediately', async (t) => {
   assert.strictEqual(back.json.session.spec.title, '销售台账');
 });
 
-test('read-only mode downgrades a change instead of showing one', async (t) => {
+test('read-only mode offers no edit tools, so nothing can change', async (t) => {
+  // The model tries anyway: the tool does not exist in this turn, the call is
+  // refused, and its "建好了" is flagged as a claim with nothing behind it.
   const { base } = await startServer(t, { replies: [ACTION], chatCanEdit: false });
   const { json: created } = await post(base, '/api/sessions', {});
   const id = created.session.id;
@@ -215,7 +251,7 @@ test('read-only mode downgrades a change instead of showing one', async (t) => {
   assert.strictEqual(turn.json.ok, true);
   assert.strictEqual(turn.json.applied, false);
   assert.strictEqual(turn.json.pending, false, 'no proposal is offered when editing is off');
-  assert.match(turn.json.reply, /允许修改.*已关闭/);
+  assert.match(turn.json.reply, /没有形成可执行的修改/);
   const back = await get(base, `/api/sessions/${id}`);
   assert.strictEqual(back.json.session.spec, null);
 });
@@ -223,13 +259,12 @@ test('read-only mode downgrades a change instead of showing one', async (t) => {
 test('the guard refusal is reported, not swallowed', async (t) => {
   // Session already holds two rows; the model proposes one. The reply must say
   // the change did not happen, and the stored spec must be untouched.
-  const first = JSON.stringify({ intent: 'action', reply: '建好了。', spec: SPEC });
-  const destructive = JSON.stringify({
-    intent: 'action',
-    reply: '已改好。',
-    spec: { title: '销售台账', sheets: [{ name: '明细', columns: SPEC.sheets[0].columns, rows: [['甲', 500]] }] },
-  });
-  const { base } = await startServer(t, { replies: [first, destructive], chatConfirmEdits: false });
+  const destructive = [
+    { tool: 'delete_rows', args: { rows: [2] } },
+    { tool: 'update_cells', args: { cells: [{ row: 1, column: '金额', value: 500 }] } },
+    '已改好。',
+  ];
+  const { base } = await startServer(t, { replies: [ACTION, destructive], chatConfirmEdits: false });
   const { json: created } = await post(base, '/api/sessions', {});
   const id = created.session.id;
   await post(base, `/api/sessions/${id}/turn`, { message: '做一个销售台账' });
@@ -287,8 +322,8 @@ test('with no model configured, a turn says so instead of failing oddly', async 
 });
 
 test('a provider failure keeps the transcript usable for a retry', async (t) => {
-  // No scripted reply means the transport throws, which is what a dead provider
-  // looks like from here.
+  // No scripted reply means the faux provider answers with an error, which is
+  // what a dead provider looks like from here.
   const { base } = await startServer(t, { replies: [] });
   const { json: created } = await post(base, '/api/sessions', {});
   const id = created.session.id;
@@ -308,29 +343,25 @@ test('a provider failure keeps the transcript usable for a retry', async (t) => 
 test('a session survives a server restart', async (t) => {
   // The point of storing sessions at all: "昨天那单改成 40 万" needs yesterday.
   const dataDir = tmpdir();
+  const { ai, faux } = await loadFaux();
+  faux.setResponses(ACTION.map((s) => (context) => step(ai, s, context)));
   const opts = {
     dataDir,
     staticDir: path.join(__dirname, '..', 'public'),
-    transport: async () => ACTION,
-    settingsOverride: {
-      isConfigured: () => true,
-      load: () => ({ chatCanEdit: true, chatConfirmEdits: false }),
-      publicSettings: () => ({ model: 'stub' }),
-      secrets: () => ({ baseUrl: 'http://stub/v1', apiKey: 'k', model: 'stub' }),
-      save: () => ({}),
-    },
+    model: faux.getModel(),
+    settingsOverride: settingsStub({ chatConfirmEdits: false }),
   };
 
   const first = createServer(opts);
-  await new Promise((done) => first.listen(0, '127.0.0.1', done));
+  await new Promise((done) => listenLocal(first).then(done));
   const base1 = `http://127.0.0.1:${first.address().port}`;
   const { json: created } = await post(base1, '/api/sessions', {});
   const id = created.session.id;
   await post(base1, `/api/sessions/${id}/turn`, { message: '做一个销售台账' });
   await new Promise((done) => first.close(done));
 
-  const second = createServer({ ...opts, transport: async () => ANSWER });
-  await new Promise((done) => second.listen(0, '127.0.0.1', done));
+  const second = createServer(opts);
+  await new Promise((done) => listenLocal(second).then(done));
   t.after(() => new Promise((done) => second.close(done)));
   const base2 = `http://127.0.0.1:${second.address().port}`;
 
@@ -434,4 +465,239 @@ test('read-only mode logs no change', async (t) => {
   await post(base, `/api/sessions/${id}/turn`, { message: '做一个销售台账' });
   const stored = JSON.parse(fs.readFileSync(path.join(dataDir, 'sessions', `${id}.json`), 'utf8'));
   assert.deepStrictEqual(stored.changes, []);
+});
+
+// ── concurrent turns: replayed, not overwritten ──────────────────────
+
+/**
+ * Two turns on one session, the first held inside its model call until the
+ * second has landed. `route` answers by the turn's own message, so the order
+ * the faux provider is called in does not matter.
+ */
+function concurrentScript({ held, heldCall, other, otherCall }) {
+  let release;
+  const gate = new Promise((r) => { release = r; });
+  let entered;
+  const inFlight = new Promise((r) => { entered = r; });
+  const route = (context) => {
+    const user = context.messages[0].content;
+    const after = context.messages.some((m) => m.role === 'toolResult');
+    if (user.endsWith(held)) {
+      if (after) return '改好了。';
+      entered();
+      return gate.then(() => heldCall);
+    }
+    if (user.endsWith(other)) return after ? '好了。' : otherCall;
+    throw new Error(`unscripted turn: ${user.slice(-40)}`);
+  };
+  return { steps: [route, route, route, route], release: () => release(), inFlight };
+}
+
+test('two concurrent turns both land: the slower one is replayed on the newer table', async (t) => {
+  // The failure this prevents: the slow turn writing back the spec it computed
+  // from its snapshot, erasing the column the fast turn added meanwhile.
+  const script = concurrentScript({
+    held: '把甲的金额改成 1',
+    heldCall: { tool: 'update_cells', args: { cells: [{ row: 1, column: '金额', value: 1 }] } },
+    other: '加一列备注',
+    otherCall: { tool: 'add_columns', args: { columns: [{ header: '备注', type: 'text' }] } },
+  });
+  const { base, dataDir } = await startServer(t, { replies: [ACTION, script.steps], chatConfirmEdits: false });
+  const id = (await post(base, '/api/sessions', {})).json.session.id;
+  await post(base, `/api/sessions/${id}/turn`, { message: '做一个销售台账' });
+
+  const slow = post(base, `/api/sessions/${id}/turn`, { message: '把甲的金额改成 1' });
+  await script.inFlight;
+  const fast = await post(base, `/api/sessions/${id}/turn`, { message: '加一列备注' });
+  assert.strictEqual(fast.json.applied, true);
+  script.release();
+  const done = await slow;
+  assert.strictEqual(done.json.applied, true);
+
+  const stored = JSON.parse(fs.readFileSync(path.join(dataDir, 'sessions', `${id}.json`), 'utf8'));
+  const sheet = stored.spec.sheets[0];
+  assert.deepStrictEqual(sheet.columns.map((c) => c.header), ['客户名称', '金额', '备注'], 'the fast turn\'s column survived');
+  assert.strictEqual(sheet.rows[0][1], 1, 'the slow turn\'s edit landed too');
+  assert.strictEqual(stored.changes.length, 3);
+  assert.strictEqual(stored.messages.length, 6, 'every message of every turn is on disk');
+});
+
+test('a concurrent turn whose rows moved away is not applied to the wrong row', async (t) => {
+  const script = concurrentScript({
+    held: '把第2行金额改成 1',
+    heldCall: { tool: 'update_cells', args: { cells: [{ row: 2, column: '金额', value: 1 }] } },
+    other: '删掉第2行',
+    otherCall: { tool: 'delete_rows', args: { rows: [2] } },
+  });
+  const { base, dataDir } = await startServer(t, { replies: [ACTION, script.steps], chatConfirmEdits: false });
+  const id = (await post(base, '/api/sessions', {})).json.session.id;
+  await post(base, `/api/sessions/${id}/turn`, { message: '做一个销售台账' });
+
+  const slow = post(base, `/api/sessions/${id}/turn`, { message: '把第2行金额改成 1' });
+  await script.inFlight;
+  assert.strictEqual((await post(base, `/api/sessions/${id}/turn`, { message: '删掉第2行' })).json.applied, true);
+  script.release();
+  const done = await slow;
+  assert.strictEqual(done.json.applied, false);
+  assert.match(done.json.reply, /表格在这期间被改动过/);
+
+  const stored = JSON.parse(fs.readFileSync(path.join(dataDir, 'sessions', `${id}.json`), 'utf8'));
+  assert.deepStrictEqual(stored.spec.sheets[0].rows, [['甲', 1000000]], 'the remaining row was not touched');
+  assert.strictEqual(stored.changes.length, 2, 'the refused edit is not logged as a change');
+});
+
+// ── saving, downloading in other formats, fetching ──────────────────
+
+const saveSettings = (dir) => ({ chatCanSave: true, exportDir: dir });
+
+test('a turn that edits and saves writes the LANDED table and says where', async (t) => {
+  const exportDir = tmpdir();
+  t.after(() => fs.rmSync(exportDir, { recursive: true, force: true }));
+  const { base } = await startServer(t, {
+    chatConfirmEdits: false,
+    extra: saveSettings(exportDir),
+    replies: [[{ tool: 'create_workbook', args: SPEC }, { tool: 'save_file', args: { format: 'csv' } }, '建好并保存了。']],
+  });
+  const { json: { session } } = await post(base, '/api/sessions', {});
+  const r = await post(base, `/api/sessions/${session.id}/turn`, { message: '做个销售台账并保存成 csv' });
+  assert.strictEqual(r.json.applied, true);
+  assert.deepStrictEqual(r.json.saved.map((p) => path.basename(p)), ['销售台账.csv']);
+  const csv = fs.readFileSync(path.join(exportDir, '销售台账.csv'), 'utf8');
+  assert.match(csv, /^﻿客户名称,金额\r\n甲,1000000\r\n/);
+  assert.match(r.json.reply, /已保存：.*销售台账\.csv/);
+  // The outcome is part of the stored transcript, not just this response.
+  const again = await get(base, `/api/sessions/${session.id}`);
+  const last = again.json.session.messages[again.json.session.messages.length - 1];
+  assert.match(last.content, /已保存：/);
+});
+
+test('saving twice never overwrites', async (t) => {
+  const exportDir = tmpdir();
+  t.after(() => fs.rmSync(exportDir, { recursive: true, force: true }));
+  const save = [{ tool: 'save_file', args: { format: 'json' } }, '好了'];
+  const { base } = await startServer(t, {
+    chatConfirmEdits: false,
+    extra: saveSettings(exportDir),
+    replies: [ACTION, save, save],
+  });
+  const { json: { session } } = await post(base, '/api/sessions', {});
+  await post(base, `/api/sessions/${session.id}/turn`, { message: '做表' });
+  await post(base, `/api/sessions/${session.id}/turn`, { message: '保存成 json' });
+  await post(base, `/api/sessions/${session.id}/turn`, { message: '再保存一次' });
+  assert.deepStrictEqual(fs.readdirSync(exportDir).sort(), ['销售台账 (1).json', '销售台账.json']);
+});
+
+test('a held change is saved only once it is applied', async (t) => {
+  const exportDir = tmpdir();
+  t.after(() => fs.rmSync(exportDir, { recursive: true, force: true }));
+  const { base } = await startServer(t, {
+    chatConfirmEdits: true,
+    extra: saveSettings(exportDir),
+    replies: [[{ tool: 'create_workbook', args: SPEC }, { tool: 'save_file', args: { format: 'xlsx', filename: '台账' } }, '好了']],
+  });
+  const { json: { session } } = await post(base, '/api/sessions', {});
+  const r = await post(base, `/api/sessions/${session.id}/turn`, { message: '做表并保存' });
+  assert.strictEqual(r.json.pending, true);
+  assert.deepStrictEqual(r.json.saved, []);
+  assert.match(r.json.reply, /确认修改后会保存文件/);
+  assert.deepStrictEqual(fs.readdirSync(exportDir), []);
+
+  const applied = await post(base, `/api/sessions/${session.id}/apply`, { accept: true });
+  assert.strictEqual(applied.json.applied, true);
+  assert.deepStrictEqual(applied.json.saved.map((p) => path.basename(p)), ['台账.xlsx']);
+  assert.strictEqual(fs.readFileSync(path.join(exportDir, '台账.xlsx')).subarray(0, 2).toString(), 'PK');
+});
+
+test('a rejected held change saves nothing', async (t) => {
+  const exportDir = tmpdir();
+  t.after(() => fs.rmSync(exportDir, { recursive: true, force: true }));
+  const { base } = await startServer(t, {
+    chatConfirmEdits: true,
+    extra: saveSettings(exportDir),
+    replies: [[{ tool: 'create_workbook', args: SPEC }, { tool: 'save_file', args: { format: 'csv' } }, '好了']],
+  });
+  const { json: { session } } = await post(base, '/api/sessions', {});
+  await post(base, `/api/sessions/${session.id}/turn`, { message: '做表并保存' });
+  await post(base, `/api/sessions/${session.id}/apply`, { accept: false });
+  assert.deepStrictEqual(fs.readdirSync(exportDir), []);
+});
+
+test('with saving switched off the tool is not offered and nothing is written', async (t) => {
+  const exportDir = tmpdir();
+  t.after(() => fs.rmSync(exportDir, { recursive: true, force: true }));
+  const seen = [];
+  const { base } = await startServer(t, {
+    chatConfirmEdits: false,
+    extra: { chatCanSave: false, exportDir },
+    seen,
+    replies: [ACTION],
+  });
+  const { json: { session } } = await post(base, '/api/sessions', {});
+  await post(base, `/api/sessions/${session.id}/turn`, { message: '做表并保存' });
+  assert.doesNotMatch(seen[0], /save_file/);
+  assert.deepStrictEqual(fs.readdirSync(exportDir), []);
+});
+
+test('the workbook downloads as CSV and JSON too', async (t) => {
+  const { base } = await startServer(t, { chatConfirmEdits: false, replies: [ACTION] });
+  const { json: { session } } = await post(base, '/api/sessions', {});
+  await post(base, `/api/sessions/${session.id}/turn`, { message: '做表' });
+
+  const csv = await fetch(`${base}/api/sessions/${session.id}/workbook.csv`);
+  assert.strictEqual(csv.status, 200);
+  assert.match(csv.headers.get('content-type'), /text\/csv/);
+  assert.match(csv.headers.get('content-disposition'), /%E9%94%80%E5%94%AE%E5%8F%B0%E8%B4%A6\.csv/);
+  assert.match(await csv.text(), /客户名称,金额/);
+
+  const json = await fetch(`${base}/api/sessions/${session.id}/workbook.json?sheet=${encodeURIComponent('明细')}`);
+  assert.strictEqual(json.status, 200);
+  assert.strictEqual((await json.json()).sheets[0].rows[1]['客户名称'], '乙');
+
+  const missing = await fetch(`${base}/api/sessions/${session.id}/workbook.csv?sheet=nope`);
+  assert.strictEqual(missing.status, 404);
+  const xlsx = await fetch(`${base}/api/sessions/${session.id}/workbook.xlsx`);
+  assert.strictEqual(xlsx.status, 200);
+});
+
+test('a turn can fetch a CSV and import it as the table', async (t) => {
+  const http = require('node:http');
+  const src = http.createServer((req, res) => {
+    res.setHeader('connection', 'close');
+    res.setHeader('content-type', 'text/csv');
+    res.end('城市,人口\n杭州,1200\n宁波,950\n');
+  });
+  await new Promise((r) => listenLocal(src).then(r));
+  t.after(() => new Promise((r) => src.close(r)));
+  const url = `http://127.0.0.1:${src.address().port}/c.csv`;
+
+  const { base } = await startServer(t, {
+    chatConfirmEdits: false,
+    extra: { chatCanFetch: true, fetchBlocklist: [] },
+    fetchOptions: { allowPrivate: true },
+    replies: [[{ tool: 'fetch_url', args: { url, importAs: '城市' } }, '导入了。']],
+  });
+  const { json: { session } } = await post(base, '/api/sessions', {});
+  const r = await post(base, `/api/sessions/${session.id}/turn`, { message: `把 ${url} 导入` });
+  assert.strictEqual(r.json.applied, true);
+  const stored = await get(base, `/api/sessions/${session.id}`);
+  assert.deepStrictEqual(stored.json.session.spec.sheets[0].rows, [['杭州', 1200], ['宁波', 950]]);
+});
+
+test('the server blocklist reaches the fetch tool', async (t) => {
+  const seenResults = [];
+  const { base } = await startServer(t, {
+    extra: { chatCanFetch: true, fetchBlocklist: ['blocked.example'] },
+    replies: [[
+      { tool: 'fetch_url', args: { url: 'https://www.blocked.example/a.csv' } },
+      (context) => {
+        seenResults.push(...context.messages.filter((m) => m.role === 'toolResult'));
+        return '被禁止了。';
+      },
+    ]],
+  });
+  const { json: { session } } = await post(base, '/api/sessions', {});
+  await post(base, `/api/sessions/${session.id}/turn`, { message: '抓 https://www.blocked.example/a.csv' });
+  assert.strictEqual(seenResults.length, 1);
+  assert.strictEqual(seenResults[0].isError, true);
+  assert.match(seenResults[0].content[0].text, /禁止抓取/);
 });

@@ -359,12 +359,13 @@ async function main(): Promise<void> {
       //
       // `process.getBuiltinModule` is what makes that laziness work now that
       // this file is an ES module with no `require` of its own. The obvious
-      // substitute, `createRequire(__filename)`, is worse than useless here:
-      // the bundler that builds the executable defines `__filename` as the
-      // VIRTUAL module id (`desktop.js`), not a path, and `createRequire`
-      // rejects it. That broke the packaged build with a confusing
-      // "filename must be ... an absolute path" error, traced to this line.
-      // `getBuiltinModule` takes a specifier and no path at all.
+      // substitute, `createRequire(__filename)`, depends on what the bundler
+      // makes of `__filename`: the hand-rolled bundler the executable used to
+      // be built with defined it as the VIRTUAL module id (`desktop.js`), not
+      // a path, and `createRequire` rejected it with a confusing "filename
+      // must be ... an absolute path" error, traced to this line. esbuild now
+      // leaves the real one in place, but `getBuiltinModule` takes a specifier
+      // and no path at all, so no bundler can break it again.
       sea = process.getBuiltinModule('node:sea');
     } catch (e) { seaError = (e as Error).message; }
     console.log('isPackaged()        = ' + isPackaged());

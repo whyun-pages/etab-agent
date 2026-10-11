@@ -44,24 +44,34 @@ cd .verify && node verify.js       # ALL EXTERNAL CHECKS PASSED（exceljs 对照
 | `lib/extract.js` | 中文取值抽取（金额、日期、布尔、枚举归一化） | 无 |
 | `lib/workbook.js` | workbook spec 层（归一化、校验、落笔、日期序列号、样式） | extract, xlsx |
 | `lib/workbook-preview.js` | 字节/内存 → 可绘制的网格（值 + 格式两条平行网格） | workbook, xlsx |
-| `lib/agent.js` | 对话轮决策（三道闸：预筛、intent、guardChange） | llm, workbook |
+| `lib/agent.js` | 对话轮（pi-agent 工具循环；三道闸：预筛、意图由结构推出、guardChange；`save_file` 只登记、`fetch_url` 导入记为编辑操作） | llm, workbook, spec-ops, export, fetch-url, pi, model |
+| `lib/spec-ops.js` | 编辑工具背后的纯函数操作（按行号 + 列名定位；可重放） | workbook |
+| `lib/export.js` | 导出 xlsx / CSV / JSON（纯函数、确定性；CSV 防公式注入）+ 不覆盖地写入导出目录 | workbook |
+| `lib/fetch-url.js` | `fetch_url` 的抓取（SSRF 防护：连接时校验地址、逐跳校验重定向、黑名单、限时限量）与读取 | attachments, workbook |
+| `lib/pi.js` | pi-agent 的唯一加载点（纯 ESM 依赖，经 `import()` 加载） | pi-ai, pi-agent-core |
+| `lib/model.js` | 设置 → pi-ai `Model`（三种协议、保守的 OpenAI 兼容设置） | 无 |
 | `lib/session-store.js` | 会话持久化（存 spec 不存 bytes，原子写，读取时归一化） | workbook |
 | `lib/skills.js` | 技能保存与回放（**暂未接 UI**） | 无 |
 | `lib/settings.js` | BYOK 设置存储（key 不回传、只回掩码） | 无 |
-| `lib/llm.js` | 模型调用（stripReasoning、balancedObjects、超时） | 无（内置 fetch） |
+| `lib/llm.js` | 单次模型调用（基于 pi-ai；空闲/总时长/取消三路计时、错误原文透出、stripReasoning） | pi, model |
 | `lib/server.js` | HTTP API + 静态资源 | 全部 |
 | `public/` | 前端（原生 ES 模块，无构建步骤） | 无 |
 
 ## 关键设计决定
 
-- **零运行时依赖。** XLSX 层手写。理由是确定性：同一输入必须产出字节相同的文件，且不引入供应链。
+- **XLSX 层手写。** 理由是确定性：同一输入必须产出字节相同的文件。（运行时曾经零依赖；
+  对话轮改用 pi-agent 后，模型调用这一层引入了 pi-ai / pi-agent-core，XLSX 层仍不依赖任何包。）
 - **exceljs 仅作开发期验证。** `.verify/` 下，用于交叉核对样式、数字格式、公式。
 - **会话即文档。** `{id, title, messages, spec}`，工作簿由 spec 按需派生。
   不存 bytes——bytes 是 spec 的纯函数，存两份就会出现「文件和 spec 不一致」。
-- **模型只提整份 spec，代码校验落笔。** 模型可以说得天花乱坠，但一个解析
-  不出来的回复改不了任何一个单元格。
-- **三道闸。** ① `looksLikeWork` 预筛；② intent 字段显式声明 `action` 才可带
-  spec；③ `guardChange` 确定性校验——你没要求删行，行数就不能少。
+- **模型通过工具改表，代码校验落笔。** 模型可以说得天花乱坠，但不调用工具的回复
+  改不了任何一个单元格；每次工具调用的结果都过 `normalizeSpec` + `validateSpec`。
+  （早期是每轮输出整份 spec；改成增量工具后，按行号 + 列名定位，不做内容匹配。）
+- **三道闸。** ① `looksLikeWork` 预筛；② 意图由结构推出——编辑工具成功执行才是
+  `action`，不再信任模型自报的 intent；③ `guardChange` 对本轮累计结果做确定性校验——
+  你没要求删行，行数就不能少。
+- **落盘重放操作，不写回快照。** 服务端在会话存储的队列槽里把本轮操作重放到最新的
+  spec 上，并发的两轮修改都不会丢；行号对不上时本轮不落盘。
 - **改动的确认是两次调用。** `POST /turn` 返回提案，`POST /apply` 才落笔。
   一个 flag 的解析失误不该变成数据丢失。
 - **预览用两条平行网格。** 值一条、格式一条，格式只在非 General 时写。

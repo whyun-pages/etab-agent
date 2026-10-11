@@ -126,6 +126,13 @@ it — `store.update(id, (current) => ...)` loads and writes in one queue slot, 
 the caller folds in only the *result* of the slow work. **Never write a whole
 record from a snapshot taken before an `await`.**
 
+The turn route applies this to the workbook itself: the agent returns the list of
+edit operations it performed (`TurnResult.ops`), and the route replays them on
+`current.spec` inside `update` (`applyOps` in `lib/spec-ops.ts`, pure and
+deterministic) instead of writing back the spec the turn computed from its
+snapshot. When the operations no longer fit the newer table, nothing lands and
+the reply says so.
+
 → The general lesson: the cost of async conversion is not in the function you
 changed, it is in every CALLER that did `read -> wait -> write`. Those callers
 silently went from atomic to racy.
@@ -137,11 +144,19 @@ silently went from atomic to racy.
   properties, no `export =`, no `import x = require(...)`. Node strips types; it
   does not transform them.
 - **ESM source, CommonJS emit.** Write `import`/`export` in `.ts`; `tsc`
-  (`module: commonjs`) emits the CJS the bundler needs. Relative specifiers keep
-  the `.ts` extension — `rewriteRelativeImportExtensions` rewrites them to `.js`
-  in the emitted require. A bare `require()` call is NOT rewritten, so do not add
-  new ones. The single deliberate exception is the guarded `require('node:sea')`
-  in `lib/assets.ts`, which must stay lazy so its `try/catch` still works.
+  (`module: nodenext`, with `package.json` `type: commonjs`) emits CJS. Relative
+  specifiers keep the `.ts` extension — `rewriteRelativeImportExtensions`
+  rewrites them to `.js` in the emitted require. A bare `require()` call is NOT
+  rewritten, so do not add new ones. The single deliberate exception is the
+  guarded `require('node:sea')` in `lib/assets.ts`, which must stay lazy so its
+  `try/catch` still works.
+- **ESM-only dependencies load through `import()`, in one place.** pi-agent
+  (`@mariozechner/pi-ai`, `@mariozechner/pi-agent-core`) ships ESM with only an
+  `import` condition, so a CommonJS `require` of it cannot resolve. `lib/pi.ts`
+  loads it with a dynamic `import()` — kept verbatim in the emit because the
+  module setting is `nodenext`; `module: commonjs` would rewrite it into a
+  `require` and break it. Everywhere else, use `import type` for pi's types and
+  `loadPi()` for its values. Do not add a value import of either package.
 - **Determinism is a feature.** Same input, same output bytes. Do not introduce
   clocks, random ordering, or `Object.keys` iteration over unordered input into
   anything that produces a file.

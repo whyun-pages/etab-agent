@@ -35,6 +35,7 @@ const path = require('node:path');
 const ROOT = path.join(__dirname, '..');
 const OUT = path.join(__dirname, 'out');
 const { createServer } = require(path.join(ROOT, 'lib', 'server.js'));
+const { modelFromTransport } = require('./transport-model');
 const { openPage, closePage, findEdge, sleep } = require('./cdp.js');
 
 let passed = 0;
@@ -96,7 +97,7 @@ async function main() {
     dataDir,
     staticDir: path.join(ROOT, 'public'),
     settingsOverride: fakeSettings(),
-    transport,
+    model: await modelFromTransport(transport),
   });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   const base = `http://127.0.0.1:${server.address().port}`;

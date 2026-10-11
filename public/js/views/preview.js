@@ -15,6 +15,11 @@ import { el } from '../dom.js';
 import { icon } from '../icons.js';
 import { sheetView } from './sheet.js';
 
+const FORMATS = [['xlsx', 'xlsx'], ['csv', 'CSV'], ['json', 'JSON']];
+
+/** The picked format, kept across re-renders for the life of the page. */
+let downloadFormat = 'xlsx';
+
 /**
  * @param {object} state
  * @param {object} handlers { onDownload }
@@ -34,10 +39,24 @@ export function previewView(state, handlers) {
     tools.append(el('span', { class: 'preview__stat', text: stats }));
   }
 
-  const dl = el('button', { class: 'btn btn--sm', type: 'button', title: '下载 .xlsx' });
+  // The format picker sits next to the button rather than in a menu: three
+  // choices, and the one in effect should be visible before the click. CSV
+  // holds a single table, so it exports the sheet on screen.
+  const empty = !sheet || !sheet.rows.length;
+  const fmt = el('select', { class: 'preview__format', title: '下载格式', 'aria-label': '下载格式' });
+  for (const [value, label] of FORMATS) {
+    const opt = el('option', { value, text: label });
+    opt.selected = value === downloadFormat;
+    fmt.append(opt);
+  }
+  fmt.disabled = empty;
+  fmt.addEventListener('change', () => { downloadFormat = fmt.value; });
+  tools.append(fmt);
+
+  const dl = el('button', { class: 'btn btn--sm', type: 'button', title: '下载' });
   dl.innerHTML = `${icon('download')}<span>下载</span>`;
-  dl.disabled = !sheet || !sheet.rows.length;
-  dl.addEventListener('click', () => handlers.onDownload());
+  dl.disabled = empty;
+  dl.addEventListener('click', () => handlers.onDownload(downloadFormat, sheet && sheet.name));
   tools.append(dl);
 
   head.append(tools);

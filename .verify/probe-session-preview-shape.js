@@ -17,6 +17,7 @@ const http = require('node:http');
 
 const ROOT = path.join(__dirname, '..');
 const { createServer } = require(path.join(ROOT, 'lib', 'server.js'));
+const { modelFromTransport } = require('./transport-model');
 const { Settings } = require(path.join(ROOT, 'lib', 'settings.js'));
 const { SessionStore } = require(path.join(ROOT, 'lib', 'session-store.js'));
 
@@ -60,7 +61,7 @@ function dateCells(payload) {
 
 async function main() {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'xlshape-'));
-  new Settings(dataDir).save({
+  await new Settings(dataDir).save({
     apiUrl: undefined,
     baseUrl: 'https://api.example.invalid/v1',
     apiKey: 'sk-probe-not-real-0000',
@@ -68,19 +69,19 @@ async function main() {
   });
 
   const store = new SessionStore(dataDir);
-  const session = store.create('');
+  const session = await store.create('');
 
   // A model that proposes the spec once, then proposes nothing.
   let turn = 0;
   const server = createServer({
     dataDir,
     staticDir: path.join(ROOT, 'public'),
-    transport: async () => {
+    model: await modelFromTransport(async () => {
       turn += 1;
       return JSON.stringify(turn === 1
         ? { intent: 'action', reply: '建好了。', spec: SPEC }
         : { intent: 'answer', reply: '好。' });
-    },
+    }),
   });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   const port = server.address().port;

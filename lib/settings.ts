@@ -4,9 +4,9 @@
  *
  * Scope
  * -----
- * This holds ONLY what the user typed into the settings panel: an API key, a
- * base URL, a model name. Everything else stays in code. Nothing here is
- * synced, uploaded, or baked into the build.
+ * This holds ONLY what the user typed into the settings panel: a protocol, an
+ * API key, a base URL, a model name. Everything else stays in code. Nothing
+ * here is synced, uploaded, or baked into the build.
  *
  * On storing the key in plain text
  * -------------------------------
@@ -39,13 +39,20 @@
  */
 
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { DEFAULT_API, defaultBaseUrl, normalizeApi } from './model.ts';
+import type { ModelApi } from './model.ts';
 
 const FILE_NAME = 'settings.json';
 
 /** The stored settings, with defaults applied. */
 export interface SettingsRecord {
+  // Which wire protocol the endpoint speaks. A file written before this key
+  // existed has none, and reads as OpenAI-compatible — which is the only
+  // protocol those versions could speak, so nothing changes for them.
+  api: ModelApi;
   baseUrl: string;
   apiKey: string;
   model: string;
@@ -58,20 +65,36 @@ export interface SettingsRecord {
   // Default is to confirm, because a chat message is the easiest way to
   // change the wrong cell by accident, and a click is cheap.
   chatConfirmEdits: boolean;
+  // Whether the agent may fetch URLs (lib/fetch-url.ts). Off by default: the
+  // request leaves from this machine, and injected page text can steer it.
+  chatCanFetch: boolean;
+  // Hosts the agent must not fetch; each also covers its subdomains.
+  fetchBlocklist: string[];
+  // Whether the agent may save exports into `exportDir`.
+  chatCanSave: boolean;
+  // Where saved exports go. Empty means the user's Downloads folder, resolved
+  // at use time so a settings file copied to another machine still works.
+  exportDir: string;
 }
 
 /** A patch as written by the settings panel: any subset of the known keys. */
 export interface SettingsPatch {
+  api?: ModelApi;
   baseUrl?: string;
   apiKey?: string;
   model?: string;
   useForAttachments?: boolean;
   chatCanEdit?: boolean;
   chatConfirmEdits?: boolean;
+  chatCanFetch?: boolean;
+  fetchBlocklist?: string[];
+  chatCanSave?: boolean;
+  exportDir?: string;
 }
 
 /** Outbound credentials. Never handed to a response handler. */
 export interface Secrets {
+  api: ModelApi;
   baseUrl: string;
   apiKey: string;
   model: string;
@@ -79,11 +102,18 @@ export interface Secrets {
 
 /** The safe projection the UI sees. Deliberately has no `apiKey`. */
 export interface PublicSettings {
+  api: ModelApi;
   baseUrl: string;
   model: string;
   useForAttachments: boolean;
   chatCanEdit: boolean;
   chatConfirmEdits: boolean;
+  chatCanFetch: boolean;
+  fetchBlocklist: string[];
+  chatCanSave: boolean;
+  exportDir: string;
+  /** where a save actually lands: `exportDir`, or the default when it is empty */
+  exportDirResolved: string;
   hasKey: boolean;
   keyHint: string | null;
 }
@@ -91,7 +121,8 @@ export interface PublicSettings {
 /** Shape of the on-disk file, with defaults applied. */
 export function defaults(): SettingsRecord {
   return {
-    baseUrl: 'https://api.openai.com/v1',
+    api: DEFAULT_API,
+    baseUrl: defaultBaseUrl(DEFAULT_API),
     apiKey: '',
     model: 'gpt-4o-mini',
     // Whether to send attachment content (documents, images) to the model.
@@ -103,7 +134,17 @@ export function defaults(): SettingsRecord {
     // Default is to confirm, because a chat message is the easiest way to
     // change the wrong cell by accident, and a click is cheap.
     chatConfirmEdits: true,
+    chatCanFetch: false,
+    fetchBlocklist: [],
+    chatCanSave: true,
+    exportDir: '',
   };
+}
+
+/** The directory a save lands in. */
+export function resolveExportDir(s: Pick<SettingsRecord, 'exportDir'>): string {
+  const dir = String(s.exportDir || '').trim();
+  return dir || path.join(os.homedir(), 'Downloads');
 }
 
 /**
@@ -233,6 +274,7 @@ export class Settings {
   async secrets(): Promise<Secrets> {
     const s = await this.load();
     return {
+      api: normalizeApi(s.api),
       baseUrl: String(s.baseUrl || '').replace(/\/+$/, ''),
       apiKey: String(s.apiKey || ''),
       model: String(s.model || ''),
@@ -256,11 +298,17 @@ export class Settings {
     const s = await this.load();
     const key = String(s.apiKey || '');
     return {
+      api: normalizeApi(s.api),
       baseUrl: s.baseUrl,
       model: s.model,
       useForAttachments: Boolean(s.useForAttachments),
       chatCanEdit: Boolean(s.chatCanEdit),
       chatConfirmEdits: Boolean(s.chatConfirmEdits),
+      chatCanFetch: Boolean(s.chatCanFetch),
+      fetchBlocklist: Array.isArray(s.fetchBlocklist) ? s.fetchBlocklist.map(String) : [],
+      chatCanSave: Boolean(s.chatCanSave),
+      exportDir: String(s.exportDir || ''),
+      exportDirResolved: resolveExportDir(s),
       hasKey: Boolean(key),
       keyHint: key ? mask(key) : null,
     };

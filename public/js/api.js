@@ -66,16 +66,20 @@ export const api = {
   /** Accept (or discard) a proposal that was held for confirmation. */
   applyTurn: (id, accept = true) => req('POST', `/api/sessions/${q(id)}/apply`, { body: { accept } }),
 
-  /** The workbook as bytes, derived from the stored spec. */
-  async workbook(id) {
-    const res = await fetch(`/api/sessions/${q(id)}/workbook.xlsx`);
+  /**
+   * The workbook as bytes, derived from the stored spec. CSV holds one table,
+   * so it takes the sheet to export; the server defaults to the first.
+   */
+  async workbook(id, format = 'xlsx', sheet = null) {
+    const query = sheet && format === 'csv' ? `?sheet=${q(sheet)}` : '';
+    const res = await fetch(`/api/sessions/${q(id)}/workbook.${format}${query}`);
     if (!res.ok) {
       let msg = `HTTP ${res.status}`;
       try { msg = (await res.json()).error || msg; } catch { /* keep the status text */ }
       throw new ApiError(msg);
     }
     const blob = await res.blob();
-    return { blob, name: filenameOf(res.headers.get('content-disposition')) || '工作簿.xlsx' };
+    return { blob, name: filenameOf(res.headers.get('content-disposition')) || `工作簿.${format}` };
   },
 
   // ── attachments ───────────────────────────────────────────────────

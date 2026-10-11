@@ -9,6 +9,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert');
+const { listenLocal } = require('./listen');
 const http = require('node:http');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -25,7 +26,7 @@ function startServer(t) {
     staticDir: null,
   });
   return new Promise((resolve) => {
-    server.listen(0, '127.0.0.1', () => {
+    listenLocal(server).then(() => {
       const base = `http://127.0.0.1:${server.address().port}`;
       t.after(() => new Promise((done) => server.close(done)));
       t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
@@ -89,7 +90,7 @@ async function startUiServer(t) {
     state: new AppState({ dataDir: dir }),
     staticDir: PUBLIC_DIR,
   });
-  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  await new Promise((r) => listenLocal(server).then(r));
   t.after(() => new Promise((done) => server.close(done)));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   return `http://127.0.0.1:${server.address().port}`;

@@ -1,13 +1,16 @@
 # Tab Agent
 
-说一句中文要什么表，模型给出整份工作簿，代码校验后落笔，右边实时预览，点一下就下载。
+说一句中文要什么表，模型用工具建表、改表，代码校验后落笔，右边实时预览，点一下就下载。
 没有模板概念，没有表格结构要你手填。
 
-- **运行时零依赖。** `package.json` 里没有 `dependencies`。XLSX 读写是手写的
-  （`lib/zip.ts` + `lib/xlsx*.ts`），唯一的外部包 postject 只在打包时用。
-- **模型只写「数据」，不写「文件」。** 它输出一份 workbook spec（JSON），把 spec
-  变成 xlsx 字节的是确定性代码。同一份 spec 每次产出字节相同的文件。
-- **模型的话不算数。** 它只能*声明*意图，不能直接改单元格。见下面的三道闸。
+- **模型只写「数据」，不写「文件」。** 它通过工具（新建工作簿、改单元格、加列、
+  删行……）修改一份 workbook spec（JSON），把 spec 变成 xlsx 字节的是确定性代码。
+  同一份 spec 每次产出字节相同的文件。
+- **模型的话不算数。** 回复里说「改好了」不会改动任何东西，只有工具调用才会，
+  而且每次调用的结果都要先过校验。见下面的三道闸。
+- **对话轮跑在 [pi-agent](https://github.com/badlogic/pi-mono) 上**
+  （`@mariozechner/pi-agent-core` + `@mariozechner/pi-ai`），支持 OpenAI 兼容、
+  Anthropic、Gemini 三种接口协议。
 
 ## 快速开始
 
@@ -15,7 +18,8 @@
 和 pnpm（版本见 `package.json` 的 `packageManager`，`corepack enable` 可自动对齐）。
 
 ```powershell
-pnpm install                    # 只装开发依赖：typescript / tsx / @types/node / postject，
+pnpm install                    # 运行时依赖 pi-agent（pi-agent-core / pi-ai），开发依赖
+                                # typescript / tsx / esbuild / @types/node / postject，
                                 # 外加 .verify/ 的 exceljs
 pnpm start --port 3179          # 先跑 tsc，再启动 .build/js/server.js
 ```
@@ -69,39 +73,55 @@ pnpm start
 
 一次对话的生命周期：
 
-1. 你说要什么表 → 模型输出一份完整 spec → 校验 → 预览出现在右栏。
-2. 你接着说「加一列备注」「金额那列改成两位小数」→ 模型输出**新的整份 spec**。
-3. 你点下载 → 拿到 `.xlsx`。
+1. 你说要什么表 → 模型调用 `create_workbook` 给出整张表 → 校验 → 预览出现在右栏。
+2. 你接着说「加一列备注」「把第 3 行金额改成 40 万」→ 模型调用**增量工具**
+   （`add_columns`、`update_cells`……），只改你说的那部分。
+3. 你点下载 → 拿到 `.xlsx`；下载按钮旁可以改选 CSV（导出当前预览的工作表）或 JSON。
+   也可以直接在对话里说「保存成 csv」，见下面的[保存与联网抓取](#保存与联网抓取)。
+
+模型看到的当前表格每行都带编号，工具按「行号 + 列名」定位，不按内容去猜哪一行
+是哪一行；地址不存在就报错给模型，由它自己改正，而不是就近改到别的行上。
 
 会话存在磁盘上（存 spec，不存文件字节），关掉窗口下次还在。
 
 ## 三道闸：模型不能直接改表
 
-这是整个设计的核心。模型输出的是*提议*，不是结果。
+这是整个设计的核心。模型的工具调用改的是本轮的*草稿*，不是结果。
 
 | 闸 | 位置 | 作用 |
 |---|---|---|
-| `looksLikeWork` | [lib/agent.ts](lib/agent.ts) | 便宜的预筛。问句根本走不到能替换工作簿的代码路径。 |
-| `intent` | 同上 | 模型必须在回复里显式声明意图（`answer` / `action` / `question`）。只有 `action` 可以携带 spec，而且必须真的携带。 |
-| `guardChange` | 同上 | 确定性校验。不看模型对自己的评价，只看这份 spec 和上一份比改了什么。 |
+| `looksLikeWork` | [lib/agent.ts](lib/agent.ts) | 便宜的预筛，结果报给调用方。 |
+| 意图由结构推出 | 同上 | 不再让模型自报意图：有编辑工具成功执行才是 `action`，调用了 `ask_user` 是 `question`，其余都是 `answer`。纯文本没有任何途径改表；关闭「允许修改」时连编辑工具都不提供。 |
+| `guardChange` | 同上 | 确定性校验，在本轮结束时对**累计结果**判一次：不看模型怎么说，只看草稿和本轮开始时的表比少了多少行。十次小删除按一次大删除算。 |
 
-于是这些情况都不会造成事故：模型答得很自信但没给 spec（降级成回答）、
-声明要改却没给内容（降级成反问）、改出结构性破坏（被拦下并说明原因）。
+于是这些情况都不会造成事故：模型嘴上说改好了但没调用工具（回复里会标明「没有形成
+可执行的修改」）、工具参数写错（报错交回模型自己改）、改出结构性破坏（被拦下并说明原因）。
+
+落盘时也不直接写回本轮算出的 spec：服务端在会话存储的队列槽里，把本轮的操作列表
+**重放**到最新的表上（[lib/spec-ops.ts](lib/spec-ops.ts) 是纯函数，没有并发时结果完全一致）。
+两轮对话同时进行时，后完成的那轮不会抹掉先完成那轮的修改；行号已经对不上时，
+本轮修改不落盘，并在回复里说明。
 
 分不清是提问还是命令时，它选回答或反问，**不选修改**。
 
 ## 接入模型
 
-设置页填三项，点「测试连接」会发一次最小请求并把服务商的原文回显——
+设置页选协议、填三项，点「测试连接」会发一次最小请求并把服务商的原文回显——
 key 错、模型名错、地址错是三种不同的修法，不会糊成一句「连接失败」。
 
 | 字段 | 说明 |
 |---|---|
-| 接口地址 (baseUrl) | 任何 OpenAI 兼容的 `/v1` 地址 |
+| 接口协议 | OpenAI 兼容（默认）/ Anthropic Messages / Google Gemini |
+| 接口地址 (baseUrl) | 该协议的地址。OpenAI 兼容填 `/v1` 地址；Anthropic 不带 `/v1`；Gemini 带版本号（`/v1beta`）。切换协议时，地址和模型名如果还是上一个协议的默认值，会自动换成新协议的默认值；自己填的保持不变 |
 | API key | 自己填，只存在本机 |
 | 模型名 (model) | 你账号可用的模型名 |
 
-设置页只暴露两个开关：
+OpenAI 兼容协议默认按保守的兼容设置发请求（系统提示用 `system` 而不是
+`developer` 角色、不发 `store` 和工具的 `strict` 字段），照顾各家国产兼容接口。
+接口必须支持流式输出（`stream: true`）：只返回一整段 JSON 的接口会明确报错，
+而不是当成空回复。
+
+「对话」一组有两个开关：
 
 - **允许对话修改字段** — 关掉后模型只能回答，不能改表。
 - **修改前需要确认** — 默认开。关掉后修改直接落到预览。
@@ -110,6 +130,33 @@ key 错、模型名错、地址错是三种不同的修法，不会糊成一句�
 > 未加密）。附件内容会发给你填的接口地址。
 
 `useForAttachments` 是后端设置项，目前没有 UI 出口。
+
+### 保存与联网抓取
+
+设置页「保存与联网」一组：
+
+| 设置 | 默认 | 说明 |
+|---|---|---|
+| 允许对话保存文件 | 开 | 对话里说「保存成 csv」「导出 json」，模型调用 `save_file`，文件写进导出目录 |
+| 导出目录 | 空 = 下载文件夹 | 必须是完整路径 |
+| 允许对话联网抓取 | **关** | 模型可以调用 `fetch_url` 下载网页 / CSV / JSON / xlsx；带 `importAs` 时把抓到的表格整张导入为工作表 |
+| 禁止抓取的网站 | 空 | 每行一个域名，同时禁止其子域名 |
+
+- **保存发生在修改落定之后。** `save_file` 只登记请求，服务端在本轮修改真正写入会话后才导出，
+  保存的一定是落盘后的表。修改在等待确认时，确认后才保存；修改被拦下或与并发修改冲突时不保存，
+  并在回复里说明。模型只能指定文件名，不能指定目录；同名文件不覆盖，自动加 ` (1)`、` (2)`。
+- **CSV** 带 UTF-8 BOM（Excel 打开中文不乱码）、CRLF 换行；以 `=` `+` `-` `@` 开头的文本单元格
+  前面加 `'`，防止 Excel 把抓来的内容当公式执行。合计行按 xlsx 的同一算法写成数值。
+- **抓取的安全限制**（[lib/fetch-url.ts](lib/fetch-url.ts)）：只允许 http/https；回环、私网、
+  链路本地等地址一律拒绝，检查发生在实际连接时（DNS 重绑定绕不过），每次重定向都重新检查，
+  最多 5 次；20 秒超时；正文上限 5 MB（按解压后计）。不走系统代理。
+- **风险：** 抓取是黑名单模式，不限制能访问哪些网站。抓到的网页可能藏着诱导模型的文字，
+  让它把表格数据拼进网址发出去。系统提示要求模型不照做，但这挡不住所有情况——表里有敏感数据时
+  不要开启抓取。这是它默认关闭的原因。
+- `.m3u` / `.m3u8` 播放列表会读成表格（频道名、标识名、分组、台标、播放地址），可以直接导入。
+- 开关关闭时模型拿不到对应工具，但会被告知开关在哪，用户要求抓取或保存时它会提示去设置里打开。
+- 导入是一个普通的编辑操作（`create_workbook` 或 `add_sheet`），抓到的行写在操作参数里：
+  照样过校验和删行保护，服务端重放时也不会重新联网。
 
 ### 快捷键
 
@@ -127,15 +174,15 @@ key 错、模型名错、地址错是三种不同的修法，不会糊成一句�
 |---|---|---|
 | GET | `/api/health` | `app` 标识 + 附件数 + 模型是否已配置 |
 | GET | `/api/settings` | 模型配置（**不含 key**，只回 `hasKey` 与掩码提示） |
-| POST | `/api/settings` | 保存 key / baseUrl / model / 开关，只接受白名单字段 |
+| POST | `/api/settings` | 保存协议 / key / baseUrl / model / 开关 / 导出目录 / 禁止抓取的网站，只接受白名单字段；不认识的协议、相对路径的导出目录返回 400 |
 | POST | `/api/settings/test` | 发一次最小请求验证连接，错误原文透传 |
 | GET | `/api/sessions` | 会话列表 |
 | POST | `/api/sessions` | 新建会话 |
 | GET | `/api/sessions/:id` | 会话详情 + 当前预览 |
 | DELETE | `/api/sessions/:id` | 删除会话 |
-| POST | `/api/sessions/:id/turn` | 发一句话，返回意图 / 回复 / 待确认的修改 |
-| POST | `/api/sessions/:id/apply` | 确认或放弃待确认的修改 |
-| GET | `/api/sessions/:id/workbook.xlsx` | 下载当前 `.xlsx` |
+| POST | `/api/sessions/:id/turn` | 发一句话，返回意图 / 回复 / 待确认的修改 / 已保存的文件路径（`saved`） |
+| POST | `/api/sessions/:id/apply` | 确认或放弃待确认的修改；确认时执行该轮登记的保存 |
+| GET | `/api/sessions/:id/workbook.(xlsx\|csv\|json)` | 下载当前表格；`?sheet=` 指定工作表（CSV 默认第一个） |
 | POST | `/api/attachments` | `multipart`，字段 `files`（可多个） |
 | GET / DELETE | `/api/attachments` | 列出 / 清空 |
 
@@ -178,13 +225,15 @@ pnpm build                         # -> dist/TabAgent.exe（约 90 MB）
 **打包是怎么回事**（[tools/build-exe.js](tools/build-exe.js)）：
 
 0. **编译 TypeScript。** 直接跑 `tsc -p tsconfig.json`（和 `pnpm build:js`
-   同一条命令），把 `lib/*.ts` 和两个入口发射成 `.build/js/` 下的 `.js`
-   （`module: commonjs`），顺带做一次类型检查。这一层曾经是
+   同一条命令），把 `lib/*.ts` 和两个入口发射成 `.build/js/` 下的 CommonJS
+   `.js`（`module: nodenext` + `package.json` 的 `type: commonjs`），顺带做一次类型检查。这一层曾经是
    `stripTypeScriptTypes`，但它只擦类型不改模块语法，`export` 会留在产物里而
    打包器把它包进函数体直接语法报错。
 1. **合并模块。** SEA 的 `require` 只认内置模块，`require('./lib/x')` 会报
-   `ERR_UNKNOWN_BUILTIN_MODULE`。[tools/bundle.js](tools/bundle.js) 把 14 个模块
-   合并成一个文件（手写，不引入打包器）。
+   `ERR_UNKNOWN_BUILTIN_MODULE`。[tools/bundle.js](tools/bundle.js) 用 esbuild
+   把项目模块和 npm 依赖（pi-agent 是纯 ESM，经 `import()` 加载）合并成一个
+   CommonJS 文件，约 3.7 MB。pi-ai 里设置页没有开放的 provider（Bedrock、Mistral、
+   Vertex 等）被替换成占位模块，不打进去。
 2. **内嵌资源。** `public/` 下 16 个文件作为 SEA assets 嵌入，`lib/assets.ts` 用
    `sea.getAsset()` 读。
 3. 生成 manifest → 4. 生成 blob → 5. 复制 `node.exe` 并注入（postject）。
@@ -218,8 +267,9 @@ git push origin v0.1.0
 ```powershell
 pnpm typecheck                   # tsc --noEmit
 pnpm build:js                    # 先编译（测试跑在 .build/js，pnpm test 不会自动编译）
-pnpm test                        # 静态导入检查 + 236 项核心测试
-pnpm bundle                      # 合并器：依赖图无环、无第三方模块
+pnpm test                        # 静态导入检查 + 341 项核心测试
+pnpm bundle                      # 合并器：外部依赖只剩内置模块和已知可选包；探针包拷到没有
+                                 # node_modules 的临时目录里，真跑一次请求和一轮带工具调用的对话
 pnpm verify:live                 # 先重新打包 exe，再跑真机探针子集（需要 Windows 桌面 + Edge + 已配模型）
 ```
 
@@ -241,14 +291,15 @@ Windows 注意：`node --test tests/` 不认目录，必须写 glob。
 
 - **离线对照** — `verify.js` 用 exceljs 独立实现比对同一份输入；
   `workbook-verify.js` 比对落笔结果。
-- **真机** — `live-agent.js` / `live-session-api.js` / `live-ui.js` /
+- **真机** — `live-agent.js` / `live-session-api.js` / `live-save-fetch-model.js` / `live-save-fetch.js` / `live-ui.js` /
   `live-attachments.js` / `live-port.js` / `live-exe.js` / `live-click.js`。
   这一类打的是真实 HTTP、真实进程、真实模型，用 CDP 发真实鼠标事件
   （不是 `element.click()`——那个跳过命中测试，有浮层盖着也发现不了）。
 
 ## 已知限制
 
-- **PDF 不解析。** 附件里的 PDF 会被明确标记为不支持，不会静默忽略。
+- **PDF 不解析。** 附件里的 PDF 会被明确标记为不支持，不会静默忽略。抓取到的 PDF 同样如此。
+- **联网抓取不走代理。** 必须经代理才能上网的环境下，抓取会报连接错误。
 - **图片 / 文档的模型解析要自己配 key；未配置时回退到内置规则**
   （图片只能读尺寸，文档能读文字），不报错。
 - **附件模块目前没有 UI 入口。** 路由和解析都在，前端还没接回去。

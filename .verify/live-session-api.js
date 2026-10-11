@@ -112,14 +112,17 @@ async function main() {
       // the format code beside them. The first version of this check looked for
       // the serial and called it a bug — that was the assertion being wrong, not
       // the data. Assert the format instead.
-      const dateCol = prop.rows[0].findIndex((h) => /日期|签约/.test(String(h)));
+      // 「日期」first: a model may name the amount column 「签约金额」, and a
+      // match on 签约 alone then picks the money column.
+      const byDate = prop.rows[0].findIndex((h) => /日期/.test(String(h)));
+      const dateCol = byDate >= 0 ? byDate : prop.rows[0].findIndex((h) => /签约/.test(String(h)));
       const dateFmt = dateCol >= 0 ? prop.formats[1][dateCol] : null;
       check('a date column carries a date format', /[yd]/i.test(String(dateFmt)), `col ${dateCol} fmt ${JSON.stringify(dateFmt)}`);
       const serial = dateCol >= 0 ? prop.rows[1][dateCol] : null;
       check('and the stored value is a serial number, not a string',
         typeof serial === 'number' && serial > 40000 && serial < 60000, JSON.stringify(serial));
       check('no date column is left unformatted',
-        !prop.rows[0].some((h, i) => /日期|签约/.test(String(h)) && !/[yd]/i.test(String(prop.formats[1][i]))),
+        !prop.rows[0].some((h, i) => /日期/.test(String(h)) && !/[yd]/i.test(String(prop.formats[1][i]))),
         JSON.stringify(prop.formats[1]));
     } else {
       check('the proposal carries a preview', false);
