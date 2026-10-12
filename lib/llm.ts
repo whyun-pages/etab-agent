@@ -117,12 +117,18 @@ export interface ClockArgs {
 /** One combined cancellation source, and how to read why it fired. */
 export interface Clocks {
   signal: AbortSignal;
-  /** restart the idle clock; call on every sign of life */
-  touch(): void;
+  /**
+   * Restart the idle clock; call on every sign of life. `idleMs` sets how long
+   * the NEXT silence may last, for a caller that knows some silences are
+   * longer than others; omitted, it is `idleTimeoutMs`.
+   */
+  touch(idleMs?: number): void;
   /** which source fired, once aborted; null before */
   reason(): AbortWhy | null;
   timeoutMs: number;
   idleTimeoutMs?: number;
+  /** the silence limit currently armed — the one that fired, after an idle abort */
+  idleWindowMs(): number | undefined;
   /** clear the timers and detach from the caller's signal */
   dispose(): void;
 }
@@ -144,10 +150,12 @@ export function createClocks({ timeoutMs, idleTimeoutMs, signal }: ClockArgs): C
   };
   const timer = setTimeout(() => abort('timeout'), timeoutMs);
   let idle: ReturnType<typeof setTimeout> | undefined;
-  const touch = (): void => {
+  let windowMs = idleTimeoutMs;
+  const touch = (idleMs?: number): void => {
     if (!idleTimeoutMs || ctrl.signal.aborted) return;
+    windowMs = idleMs || idleTimeoutMs;
     if (idle) clearTimeout(idle);
-    idle = setTimeout(() => abort('idle'), idleTimeoutMs);
+    idle = setTimeout(() => abort('idle'), windowMs);
   };
   const onCallerAbort = (): void => abort('caller');
   if (signal) {
@@ -161,6 +169,7 @@ export function createClocks({ timeoutMs, idleTimeoutMs, signal }: ClockArgs): C
     reason: () => why,
     timeoutMs,
     idleTimeoutMs,
+    idleWindowMs: () => windowMs,
     dispose() {
       clearTimeout(timer);
       if (idle) clearTimeout(idle);
@@ -188,7 +197,9 @@ export function toLlmError(message: Pick<AssistantMessage, 'stopReason' | 'error
     return new LlmError(`请求超时（${Math.round(clocks!.timeoutMs / 1000)} 秒）`, { code: 'aborted' });
   }
   if (why === 'idle') {
-    return new LlmError(`模型 ${Math.round((clocks!.idleTimeoutMs || 0) / 1000)} 秒没有任何输出，已中断`, { code: 'aborted' });
+    // The window that fired, not the default: a turn arms a longer one while a
+    // reply is streaming, and quoting the shorter would misstate the wait.
+    return new LlmError(`模型 ${Math.round((clocks!.idleWindowMs() || 0) / 1000)} 秒没有任何输出，已中断`, { code: 'aborted' });
   }
   if (why === 'caller' || message.stopReason === 'aborted') {
     return new LlmError('请求已取消', { code: 'aborted' });

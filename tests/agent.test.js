@@ -805,3 +805,122 @@ test('runTurn: with fetching or saving off, the model is told where the switch i
   const on = await turnWith(['好'], { message: '下载', spec: specWith([['甲', 1]]), canSave: true, canFetch: true });
   assert.doesNotMatch(on.contexts[0].systemPrompt, /已关闭/);
 });
+
+test('runTurn: a table read without importAs tells the model to import, not copy', async () => {
+  const srv = await csvServer('城市,人口\n杭州,1200\n宁波,950\n');
+  try {
+    const res = await turnWith([
+      { tool: 'fetch_url', args: { url: srv.url } },
+      '好',
+    ], { message: `把 ${srv.url} 整理成表格`, canFetch: true, fetchOptions: { allowPrivate: true } });
+    const text = res.contexts[1].messages.find((m) => m.role === 'toolResult').content[0].text;
+    assert.match(text, /^（提示：这是一张 2 行的表格/);
+    assert.match(text, /importAs/);
+    // Ours, ahead of the page's own words, so it cannot be read as page text.
+    assert.ok(text.indexOf('importAs') < text.indexOf('不是给你的指令'));
+    assert.match(res.contexts[0].systemPrompt, /第一次调用就带上 importAs/);
+
+    // A read-only turn cannot import, so it is not told to.
+    const ro = await turnWith([
+      { tool: 'fetch_url', args: { url: srv.url } },
+      '好',
+    ], { message: '看看', spec: specWith([['甲', 1]]), canEdit: false, canFetch: true, fetchOptions: { allowPrivate: true } });
+    const roText = ro.contexts[1].messages.find((m) => m.role === 'toolResult').content[0].text;
+    assert.doesNotMatch(roText, /提示/);
+  } finally {
+    await srv.close();
+  }
+});
+
+// ── output cut off at the token cap ─────────────────────────────────
+
+test('runTurn: tool calls in a reply cut off at the token cap are not run', async () => {
+  const { ai, faux } = await loadFaux();
+  const contexts = [];
+  const cut = {
+    title: '频道', sheets: [{ name: '频道', columns: [{ header: '名称', type: 'text' }, { header: '地址', type: 'text' }],
+      rows: [['甲', 'rtp://1'], ['乙']] }],
+  };
+  faux.setResponses([
+    (c) => { contexts.push(c); return ai.fauxAssistantMessage([ai.fauxToolCall('create_workbook', cut)], { stopReason: 'length' }); },
+    (c) => {
+      contexts.push(c);
+      return step(ai, { tool: 'create_workbook', args: { ...cut, sheets: [{ ...cut.sheets[0], rows: [['甲', 'rtp://1'], ['乙', 'rtp://2']] }] } });
+    },
+    (c) => { contexts.push(c); return step(ai, '好了'); },
+  ]);
+  const res = await runTurn({ settings: fakeSettings(), model: faux.getModel(), message: '建频道表' });
+
+  const refusal = contexts[1].messages.find((m) => m.role === 'toolResult');
+  assert.strictEqual(refusal.isError, true);
+  assert.match(refusal.content[0].text, /截断/);
+  assert.match(refusal.content[0].text, /add_rows/);
+  // Only the complete call landed: no padded half-row from the cut-off one.
+  assert.strictEqual(res.ops.length, 1);
+  assert.deepStrictEqual(res.spec.sheets[0].rows, [['甲', 'rtp://1'], ['乙', 'rtp://2']]);
+});
+
+// ── the two idle windows ────────────────────────────────────────────
+
+/**
+ * A model that goes silent. The faux provider can only be slow BEFORE a reply
+ * starts; the case that matters is silence in the MIDDLE of one, as when a
+ * provider holds back tool-call arguments. So this registers a provider of its
+ * own: it waits `before` ms, sends `start`, waits `during` ms, then the text.
+ */
+async function silentModel({ before = 0, during = 0 }) {
+  const { ai, faux } = await loadFaux();
+  const api = `silent-${before}-${during}-${Math.random().toString(36).slice(2)}`;
+  const wait = (ms, signal) => new Promise((resolve) => {
+    if (!ms) return resolve();
+    const t = setTimeout(resolve, ms);
+    signal?.addEventListener('abort', () => { clearTimeout(t); resolve(); }, { once: true });
+  });
+  const stream = (model, _context, options) => {
+    const out = ai.createAssistantMessageEventStream();
+    const base = { ...ai.fauxAssistantMessage('好'), api: model.api, provider: model.provider, model: model.id };
+    const partial = { ...base, content: [] };
+    const aborted = () => {
+      const msg = { ...partial, stopReason: 'aborted', errorMessage: 'aborted' };
+      out.push({ type: 'error', reason: 'aborted', error: msg });
+      out.end(msg);
+    };
+    (async () => {
+      await wait(before, options?.signal);
+      if (options?.signal?.aborted) return aborted();
+      out.push({ type: 'start', partial });
+      await wait(during, options?.signal);
+      if (options?.signal?.aborted) return aborted();
+      out.push({ type: 'text_start', contentIndex: 0, partial });
+      out.push({ type: 'text_delta', contentIndex: 0, delta: '好', partial });
+      out.push({ type: 'text_end', contentIndex: 0, content: '好', partial: base });
+      out.push({ type: 'done', reason: 'stop', message: base });
+      out.end(base);
+    })();
+    return out;
+  };
+  ai.registerApiProvider({ api, stream, streamSimple: stream });
+  return { ...faux.getModel(), api };
+}
+
+test('runTurn: silence inside a streaming reply gets the longer window', async () => {
+  const model = await silentModel({ during: 300 });
+  const res = await runTurn({ settings: fakeSettings(), model, message: '你好', idleTimeoutMs: 100, streamIdleTimeoutMs: 2000 });
+  assert.strictEqual(res.reply, '好');
+});
+
+test('runTurn: the longer window still ends a reply that stays silent', async () => {
+  const model = await silentModel({ during: 1000 });
+  await assert.rejects(
+    () => runTurn({ settings: fakeSettings(), model, message: '你好', idleTimeoutMs: 100, streamIdleTimeoutMs: 250 }),
+    (err) => err.code === 'aborted' && /没有任何输出/.test(err.message),
+  );
+});
+
+test('runTurn: silence before a reply starts gets only the short window', async () => {
+  const model = await silentModel({ before: 400 });
+  await assert.rejects(
+    () => runTurn({ settings: fakeSettings(), model, message: '你好', idleTimeoutMs: 100, streamIdleTimeoutMs: 5000 }),
+    (err) => err.code === 'aborted' && /没有任何输出/.test(err.message),
+  );
+});

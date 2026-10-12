@@ -18,7 +18,7 @@ const os = require('node:os');
 const path = require('node:path');
 
 const { Settings, mask } = require('../lib/settings');
-const { chat, LlmError, toLlmError, stripReasoning, imagePart } = require('../lib/llm');
+const { chat, LlmError, toLlmError, stripReasoning, imagePart, createClocks } = require('../lib/llm');
 const { modelFromSecrets } = require('../lib/model');
 
 function scratch() {
@@ -268,6 +268,30 @@ test('a stream that goes quiet is aborted by the idle clock, not the total one',
       return true;
     },
   );
+});
+
+test('createClocks: touch(ms) arms that window for the next silence only', async () => {
+  const clocks = createClocks({ timeoutMs: 5000, idleTimeoutMs: 40 });
+  try {
+    // A longer window survives a silence the default would not...
+    clocks.touch(400);
+    assert.equal(clocks.idleWindowMs(), 400);
+    await new Promise((r) => setTimeout(r, 120));
+    assert.equal(clocks.reason(), null);
+    // ...and a plain touch goes back to the default, which then fires.
+    clocks.touch();
+    assert.equal(clocks.idleWindowMs(), 40);
+    await new Promise((r) => setTimeout(r, 120));
+    assert.equal(clocks.reason(), 'idle');
+  } finally {
+    clocks.dispose();
+  }
+});
+
+test('toLlmError: an idle abort quotes the window that fired, not the default', () => {
+  const clocks = { reason: () => 'idle', idleWindowMs: () => 180_000, idleTimeoutMs: 60_000, timeoutMs: 300_000 };
+  const err = toLlmError({ stopReason: 'aborted' }, clocks);
+  assert.match(err.message, /模型 180 秒没有任何输出/);
 });
 
 test('a stream that never stops still ends at the total cap', async (t) => {
