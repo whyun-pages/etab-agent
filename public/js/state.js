@@ -23,8 +23,18 @@ export const state = {
   activeId: null,
   /** The open session's transcript: [{ role, content, at, intent, guarded, notes }] */
   messages: [],
-  /** The grid of the open session's workbook, or null when it has none. */
+  /**
+   * The grid of the open session's workbook, or null when it has none:
+   * { name, rows, formats, merged, cols, startRow, totalRows, totalCols, key,
+   * proposed }. `rows` grows as the user scrolls (see loadMorePreview in
+   * app.js); `key` names the version of the table the rows were cut from, and
+   * `proposed` says it is the held change rather than the stored table.
+   */
   preview: null,
+  /** A page of preview rows is on its way. */
+  previewLoading: false,
+  /** Why the last page failed, shown under the grid with a retry. */
+  previewError: null,
   /** The open session's title, as the server has it. */
   title: '',
   /**

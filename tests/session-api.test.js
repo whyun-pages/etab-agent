@@ -701,3 +701,80 @@ test('the server blocklist reaches the fetch tool', async (t) => {
   assert.strictEqual(seenResults[0].isError, true);
   assert.match(seenResults[0].content[0].text, /禁止抓取/);
 });
+
+// ── preview paging ──────────────────────────────────────────────────
+
+/** SPEC with `n` data rows, numbered so a row's position can be checked. */
+const bigSpec = (n) => ({
+  ...SPEC,
+  sheets: [{ ...SPEC.sheets[0], rows: Array.from({ length: n }, (_, i) => [`客户${i + 1}`, (i + 1) * 100]) }],
+});
+
+test('the preview comes in a first window, and the rest pages in by key', async (t) => {
+  const { base } = await startServer(t, { replies: [[{ tool: 'create_workbook', args: bigSpec(300) }, '好']], chatConfirmEdits: false });
+  const { json: created } = await post(base, '/api/sessions', {});
+  const id = created.session.id;
+  const turn = await post(base, `/api/sessions/${id}/turn`, { message: '做一个 300 行的表' });
+
+  const first = turn.json.preview;
+  assert.strictEqual(first.rows.length, 40, 'the first window only');
+  assert.strictEqual(first.startRow, 1);
+  assert.strictEqual(first.totalRows, 301, 'header + 300 data rows');
+  assert.ok(first.key, 'a key to page against');
+
+  // Page by page to the end; every row arrives once, in order, with formats.
+  let rows = first.rows.slice();
+  while (rows.length < first.totalRows) {
+    const page = await get(base, `/api/sessions/${id}/preview?key=${first.key}&from=${rows.length + 1}&count=200`);
+    assert.strictEqual(page.json.stale, false);
+    assert.strictEqual(page.json.startRow, rows.length + 1);
+    assert.strictEqual(page.json.formats.length, page.json.rows.length);
+    rows = rows.concat(page.json.rows);
+  }
+  assert.strictEqual(rows.length, 301);
+  assert.deepStrictEqual(rows[300], ['客户300', 30000]);
+  assert.deepStrictEqual(rows.slice(1).map((r) => r[0]), Array.from({ length: 300 }, (_, i) => `客户${i + 1}`));
+
+  // The same key is what reloading the session hands out.
+  const back = await get(base, `/api/sessions/${id}`);
+  assert.strictEqual(back.json.preview.key, first.key);
+});
+
+test('a page request is capped, and a changed table answers stale', async (t) => {
+  const { base } = await startServer(t, { replies: [[{ tool: 'create_workbook', args: bigSpec(800) }, '好']], chatConfirmEdits: false });
+  const { json: created } = await post(base, '/api/sessions', {});
+  const id = created.session.id;
+  const { json: turn } = await post(base, `/api/sessions/${id}/turn`, { message: '做表' });
+
+  const big = await get(base, `/api/sessions/${id}/preview?key=${turn.preview.key}&from=41&count=100000`);
+  assert.strictEqual(big.json.rows.length, 500, 'capped at MAX_PAGE_ROWS');
+
+  // A key from another version of the table gets no rows to stitch on.
+  const wrong = await get(base, `/api/sessions/${id}/preview?key=0000000000000000&from=41&count=10`);
+  assert.deepStrictEqual(wrong.json, { ok: true, stale: true });
+  // Nothing is held, so there is no proposal to page.
+  const none = await get(base, `/api/sessions/${id}/preview?key=${turn.preview.key}&from=41&count=10&proposed=1`);
+  assert.strictEqual(none.json.stale, true);
+
+  const missing = await get(base, '/api/sessions/nope/preview?key=x&from=1');
+  assert.strictEqual(missing.status, 404);
+});
+
+test('a held proposal pages its own rows, not the stored table', async (t) => {
+  const { base } = await startServer(t, { replies: [[{ tool: 'create_workbook', args: bigSpec(120) }, '好']], chatConfirmEdits: true });
+  const { json: created } = await post(base, '/api/sessions', {});
+  const id = created.session.id;
+  const { json: turn } = await post(base, `/api/sessions/${id}/turn`, { message: '做表' });
+  assert.strictEqual(turn.pending, true);
+  const key = turn.proposed.preview.key;
+
+  const page = await get(base, `/api/sessions/${id}/preview?key=${key}&from=41&count=200&proposed=1`);
+  assert.strictEqual(page.json.stale, false);
+  assert.strictEqual(page.json.rows.length, 81, 'rows 41..121');
+  assert.deepStrictEqual(page.json.rows[80], ['客户120', 12000]);
+
+  // Once answered, the proposal is gone and its key goes stale.
+  await post(base, `/api/sessions/${id}/apply`, { accept: false });
+  const after = await get(base, `/api/sessions/${id}/preview?key=${key}&from=41&count=10&proposed=1`);
+  assert.strictEqual(after.json.stale, true);
+});

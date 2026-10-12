@@ -110,6 +110,7 @@ async function openSession(id) {
       title: res.session.title || '',
       messages: res.session.messages || [],
       preview: res.preview || null,
+      previewError: null,
       pending: null,
       draft: '',
       view: 'chat',
@@ -379,7 +380,9 @@ async function send(text) {
 
     set({
       messages: res.messages || state.messages,
-      preview: preview || state.preview,
+      // Marked so the pager asks for the held change's rows, not the stored ones.
+      preview: preview ? { ...preview, proposed: preview === res.proposed?.preview } : state.preview,
+      previewError: null,
       pending: res.pending ? { rows: res.proposed?.rows, reply: res.reply } : null,
       status: res.pending
         ? '改好了，等你确认'
@@ -443,6 +446,50 @@ async function applyPending() {
     setBusy('apply', false);
   }
 }
+
+// ── preview paging ───────────────────────────────────────────────────
+
+/**
+ * Fetch the next page of preview rows and append it.
+ *
+ * Driven by the grid's bottom edge coming into view. One page at a time; a
+ * preview replaced while the request was out (a turn landed, another session
+ * opened) drops the answer, and a table that changed under the key reloads
+ * the preview from the top instead of appending rows of a different table.
+ */
+async function loadMorePreview() {
+  const p = state.preview;
+  const id = state.activeId;
+  if (!p || !id || !p.key || state.previewLoading) return;
+  const loaded = (p.startRow || 1) - 1 + p.rows.length;
+  if (loaded >= (p.totalRows || 0)) return;
+
+  set({ previewLoading: true, previewError: null });
+  try {
+    const res = await api.previewRows(id, { key: p.key, from: loaded + 1, count: PREVIEW_PAGE, proposed: p.proposed });
+    if (state.activeId !== id || state.preview !== p) return;
+    if (res.stale) {
+      const fresh = await api.getSession(id);
+      if (state.activeId === id) set({ preview: fresh.preview || null });
+      return;
+    }
+    set({
+      preview: {
+        ...p,
+        rows: p.rows.concat(res.rows || []),
+        formats: (p.formats || []).concat(res.formats || []),
+        totalRows: res.totalRows,
+      },
+    });
+  } catch (err) {
+    if (state.activeId === id) set({ previewError: err instanceof ApiError ? err.message : String(err?.message || err) });
+  } finally {
+    set({ previewLoading: false });
+  }
+}
+
+/** Rows per page request; the server caps it too. */
+const PREVIEW_PAGE = 200;
 
 /** Discard a held change. The stored spec never moved, so this is local. */
 async function dismissPending() {
@@ -714,8 +761,24 @@ function renderPane() {
   mount($('#pane-body'), [chatView(state, handlers)]);
 }
 
+/**
+ * Repaint the preview, keeping its scroll position while it shows the same
+ * table. Every state change repaints, and a page arriving at the bottom must
+ * not throw the user back to row 1; a different table starts at the top.
+ */
 function renderPreview() {
-  mount($('#preview-pane'), previewView(state, handlers));
+  const pane = $('#preview-pane');
+  const p = state.preview;
+  const identity = p ? `${p.key || ''}:${p.proposed ? 1 : 0}` : '';
+  const prev = pane.querySelector('.preview__body');
+  const keep = prev && pane.dataset.preview === identity ? { top: prev.scrollTop, left: prev.scrollLeft } : null;
+  mount(pane, previewView(state, handlers));
+  pane.dataset.preview = identity;
+  const next = pane.querySelector('.preview__body');
+  if (keep && next) {
+    next.scrollTop = keep.top;
+    next.scrollLeft = keep.left;
+  }
 }
 
 function renderStatusbar() {
@@ -745,6 +808,7 @@ const handlers = {
   onApply: applyPending,
   onDismiss: dismissPending,
   onDownload: downloadWorkbook,
+  onMorePreview: loadMorePreview,
 
   // ── settings ──────────────────────────────────────────────────────
   onSaveSettings: saveSettings,

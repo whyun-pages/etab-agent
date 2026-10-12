@@ -30,9 +30,23 @@ import * as xlsx from './xlsx.ts';
 type WorkbookSpec = import('./workbook.ts').WorkbookSpec;
 type ColumnType = import('./workbook.ts').ColumnType;
 type ParsedSheet = import('./xlsx.ts').ParsedSheet;
+type ParsedWorkbook = import('./xlsx.ts').Workbook;
 
+/**
+ * The first window, sent with every session and turn response. The rest of the
+ * sheet is fetched a page at a time as the user scrolls (`PREVIEW_PAGE_ROWS`,
+ * capped at `MAX_PAGE_ROWS` per request), so a turn's response stays small
+ * however long the table is.
+ */
 export const MAX_PREVIEW_ROWS = 40;
-export const MAX_PREVIEW_COLS = 20;
+export const PREVIEW_PAGE_ROWS = 200;
+export const MAX_PAGE_ROWS = 500;
+/**
+ * Columns are not paged: a grid has to know its width before it can draw a
+ * row. Fifty is wider than any table this app builds by conversation; past it
+ * the grid says how many it is leaving out.
+ */
+export const MAX_PREVIEW_COLS = 50;
 
 /** A cell in a preview grid: JSON-ready, so no Date ever travels. */
 type PreviewValue = string | number | boolean | null;
@@ -49,12 +63,20 @@ interface PreviewGrid {
   formats: Array<Array<string | null>>;
   merged: string[];
   cols: Array<{ min: number | null; max: number | null; width: number | null }>;
+  /** whether anything — rows or columns — lies outside this window */
   truncated: boolean;
+  /** sheet row number (1-based) of `rows[0]` */
+  startRow: number;
+  /** rows and columns in the whole sheet, so a pager knows when it is done */
+  totalRows: number;
+  totalCols: number;
 }
 
 interface PreviewOptions {
   maxRows?: number;
   maxCols?: number;
+  /** first sheet row (1-based) of the window; default 1 */
+  startRow?: number;
 }
 
 /**
@@ -64,22 +86,35 @@ interface PreviewOptions {
  * @param sheetName  preferred sheet; falls back to the first
  */
 export function sheetPreview(buffer: Buffer, sheetName?: string, opts: PreviewOptions = {}): PreviewGrid {
+  return sheetWindow(xlsx.readWorkbook(buffer), sheetName, opts);
+}
+
+/**
+ * One window of an already-parsed workbook: `maxRows` rows from `startRow`.
+ *
+ * Split from `sheetPreview` so a pager can parse the bytes once and cut many
+ * windows from them; the server keeps the parsed workbook for exactly that.
+ */
+export function sheetWindow(wb: ParsedWorkbook, sheetName?: string, opts: PreviewOptions = {}): PreviewGrid {
   const maxRows = opts.maxRows || MAX_PREVIEW_ROWS;
   const maxCols = opts.maxCols || MAX_PREVIEW_COLS;
+  const startRow = Math.max(1, Math.floor(opts.startRow || 1));
 
-  const wb = xlsx.readWorkbook(buffer);
   const sheet: ParsedSheet | undefined = wb.sheets.find((s) => s.name === sheetName) || wb.sheets[0];
   if (!sheet) {
-    return { name: '', rows: [], formats: [], merged: [], cols: [], truncated: false };
+    return { name: '', rows: [], formats: [], merged: [], cols: [], truncated: false, startRow, totalRows: 0, totalCols: 0 };
   }
 
-  const rowLimit = Math.min(sheet.maxRow || 0, maxRows);
-  const colLimit = Math.min(sheet.maxCol || 0, maxCols);
-  const rows: PreviewValue[][] = Array.from({ length: rowLimit }, () => new Array<PreviewValue>(colLimit).fill(null));
-  const formats: Array<Array<string | null>> = Array.from({ length: rowLimit }, () => new Array<string | null>(colLimit).fill(null));
+  const totalRows = sheet.maxRow || 0;
+  const totalCols = sheet.maxCol || 0;
+  const lastRow = Math.min(totalRows, startRow + maxRows - 1);
+  const rowCount = Math.max(0, lastRow - startRow + 1);
+  const colLimit = Math.min(totalCols, maxCols);
+  const rows: PreviewValue[][] = Array.from({ length: rowCount }, () => new Array<PreviewValue>(colLimit).fill(null));
+  const formats: Array<Array<string | null>> = Array.from({ length: rowCount }, () => new Array<string | null>(colLimit).fill(null));
 
   for (const c of sheet.cells || []) {
-    if (c.row > rowLimit || c.col > colLimit) continue;
+    if (c.row < startRow || c.row > lastRow || c.col > colLimit) continue;
     const raw = c.value;
     // A reader-produced cell carries its kind on the value object. A formula's
     // cached result is what Excel shows before it recalculates, so that is what
@@ -91,10 +126,10 @@ export function sheetPreview(buffer: Buffer, sheetName?: string, opts: PreviewOp
     } else {
       v = raw;
     }
-    rows[c.row - 1][c.col - 1] = v;
+    rows[c.row - startRow][c.col - 1] = v;
 
     const fmt = xlsx.numFmtCodeFor(wb.styles, c.styleIndex);
-    if (fmt && fmt !== 'General') formats[c.row - 1][c.col - 1] = fmt;
+    if (fmt && fmt !== 'General') formats[c.row - startRow][c.col - 1] = fmt;
   }
 
   return {
@@ -103,7 +138,10 @@ export function sheetPreview(buffer: Buffer, sheetName?: string, opts: PreviewOp
     formats,
     merged: sheet.merges || [],
     cols: (sheet.cols || []).filter((c) => c.hidden !== true).map((c) => ({ min: c.min, max: c.max, width: c.width })),
-    truncated: (sheet.maxRow || 0) > rowLimit || (sheet.maxCol || 0) > colLimit,
+    truncated: startRow > 1 || totalRows > lastRow || totalCols > colLimit,
+    startRow,
+    totalRows,
+    totalCols,
   };
 }
 
@@ -119,7 +157,7 @@ export function sheetPreview(buffer: Buffer, sheetName?: string, opts: PreviewOp
  */
 export function specPreview(spec: WorkbookSpec | null | undefined): PreviewGrid {
   const sheet = (spec && spec.sheets && spec.sheets[0]) || null;
-  if (!sheet) return { name: '', rows: [], formats: [], merged: [], cols: [], truncated: false };
+  if (!sheet) return { name: '', rows: [], formats: [], merged: [], cols: [], truncated: false, startRow: 1, totalRows: 0, totalCols: 0 };
 
   const cols = sheet.columns || [];
   const dataRows = sheet.rows || [];
@@ -159,7 +197,12 @@ export function specPreview(spec: WorkbookSpec | null | undefined): PreviewGrid 
     formats,
     merged: [],
     cols: cols.map((c, i) => ({ min: i + 1, max: i + 1, width: c.width || null })),
-    truncated: dataRows.length > rows.length,
+    // Never cut: every row is built. (This used to compare the data rows with
+    // the grid that contains them plus a header, which can never be larger.)
+    truncated: false,
+    startRow: 1,
+    totalRows: rows.length,
+    totalCols: cols.length,
   };
 }
 

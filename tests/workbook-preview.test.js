@@ -159,3 +159,48 @@ test('sheetPreview: formats are null, not "General", on plain cells', () => {
   assert.strictEqual(p.formats[1][0], null);
   assert.ok(p.formats[1][1]);
 });
+
+// ── windows ─────────────────────────────────────────────────────────
+
+const { sheetWindow, MAX_PREVIEW_ROWS } = require('../lib/workbook-preview');
+const { readWorkbook } = require('../lib/xlsx');
+
+const longSpec = (n) => normalizeSpec({
+  title: 'T',
+  sheets: [{ name: 'S', columns: [{ header: '名称' }, { header: '金额', type: 'currency' }],
+    rows: Array.from({ length: n }, (_, i) => [`r${i + 1}`, i + 1]) }],
+}).spec;
+
+test('sheetPreview: the first window says how big the whole sheet is', () => {
+  const p = sheetPreview(writeSpec(longSpec(100)));
+  assert.strictEqual(p.rows.length, MAX_PREVIEW_ROWS);
+  assert.strictEqual(p.startRow, 1);
+  assert.strictEqual(p.totalRows, 101);
+  assert.strictEqual(p.totalCols, 2);
+  assert.strictEqual(p.truncated, true);
+});
+
+test('sheetWindow: windows tile the sheet exactly, values and formats alike', () => {
+  const wb = readWorkbook(writeSpec(longSpec(100)));
+  const whole = sheetWindow(wb, undefined, { maxRows: 1000 });
+  assert.strictEqual(whole.truncated, false);
+
+  const parts = [1, 31, 61, 91].map((startRow) => sheetWindow(wb, undefined, { startRow, maxRows: 30 }));
+  assert.deepStrictEqual(parts.map((w) => w.startRow), [1, 31, 61, 91]);
+  assert.deepStrictEqual(parts.flatMap((w) => w.rows), whole.rows);
+  assert.deepStrictEqual(parts.flatMap((w) => w.formats), whole.formats);
+  assert.deepStrictEqual(parts[1].rows[0], ['r30', 30], 'sheet row 31 is data row 30');
+  assert.strictEqual(parts[3].rows.length, 11, 'the last window stops at the last row');
+});
+
+test('sheetWindow: a window past the end is empty, not a throw', () => {
+  const w = sheetWindow(readWorkbook(writeSpec(longSpec(5))), undefined, { startRow: 50, maxRows: 10 });
+  assert.deepStrictEqual(w.rows, []);
+  assert.strictEqual(w.totalRows, 6);
+});
+
+test('specPreview: reports its size like the windowed path, and is never cut', () => {
+  const p = specPreview(longSpec(100));
+  assert.strictEqual(p.totalRows, 101);
+  assert.strictEqual(p.truncated, false);
+});

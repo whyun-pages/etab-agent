@@ -63,6 +63,17 @@ export const api = {
   /** One conversation turn. Returns the intent plus, when it changed something, a preview. */
   turn: (id, message) => req('POST', `/api/sessions/${q(id)}/turn`, { body: { message } }),
 
+  /**
+   * More preview rows, from sheet row `from`. `key` is the one the preview
+   * came with; a changed table answers `{ stale: true }` instead of rows.
+   * `proposed` pages the change held for confirmation.
+   */
+  previewRows: (id, { key, from, count, proposed }) => {
+    const query = new URLSearchParams({ key: key || '', from: String(from), count: String(count) });
+    if (proposed) query.set('proposed', '1');
+    return req('GET', `/api/sessions/${q(id)}/preview?${query}`);
+  },
+
   /** Accept (or discard) a proposal that was held for confirmation. */
   applyTurn: (id, accept = true) => req('POST', `/api/sessions/${q(id)}/apply`, { body: { accept } }),
 

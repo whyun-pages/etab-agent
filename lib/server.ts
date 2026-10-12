@@ -25,7 +25,8 @@ import { isModelApi } from './model.ts';
 import { exportSpec, writeExports, isExportFormat, ExportError } from './export.ts';
 import { parseBlocklist } from './fetch-url.ts';
 import { normalizeSpec, validateSpec, writeSpec, specStats } from './workbook.ts';
-import { sheetPreview as previewSpec } from './workbook-preview.ts';
+import { sheetWindow, MAX_PREVIEW_ROWS, PREVIEW_PAGE_ROWS, MAX_PAGE_ROWS } from './workbook-preview.ts';
+import { readWorkbook } from './xlsx.ts';
 import { chat, stripReasoning } from './llm.ts';
 
 /**
@@ -44,6 +45,7 @@ type SpecOp = import('./spec-ops.ts').SpecOp;
 type ExportRequest = import('./agent.ts').ExportRequest;
 type ExportFile = import('./export.ts').ExportFile;
 type FetchOptions = import('./fetch-url.ts').FetchOptions;
+type ParsedWorkbook = import('./xlsx.ts').Workbook;
 /** A pi-ai model, for the test seam that replaces the configured one. */
 type PiModel = import('@mariozechner/pi-ai').Model<any>;
 
@@ -267,6 +269,16 @@ class AppState {
    * Production never sets it, so the SSRF rules in lib/fetch-url.ts hold.
    */
   fetchOptions?: FetchOptions;
+  /**
+   * Workbooks already written and read back for a preview, by `previewKey`.
+   * Scrolling the preview asks for one page at a time; without this every
+   * page would serialise and re-parse the whole sheet. A few entries is
+   * enough — the open session, and its held proposal — and losing them only
+   * costs one rebuild.
+   */
+  previews: Map<string, ParsedWorkbook>;
+  /** A spec's serialisation to its preview key; see `previewSource`. */
+  previewKeys: Map<string, string>;
 
   constructor({ dataDir }: { dataDir: string }) {
     this.dataDir = dataDir;
@@ -274,7 +286,69 @@ class AppState {
     this.uploads = [];
     this.pending = new Map();
     this.settings = new Settings(dataDir);
+    this.previews = new Map();
+    this.previewKeys = new Map();
   }
+}
+
+// ---------------------------------------------------------------- preview
+
+const PREVIEW_CACHE_SIZE = 8;
+
+/** Keep `map` to `size` entries, dropping the least recently set. */
+function remember<V>(map: Map<string, V>, key: string, value: V, size: number): void {
+  // Re-inserted to mark it recent: a Map iterates in insertion order, so the
+  // first key is always the least recently used.
+  map.delete(key);
+  map.set(key, value);
+  while (map.size > size) map.delete(map.keys().next().value as string);
+}
+
+/**
+ * The parsed workbook a preview is cut from, and its `key`.
+ *
+ * The key names the version of the table, and the client sends it back with
+ * every page request, so rows from two versions are never stitched into one
+ * grid. It is a hash of the written xlsx bytes, not of the spec: the spec a
+ * turn just produced and the same spec read back from disk differ in shape
+ * (the store re-normalises on load), and hashing the spec gave one table two
+ * keys — the very first page came back stale. `writeSpec` is deterministic,
+ * so equal tables write equal bytes whatever the spec looked like in memory.
+ *
+ * Writing the bytes is the cost a page request should not pay each time, so
+ * the spec's own serialisation maps to its key as well: each shape of a spec
+ * is written once.
+ */
+function previewSource(state: AppState, spec: WorkbookSpec): { key: string; wb: ParsedWorkbook } {
+  const shape = crypto.createHash('sha1').update(JSON.stringify(spec)).digest('hex');
+  const known = state.previewKeys.get(shape);
+  const cached = known ? state.previews.get(known) : undefined;
+  if (known && cached) {
+    remember(state.previews, known, cached, PREVIEW_CACHE_SIZE);
+    return { key: known, wb: cached };
+  }
+  const bytes = writeSpec(spec);
+  const key = crypto.createHash('sha1').update(bytes).digest('hex').slice(0, 16);
+  const wb = state.previews.get(key) || readWorkbook(bytes);
+  remember(state.previewKeys, shape, key, PREVIEW_CACHE_SIZE * 4);
+  remember(state.previews, key, wb, PREVIEW_CACHE_SIZE);
+  return { key, wb };
+}
+
+interface PreviewWindow {
+  startRow?: number;
+  maxRows?: number;
+}
+
+/**
+ * A window of a spec's first sheet, as the grid draws it, plus its `key`.
+ *
+ * Through the written bytes, not straight from the spec: what the preview
+ * shows is what the file holds (see lib/workbook-preview.ts).
+ */
+function previewOf(state: AppState, spec: WorkbookSpec, win: PreviewWindow = {}) {
+  const { key, wb } = previewSource(state, spec);
+  return { ...sheetWindow(wb, undefined, { startRow: win.startRow, maxRows: win.maxRows || MAX_PREVIEW_ROWS }), key };
 }
 
 // ------------------------------------------------------------------- json
@@ -532,8 +606,40 @@ function createHandler({ state, staticDir, imageExtractor, textExtractor, onMode
         return json(res, 200, {
           ok: true,
           session: publicSession(session),
-          preview: session.spec ? previewSpec(writeSpec(session.spec)) : null,
+          preview: session.spec ? previewOf(state, session.spec) : null,
           canEdit: Boolean((await state.settings.load()).chatCanEdit),
+        });
+      }
+
+      /**
+       * More rows of the preview, as the user scrolls.
+       *
+       * `key` is the one the first window came with. If the table has changed
+       * since — a turn landed, the proposal was answered — the answer is
+       * `stale` and no rows, and the client reloads from the top rather than
+       * appending rows of a different table under the ones it has.
+       * `proposed=1` pages the held proposal instead of the stored table.
+       */
+      const sessPreview = /^GET \/api\/sessions\/([^/]+)\/preview$/.exec(route);
+      if (sessPreview) {
+        const session = await state.sessions.load(decodeURIComponent(sessPreview[1]));
+        if (!session) return fail(res, 404, '会话不存在');
+        const proposed = url.searchParams.get('proposed') === '1';
+        const spec = proposed ? state.pending.get(session.id)?.spec : session.spec;
+        if (!spec || previewSource(state, spec).key !== url.searchParams.get('key')) return json(res, 200, { ok: true, stale: true });
+
+        const from = Math.max(1, Number.parseInt(url.searchParams.get('from') || '', 10) || 1);
+        const asked = Number.parseInt(url.searchParams.get('count') || '', 10) || PREVIEW_PAGE_ROWS;
+        const count = Math.min(Math.max(1, asked), MAX_PAGE_ROWS);
+        const page = previewOf(state, spec, { startRow: from, maxRows: count });
+        return json(res, 200, {
+          ok: true,
+          stale: false,
+          key: page.key,
+          startRow: page.startRow,
+          rows: page.rows,
+          formats: page.formats,
+          totalRows: page.totalRows,
         });
       }
 
@@ -742,8 +848,8 @@ function createHandler({ state, staticDir, imageExtractor, textExtractor, onMode
           pending,
           applied,
           messages: publicMessages(final.messages),
-          preview: saved.spec ? previewSpec(writeSpec(saved.spec)) : null,
-          proposed: pending && spec ? { rows: specStats(spec).rows, preview: previewSpec(writeSpec(spec)) } : null,
+          preview: saved.spec ? previewOf(state, saved.spec) : null,
+          proposed: pending && spec ? { rows: specStats(spec).rows, preview: previewOf(state, spec) } : null,
         });
       }
 
@@ -813,7 +919,7 @@ function createHandler({ state, staticDir, imageExtractor, textExtractor, onMode
           saved: paths,
           saveError: saveError || undefined,
           session: publicSession(saved),
-          preview: saved.spec ? previewSpec(writeSpec(saved.spec)) : null,
+          preview: saved.spec ? previewOf(state, saved.spec) : null,
         });
       }
 

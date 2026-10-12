@@ -594,6 +594,20 @@ body {
 
 /* ── sheet grid ────────────────────────────────────────────────────── */
 .grid-wrap { min-width: 100%; }
+/* Under the grid while rows are still on the server. Sticky to the left so it
+   stays readable when a wide grid is scrolled sideways. */
+.preview__more {
+  position: sticky;
+  left: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px 14px;
+  color: var(--fg-faint);
+  font-size: 11.5px;
+}
+.preview__moreerr { color: var(--red); overflow-wrap: anywhere; }
+.preview__cut { position: sticky; left: 0; padding: 0 12px; }
 table.grid {
   border-collapse: separate;
   border-spacing: 0;

@@ -13,17 +13,31 @@ import { el } from '../dom.js';
 import { colName } from '../colname.js';
 
 /**
+ * The grid last built, so a page of rows arriving at the bottom is appended to
+ * it instead of rebuilding every row above. Every state change repaints the
+ * preview pane; with a few thousand rows loaded, rebuilding them each time
+ * would be the slowest thing on screen. Keyed by the table version, whether it
+ * is the stored table or the proposed one, and the width: any change there
+ * starts over.
+ */
+let memo = null;
+
+/**
  * @param {{name?:string, rows:Array<Array<*>>, merged?:string[],
- *          formats?:Array<Array<string|null>>, cols?:Array, truncated?:boolean}} sheet
+ *          formats?:Array<Array<string|null>>, cols?:Array, startRow?:number,
+ *          key?:string, proposed?:boolean}} sheet
  * @returns {HTMLElement}
  */
 export function sheetView(sheet) {
   const rows = (sheet && sheet.rows) || [];
-  const formats = (sheet && sheet.formats) || [];
   const width = rows.reduce((m, r) => Math.max(m, r.length), 0);
+  const id = sheet && sheet.key ? `${sheet.key}:${sheet.proposed ? 1 : 0}:${width}` : null;
 
-  // Track which cells open a merged range so the span can be emitted once.
-  const spans = parseMerges((sheet && sheet.merged) || []);
+  if (id && memo && memo.id === id && rows.length >= memo.rendered) {
+    appendRows(memo, sheet, memo.rendered, rows.length);
+    memo.rendered = rows.length;
+    return memo.node;
+  }
 
   const table = el('table', { class: 'grid' });
 
@@ -36,12 +50,37 @@ export function sheetView(sheet) {
   table.append(thead);
 
   const tbody = el('tbody');
-  rows.forEach((row, r) => {
+  table.append(tbody);
+
+  const grid = {
+    tbody,
+    width,
+    // Track which cells open a merged range so the span can be emitted once.
+    spans: parseMerges((sheet && sheet.merged) || []),
+  };
+  appendRows(grid, sheet, 0, rows.length);
+
+  const node = el('div', { class: 'grid-wrap' }, [table]);
+  memo = id ? { ...grid, id, node, rendered: rows.length } : null;
+  return node;
+}
+
+/** Draw `sheet.rows[from..to)` into the grid's body. */
+function appendRows(grid, sheet, from, to) {
+  const { tbody, width, spans } = grid;
+  const rows = sheet.rows;
+  const formats = sheet.formats || [];
+  // Row numbers are the sheet's own, so they still read right when the first
+  // window does not start at row 1, and merges (A1-style) line up with them.
+  const base = (sheet.startRow || 1) - 1;
+  for (let r = from; r < to; r++) {
+    const row = rows[r] || [];
+    const rowNo = base + r + 1;
     const tr = el('tr');
-    tr.append(el('th', { class: 'rownum', text: String(r + 1) }));
+    tr.append(el('th', { class: 'rownum', text: String(rowNo) }));
 
     for (let c = 0; c < width; c++) {
-      const span = spans.get(`${r + 1}:${c + 1}`);
+      const span = spans.get(`${rowNo}:${c + 1}`);
       if (span && span.skip) continue;
 
       const v = row[c];
@@ -61,7 +100,7 @@ export function sheetView(sheet) {
         text = String(v);
         if (text.startsWith('=')) cls.push('is-formula');
         // A row-1 value under a horizontal merge is the sheet title.
-        if (r === 0 && span && span.colSpan > 1) cls.push('is-merged');
+        if (rowNo === 1 && span && span.colSpan > 1) cls.push('is-merged');
       }
 
       const td = el('td', { class: cls.join(' '), text, title: text || undefined });
@@ -69,14 +108,7 @@ export function sheetView(sheet) {
       tr.append(td);
     }
     tbody.append(tr);
-  });
-  table.append(tbody);
-
-  const wrap = el('div', { class: 'grid-wrap' }, [table]);
-  if (sheet && sheet.truncated) {
-    wrap.append(el('p', { class: 'hint', text: '预览已截断，仅显示左上角区域。' }));
   }
-  return wrap;
 }
 
 /** Parse A1:C3 style ranges into { colSpan, rowSpan, skip } keyed by "r:c". */
