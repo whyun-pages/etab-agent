@@ -201,6 +201,20 @@ const MAX_NAME_CHARS = 80;
 
 const isBlank = (v: unknown): boolean => v === null || v === undefined || v === '';
 
+/**
+ * A declared column width, clamped to 4..80; null when none was declared.
+ *
+ * Blank is tested before the number: `Number(null)` is 0, a finite number, so
+ * an absent width (stored as null) used to come back as the minimum, 4. A spec
+ * normalised once had auto-sized columns; the same spec read back from disk
+ * and normalised again had every column 4 wide.
+ */
+function columnWidth(raw: unknown): number | null {
+  if (isBlank(raw)) return null;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? Math.max(4, Math.min(80, n)) : null;
+}
+
 /** Excel's day 0. 1899-12-30 because Excel believes 1900 was a leap year. */
 const SERIAL_EPOCH = Date.UTC(1899, 11, 30);
 
@@ -485,7 +499,7 @@ function normalizeSheet(s: RawSheet, name: string, notes: SpecNote[], sheetIndex
       header: header || key,
       type: normalizeType(rc.type),
       format: isBlank(rc.format) ? null : String(rc.format),
-      width: Number.isFinite(Number(rc.width)) ? Math.max(4, Math.min(80, Number(rc.width))) : null,
+      width: columnWidth(rc.width),
     });
   }
   uniqueKeys(columns);

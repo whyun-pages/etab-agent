@@ -590,3 +590,16 @@ test('displayWidth: CJK counts double, which is why widths look right', () => {
   assert.strictEqual(displayWidth('客户'), 4);
   assert.strictEqual(displayWidth('客户ab'), 6);
 });
+
+test('normalizeSpec is idempotent: a spec read back from disk writes the same file', () => {
+  const once = normalizeSpec({
+    title: 'T',
+    sheets: [{ name: 'S', columns: [{ header: '名称' }, { header: '金额', type: 'currency', width: 30 }], rows: [['甲', 1]] }],
+  }).spec;
+  const twice = normalizeSpec(JSON.parse(JSON.stringify(once))).spec;
+  assert.deepStrictEqual(twice, once);
+  // The bug this pins: an absent width (null once stored) came back as 4.
+  assert.strictEqual(twice.sheets[0].columns[0].width, null);
+  assert.strictEqual(twice.sheets[0].columns[1].width, 30);
+  assert.ok(writeSpec(twice).equals(writeSpec(once)));
+});
