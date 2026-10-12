@@ -11,14 +11,21 @@ const toasts = () => document.getElementById('toasts');
 
 /**
  * Show a transient message.
- * @param {object} opts
+ *
+ * Also takes the short form `toast(title, tone)`. Callers wrote it that way
+ * long before it was supported, and the object destructuring then found no
+ * `title` in a string: the toast rendered, empty, in the wrong colour.
+ *
+ * @param {object|string} opts
  * @param {'ok'|'err'|'warn'|'info'} [opts.tone]
  * @param {string} opts.title
  * @param {string} [opts.body]
  * @param {{label: string, onClick: Function}} [opts.action]
  * @param {number} [opts.ms] 0 keeps it until dismissed
  */
-export function toast({ tone = 'info', title, body = '', action = null, ms = 4200 }) {
+export function toast(opts, toneArg) {
+  const { tone = 'info', title = '', body = '', action = null, ms = 4200 } =
+    typeof opts === 'string' ? { title: opts, tone: toneArg } : opts;
   const node = el('div', { class: `toast toast--${tone}` });
   const iconName = { ok: 'check', err: 'alert', warn: 'alert', info: 'info' }[tone] || 'info';
   node.innerHTML =

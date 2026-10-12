@@ -69,7 +69,7 @@ function bindKeyboard() {
     if (e.key === 'Escape') {
       const modal = $('#modal');
       if (modal && !modal.hidden) { modal.hidden = true; return; }
-      if (state.view === 'settings') set({ view: 'chat' });
+      if (state.view === 'settings') closeSettings();
       return;
     }
     if (!(e.ctrlKey || e.metaKey)) return;
@@ -309,6 +309,18 @@ async function useIdea(text) {
 }
 
 /**
+ * Create a session from the composer's mask and put the caret in the box.
+ *
+ * The click landed where the user meant to type, so the focus goes there; an
+ * empty fill is how the composer module focuses its own node.
+ */
+async function startSession() {
+  if (state.activeId) return;
+  await createSession();
+  if (state.activeId) fillComposer('');
+}
+
+/**
  * Send one message and handle whatever comes back.
  *
  * Four outcomes, and the difference matters to the user:
@@ -462,7 +474,23 @@ async function downloadWorkbook(format = 'xlsx', sheet = null) {
 // ── model settings ───────────────────────────────────────────────────
 
 function toggleSettings() {
-  set({ view: state.view === 'settings' ? 'chat' : 'settings', settingsTest: null });
+  if (state.view === 'settings') closeSettings();
+  else openSettings();
+}
+
+/**
+ * Show the settings page.
+ *
+ * The outcome line and the test result belong to the visit that produced
+ * them; opening the page again starts clean. The draft is kept: leaving with
+ * unsaved edits and coming back should not have thrown them away.
+ */
+function openSettings(tab) {
+  set({ view: 'settings', settingsTab: tab || state.settingsTab, settingsTest: null, settingsNotice: null });
+}
+
+function closeSettings() {
+  set({ view: 'chat', settingsTest: null, settingsNotice: null });
 }
 
 async function refreshSettings() {
@@ -492,18 +520,23 @@ async function saveSettings(draft) {
     if (draft.apiKey) patch.apiKey = draft.apiKey;
 
     const res = await api.saveSettings(patch);
+    // The page stays open: leaving is the 返回会话 button's job. Jumping away
+    // on save took the user off the page before they could read that it
+    // worked, or press 测试连接 on what they had just saved.
     set({
       settings: res.settings,
       settingsDraft: {},
       settingsTest: null,
+      settingsNotice: { tone: 'ok', text: `已保存（${clock()}）` },
       status: '设置已保存',
-      view: ready() && !state.activeId ? 'chat' : state.view,
     });
     toast('设置已保存', 'ok');
     // The first save is what makes the app usable; go find the work.
     if (!state.sessions.length) await refreshSessions();
   } catch (err) {
-    fail('保存失败', err);
+    const msg = err instanceof ApiError ? err.message : String(err?.message || err);
+    set({ settingsNotice: { tone: 'err', text: `保存失败：${msg}` }, status: msg });
+    toast({ tone: 'err', title: '保存失败', body: msg, ms: 7000 });
   } finally {
     setBusy('settings', false);
   }
@@ -513,7 +546,10 @@ async function clearSettingsKey() {
   setBusy('settings', true);
   try {
     const res = await api.saveSettings({ apiKey: '' });
-    set({ settings: res.settings, settingsDraft: {}, settingsTest: null, status: '已清除 API key' });
+    set({
+      settings: res.settings, settingsDraft: {}, settingsTest: null,
+      settingsNotice: { tone: 'ok', text: `已清除 API key（${clock()}）` }, status: '已清除 API key',
+    });
     toast('已清除 API key', 'ok');
   } catch (err) {
     fail('清除失败', err);
@@ -556,6 +592,11 @@ async function checkHealth() {
   }
 }
 
+/** Wall-clock HH:MM:SS, so a second save visibly changes the outcome line. */
+function clock() {
+  return new Date().toLocaleTimeString('zh-CN', { hour12: false });
+}
+
 function fail(title, err) {
   const msg = err instanceof ApiError ? err.message : String(err?.message || err);
   set({ error: msg, status: msg });
@@ -577,6 +618,10 @@ function render() {
   const pass = beginRender();
   try {
     renderTitlebar();
+    if (renderSettings()) {
+      renderStatusbar();
+      return;
+    }
     renderError();
     renderRail();
     renderPane();
@@ -589,7 +634,7 @@ function render() {
 
 function renderTitlebar() {
   const node = $('#titlebar-title');
-  node.textContent = state.view === 'settings' ? '模型设置' : (state.title || '');
+  node.textContent = state.view === 'settings' ? '设置' : (state.title || '');
 }
 
 function renderError() {
@@ -637,13 +682,36 @@ function toggleRail() {
   set({ railCollapsed });
 }
 
-function renderPane() {
-  const body = $('#pane-body');
-  if (state.view === 'settings') {
-    mount(body, [el('div', { class: 'pane__scroll' }, [settingsView({ state, handlers })])]);
-    return;
+/**
+ * The settings page replaces the three-column shell; it is not a panel in it.
+ *
+ * Returns true when the page is showing, so the shell is not repainted behind
+ * it: those panes are hidden, and keeping their last paint means coming back
+ * shows the conversation exactly as it was left, scroll position included.
+ */
+function renderSettings() {
+  const page = $('#settings-page');
+  const on = state.view === 'settings';
+  $('#shell').hidden = on;
+  page.hidden = !on;
+  if (!on) {
+    page.replaceChildren();
+    return false;
   }
-  mount(body, [chatView(state, handlers)]);
+  // Every repaint rebuilds the page — pressing 保存 alone repaints twice — so
+  // the scroll offset is carried over by hand, or the form would jump to the
+  // top under the user. A different tab is a different page and starts at 0.
+  const prev = page.querySelector('.settings__main');
+  const keep = prev && page.dataset.tab === state.settingsTab ? prev.scrollTop : 0;
+  mount(page, [settingsView({ state, handlers })]);
+  page.dataset.tab = state.settingsTab;
+  const next = page.querySelector('.settings__main');
+  if (next) next.scrollTop = keep;
+  return true;
+}
+
+function renderPane() {
+  mount($('#pane-body'), [chatView(state, handlers)]);
 }
 
 function renderPreview() {
@@ -671,6 +739,7 @@ const handlers = {
   },
   onDraftNode: (node) => { state.draftNode = node; },
   onIdea: (text) => { useIdea(text); },
+  onStartSession: () => { startSession(); },
   onPickFiles: pickFiles,
   onRemoveAttachment: removeAttachment,
   onApply: applyPending,
@@ -681,6 +750,8 @@ const handlers = {
   onSaveSettings: saveSettings,
   onTestSettings: testSettings,
   onClearSettingsKey: clearSettingsKey,
+  onSettingsTab: (tab) => openSettings(tab),
+  onCloseSettings: closeSettings,
 };
 
 boot();

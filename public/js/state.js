@@ -54,6 +54,13 @@ export const state = {
   settingsDraft: {},
   /** Result of the last connection test: { ok, reply | error } */
   settingsTest: null,
+  /** Which settings tab is open: 'model' | 'chat'. */
+  settingsTab: 'model',
+  /**
+   * Outcome of the last save or clear on this visit, shown beside the save
+   * button: { tone: 'ok' | 'err', text }. Cleared on opening and leaving.
+   */
+  settingsNotice: null,
 
   /**
    * Whether the session list is folded down to a narrow strip. A property of

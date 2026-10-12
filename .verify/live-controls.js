@@ -160,6 +160,11 @@ async function main() {
     await sleep(700);
     const settingsOpen = await page.evaluate('Boolean(document.querySelector(".settings__input"))');
     check('clicking 设置 opens the settings form', settingsOpen === true);
+    // A page of its own: the three columns are gone, not squeezed beside it.
+    const shellHidden = await page.evaluate(`getComputedStyle(document.querySelector('#shell')).display`);
+    check('the settings page replaces the three-column shell', shellHidden === 'none', shellHidden);
+    const tabs = await page.evaluate(`[...document.querySelectorAll('.settings__tab')].map((b) => b.textContent.trim()).join('|')`);
+    check('the menu has the 模型 and 会话 tabs', tabs === '模型|会话', tabs);
     const btns = await page.evaluate(`(() => {
       return [...document.querySelectorAll('.settings button')].map((b) => b.textContent.trim()).join('|');
     })()`);
@@ -199,9 +204,35 @@ async function main() {
       JSON.stringify(saved.settings));
     check('GET /api/settings never echoes the key', !JSON.stringify(saved).includes('sk-not-a-real-key'));
 
-    // Close settings back to the chat.
-    await clickSel('#btn-settings');
+    // The save says so where the user is looking: beside the button, and in a
+    // toast that has words in it and sits in the top half of the window.
+    const notice = await page.evaluate(`(() => {
+      const n = document.querySelector('.settings__saved');
+      if (!n) return null;
+      const r = n.getBoundingClientRect();
+      return JSON.stringify({ text: n.textContent.trim(), top: r.top, inView: r.top >= 0 && r.bottom <= innerHeight });
+    })()`).then((s) => (s ? JSON.parse(s) : null));
+    check('saving shows an outcome line next to 保存', !!notice && /已保存/.test(notice.text) && notice.inView, JSON.stringify(notice));
+    const toastInfo = await page.evaluate(`(() => {
+      const t = document.querySelector('.toast');
+      if (!t) return null;
+      const r = t.getBoundingClientRect();
+      return JSON.stringify({ title: (t.querySelector('.toast__title') || {}).textContent || '', top: r.top, h: innerHeight });
+    })()`).then((s) => (s ? JSON.parse(s) : null));
+    check('the save toast has a title', !!toastInfo && toastInfo.title === '设置已保存', JSON.stringify(toastInfo));
+    check('the toast is near the top', !!toastInfo && toastInfo.top < toastInfo.h / 3, JSON.stringify(toastInfo));
+
+    // Back to the chat with the page's own button, not the title-bar gear.
+    const back = await boxOf('.settings__back');
+    check('the 返回会话 button is present', !!back, JSON.stringify(back));
+    if (back) {
+      const hit = await hitIs('.settings__back', back.x, back.y);
+      check('the 返回会话 button is hit-testable', /^yes/.test(hit), hit);
+    }
+    await clickSel('.settings__back');
     await sleep(500);
+    const backInChat = await page.evaluate(`getComputedStyle(document.querySelector('#shell')).display !== 'none' && document.querySelector('#settings-page').hidden`);
+    check('返回会话 brings the three-column layout back', backInChat === true, String(backInChat));
 
     // ── 4. download button ─────────────────────────────────────────────
     // Seed a session with a table so the download is enabled.

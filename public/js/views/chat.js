@@ -255,8 +255,15 @@ function composerBox(state, handlers) {
 
   box.append(row);
 
+  // With no session the composer is masked. The mask is a button rather than a
+  // notice: clicking where you would type is the most direct way to say "I want
+  // to start", so it creates the session and hands the focus to the input.
   if (!state.activeId) {
-    box.append(el('div', { class: 'composer__mask', text: '先新建一个会话' }));
+    box.append(el('button', {
+      class: 'composer__mask', type: 'button', text: '点击新建会话',
+      disabled: Boolean(state.busy.create),
+      onclick: handlers.onStartSession,
+    }));
   }
 
   return box;

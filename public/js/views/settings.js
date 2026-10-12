@@ -1,5 +1,11 @@
 /* ════════════════════════════════════════════════════════════════════
-   Settings view — the user's own model credentials.
+   Settings page — the user's own model credentials, and what chat may do.
+
+   A page of its own rather than a panel in the centre column: squeezed in
+   between the session list and the preview it had no way back, and the save
+   feedback landed out of sight. Left is a menu (back, then one tab per topic);
+   right is the tab's form under a bar that holds the save button and says,
+   right next to it, whether the save took.
 
    Two things this screen owes the user, stated on the screen rather than in
    a manual:
@@ -7,12 +13,13 @@
      1. Where the key is stored, and that it is not encrypted.
      2. That using the model sends their content to a third party.
 
-   (2) is the one people are surprised by. It goes at the top of the form, not
-   in a footnote, because the decision it informs is whether to turn the thing
-   on at all.
+   (2) is the one people are surprised by. It goes at the top of the model
+   tab, not in a footnote, because the decision it informs is whether to turn
+   the thing on at all.
    ════════════════════════════════════════════════════════════════════ */
 
 import { esc, el } from '../dom.js';
+import { icon } from '../icons.js';
 
 /**
  * The wire protocols the server accepts, in display order, with each one's
@@ -30,6 +37,14 @@ const PROTOCOLS = [
 ];
 
 const protocolOf = (api) => PROTOCOLS.find((p) => p.api === api) || PROTOCOLS[0];
+
+/** The tabs, in menu order. `id` is what `state.settingsTab` holds. */
+const TABS = [
+  { id: 'model', label: '模型', icon: 'cpu', title: '模型设置', lede: '用你自己的 API key 让模型读懂你说的话，并把它变成表格。不填就什么都做不了 —— 这个应用没有内置规则可以退回。' },
+  { id: 'chat', label: '会话', icon: 'message', title: '会话设置', lede: '对话能做什么：改表格、保存文件、上网抓数据。每一项都可以单独关掉。' },
+];
+
+const tabOf = (id) => TABS.find((t) => t.id === id) || TABS[0];
 
 /** A labelled text input, with the styling the rest of the app uses. */
 function field({ label, hint, value, type = 'text', placeholder, onInput, autocomplete = 'off' }) {
@@ -68,22 +83,118 @@ function toggle({ label, hint, checked, onChange }) {
 /**
  * @param {object} ctx
  * @param {object} ctx.state
- * @param {object} ctx.handlers { save, test, open }
+ * @param {object} ctx.handlers
+ *   { onSaveSettings, onTestSettings, onClearSettingsKey, onSettingsTab, onCloseSettings }
  * @returns {HTMLElement}
  */
 export function settingsView({ state, handlers }) {
+  const tab = tabOf(state.settingsTab);
   const root = el('section', { class: 'settings' });
 
-  const head = el('header', { class: 'settings__head' });
-  head.appendChild(el('h2', { class: 'settings__title', text: '模型设置' }));
-  head.appendChild(el('p', {
-    class: 'settings__lede',
-    text: '用你自己的 API key 让模型读懂你说的话，并把它变成表格。不填就什么都做不了 —— 这个应用没有内置规则可以退回。',
+  // ── menu ───────────────────────────────────────────────────────────
+  const nav = el('nav', { class: 'settings__nav', 'aria-label': '设置分类' });
+  nav.appendChild(el('button', {
+    class: 'settings__back', type: 'button', title: '返回会话（Esc）',
+    html: `<span class="row__icon">${icon('back')}</span><span>返回会话</span>`,
+    onclick: handlers.onCloseSettings,
   }));
-  root.appendChild(head);
+  nav.appendChild(el('div', { class: 'settings__navtitle', text: '设置' }));
+  for (const t of TABS) {
+    nav.appendChild(el('button', {
+      class: `settings__tab${t.id === tab.id ? ' is-active' : ''}`,
+      type: 'button',
+      'aria-current': t.id === tab.id ? 'page' : null,
+      html: `<span class="row__icon">${icon(t.icon)}</span><span>${esc(t.label)}</span>`,
+      onclick: () => handlers.onSettingsTab(t.id),
+    }));
+  }
+  root.appendChild(nav);
 
+  // ── the tab ────────────────────────────────────────────────────────
+  const main = el('div', { class: 'settings__main' });
+  main.appendChild(actionBar({ state, handlers, tab }));
+  const content = el('div', { class: 'settings__content' });
+  if (tab.id === 'model') modelTab(content, state);
+  else chatTab(content, state);
+  main.appendChild(content);
+  root.appendChild(main);
+
+  return root;
+}
+
+/**
+ * The bar at the top of the tab: title, save, and the save's outcome.
+ *
+ * Sticky, so the button and its answer are on screen however far the form is
+ * scrolled. The outcome is a line next to the button rather than only a toast:
+ * a toast is gone in seconds and appears somewhere else; this stays where the
+ * user is already looking until the next save.
+ */
+function actionBar({ state, handlers, tab }) {
   const s = state.settings || {};
   const draft = state.settingsDraft || {};
+  const busy = state.busy.settings;
+
+  const bar = el('header', { class: 'settings__bar' });
+  const text = el('div', { class: 'settings__head' });
+  text.appendChild(el('h2', { class: 'settings__title', text: tab.title }));
+  text.appendChild(el('p', { class: 'settings__lede', text: tab.lede }));
+  bar.appendChild(text);
+
+  const actions = el('div', { class: 'settings__actions' });
+  // Save writes the whole draft, both tabs: an edit made on 模型 is not lost
+  // by switching to 会话 and saving there.
+  actions.appendChild(el('button', {
+    class: 'btn btn--primary', type: 'button',
+    text: busy ? '保存中…' : '保存',
+    disabled: busy,
+    onclick: () => handlers.onSaveSettings({ ...draft }),
+  }));
+  if (tab.id === 'model') {
+    actions.appendChild(el('button', {
+      class: 'btn', type: 'button', text: '测试连接',
+      title: '用已保存的设置发一条测试消息',
+      disabled: busy || !(s.hasKey || draft.apiKey),
+      onclick: () => handlers.onTestSettings(),
+    }));
+    actions.appendChild(el('button', {
+      class: 'btn btn--danger', type: 'button', text: '清除 key',
+      disabled: busy || !s.hasKey,
+      onclick: () => handlers.onClearSettingsKey(),
+    }));
+  }
+  bar.appendChild(actions);
+
+  const notice = state.settingsNotice;
+  if (notice) {
+    bar.appendChild(el('div', {
+      class: `settings__saved settings__saved--${notice.tone}`,
+      role: notice.tone === 'err' ? 'alert' : 'status',
+      html: `<span class="row__icon">${icon(notice.tone === 'ok' ? 'check' : 'alert')}</span><span>${esc(notice.text)}</span>`,
+    }));
+  }
+  return bar;
+}
+
+/** 模型: protocol, endpoint, key, model — and the connection test's answer. */
+function modelTab(root, state) {
+  const s = state.settings || {};
+  const draft = state.settingsDraft || {};
+
+  // The test answers "does what I saved work", so it goes first, right under
+  // the button that produced it.
+  if (state.settingsTest) {
+    const t = state.settingsTest;
+    const box = el('div', {
+      class: `settings__result settings__result--${t.ok ? 'ok' : 'bad'}`,
+    });
+    box.appendChild(el('div', {
+      class: 'settings__resulttitle',
+      text: t.ok ? '连接正常' : '连接失败',
+    }));
+    box.appendChild(el('pre', { class: 'settings__resultbody', text: t.ok ? `模型回复：${t.reply}` : t.error }));
+    root.appendChild(box);
+  }
 
   // ── where the key goes, and what leaves the machine ────────────────
   const notice = el('div', { class: 'settings__notice' });
@@ -170,6 +281,15 @@ export function settingsView({ state, handlers }) {
     modelInput.placeholder = next.model;
   });
 
+  root.appendChild(form);
+}
+
+/** 会话: what a chat turn may do — edit, save, fetch. */
+function chatTab(root, state) {
+  const s = state.settings || {};
+  const draft = state.settingsDraft || {};
+  const form = el('div', { class: 'settings__form' });
+
   // ── chat behaviour ─────────────────────────────────────────────────
   form.appendChild(el('div', { class: 'settings__group', text: '对话' }));
 
@@ -238,49 +358,4 @@ export function settingsView({ state, handlers }) {
   form.appendChild(blockWrap);
 
   root.appendChild(form);
-
-  // ── actions ────────────────────────────────────────────────────────
-  const actions = el('div', { class: 'settings__actions' });
-  const busy = state.busy.settings;
-
-  const saveBtn = el('button', {
-    class: 'btn btn--primary',
-    type: 'button',
-    text: busy ? '保存中…' : '保存',
-  });
-  saveBtn.disabled = busy;
-  saveBtn.addEventListener('click', () => handlers.onSaveSettings({ ...draft }));
-
-  const testBtn = el('button', { class: 'btn', type: 'button', text: '测试连接' });
-  testBtn.disabled = busy || !(s.hasKey || draft.apiKey);
-  testBtn.addEventListener('click', () => handlers.onTestSettings());
-
-  const clearBtn = el('button', { class: 'btn btn--danger', type: 'button', text: '清除 key' });
-  clearBtn.disabled = busy || !s.hasKey;
-  clearBtn.addEventListener('click', () => handlers.onClearSettingsKey());
-
-  actions.appendChild(saveBtn);
-  actions.appendChild(testBtn);
-  actions.appendChild(clearBtn);
-  root.appendChild(actions);
-
-  // ── last test result ───────────────────────────────────────────────
-  if (state.settingsTest) {
-    const t = state.settingsTest;
-    const box = el('div', {
-      class: `settings__result settings__result--${t.ok ? 'ok' : 'bad'}`,
-    });
-    box.appendChild(el('div', {
-      class: 'settings__resulttitle',
-      text: t.ok ? '连接正常' : '连接失败',
-    }));
-    if (t.ok) {
-      box.appendChild(el('pre', { class: 'settings__resultbody', text: `模型回复：${t.reply}` }));
-    } else {
-      box.appendChild(el('pre', { class: 'settings__resultbody', text: t.error }));
-    }
-    root.appendChild(box);
-  }
-
-  return root;
 }

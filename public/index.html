@@ -24,7 +24,7 @@
 
   <div class="titlebar__right">
     <button class="btn btn--ghost btn--sm" id="btn-new-session" type="button">新会话</button>
-    <button class="iconbtn" id="btn-settings" type="button" title="模型设置">
+    <button class="iconbtn" id="btn-settings" type="button" title="设置">
       <span data-icon="gear"></span>
     </button>
   </div>
@@ -47,6 +47,11 @@
 
   <section class="preview" id="preview-pane" aria-label="表格预览"></section>
 </div>
+
+<!-- ── settings page ─────────────────────────────────────────────────── -->
+<!-- A page of its own, in the same grid row as the shell and shown instead of
+     it: settings squeezed into the centre column left the user no way back. -->
+<div class="setpage" id="settings-page" hidden></div>
 
 <!-- ── status bar ────────────────────────────────────────────────────── -->
 <footer class="statusbar">

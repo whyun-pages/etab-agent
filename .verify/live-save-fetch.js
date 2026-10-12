@@ -87,6 +87,9 @@ async function main() {
     // ── 1. the group renders ──────────────────────────────────────────
     await clickAt(await boxOf(`document.querySelector('#btn-settings')`));
     await sleep(600);
+    // These switches live on the 会话 tab; the page opens on 模型.
+    await clickAt(await boxOf(`[...document.querySelectorAll('.settings__tab')].find((b) => b.textContent.includes('会话'))`));
+    await sleep(300);
     const group = await page.evaluate(`[...document.querySelectorAll('.settings__group')].map((g) => g.textContent).join('|')`);
     check('the 保存与联网 group is there', /保存与联网/.test(group), group);
     const saveOn = await page.evaluate(`(${toggleNamed('允许对话保存文件')} || {}).querySelector?.('input')?.checked`);
