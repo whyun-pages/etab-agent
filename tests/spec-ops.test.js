@@ -225,3 +225,24 @@ test('readRows: numbered, clamped to the table, dates as YYYY-MM-DD', () => {
   assert.match(text, /2\. \["乙",300,"2026-01-01"\]/);
   assert.match(text, /3\. \["丙",200,null\]/);
 });
+
+// ── column widths ────────────────────────────────────────────────────
+
+test('set_column_widths: sets a width by header, clamped like a declared one, and keeps it through later edits', () => {
+  let spec = run(base(), 'set_column_widths', { widths: [{ header: '客户', width: 23.4 }, { header: '金额', width: 500 }] });
+  assert.strictEqual(spec.sheets[0].columns[0].width, 23.4);
+  assert.strictEqual(spec.sheets[0].columns[1].width, 80, 'clamped to 80');
+  assert.strictEqual(spec.sheets[0].columns[2].width, null, 'untouched');
+  // A later edit goes through toRaw/normalise again; the width must survive it.
+  spec = run(spec, 'update_cells', { cells: [{ row: 1, column: '金额', value: 1 }] });
+  spec = run(spec, 'add_columns', { columns: [{ header: '备注', type: 'text' }] });
+  assert.strictEqual(spec.sheets[0].columns[0].width, 23.4);
+});
+
+test('set_column_widths: an unknown header or a width that is not a positive number is refused', () => {
+  assert.throws(() => run(base(), 'set_column_widths', { widths: [{ header: '没有', width: 10 }] }), SpecOpError);
+  for (const width of [0, -3, 'abc', null, undefined]) {
+    assert.throws(() => run(base(), 'set_column_widths', { widths: [{ header: '客户', width }] }), SpecOpError, String(width));
+  }
+  assert.throws(() => run(base(), 'set_column_widths', { widths: [] }), SpecOpError);
+});

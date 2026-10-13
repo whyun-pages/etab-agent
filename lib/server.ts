@@ -643,6 +643,49 @@ function createHandler({ state, staticDir, imageExtractor, textExtractor, onMode
         });
       }
 
+      /**
+       * A column's width, dragged in the preview.
+       *
+       * Applied inside `update`, like a turn's edits: a turn may be in flight,
+       * and writing back a spec read before it would undo whatever it lands.
+       * The column is named by `index` AND `header`, and both must still agree
+       * on the stored table — the preview may predate a turn that renamed or
+       * moved columns, and widening the wrong column is worse than refusing.
+       *
+       * The answer carries only the new `key` and `cols`: the rows did not
+       * change, so the client keeps every page it has loaded.
+       */
+      const sessCols = /^POST \/api\/sessions\/([^/]+)\/column-width$/.exec(route);
+      if (sessCols) {
+        const body = JSON.parse((await readBody(req, 16 * 1024)).toString('utf8') || '{}') as Record<string, unknown>;
+        const index = Number(body.index);
+        const header = String(body.header ?? '');
+        let conflict = '';
+        let found = false;
+        // A refusal returns null so nothing is written; `found` tells it apart
+        // from a session that does not exist.
+        const saved = await state.sessions.update(decodeURIComponent(sessCols[1]), (current: Session) => {
+          found = true;
+          const sheet = current.spec?.sheets.find((s) => s.name === body.sheet);
+          const first = sheet ? sheet.columns.findIndex((c) => c.header === header) : -1;
+          if (!sheet || !Number.isInteger(index) || first !== index) {
+            conflict = '表格在这期间被改动过，列宽没有保存';
+            return null;
+          }
+          try {
+            const next = applyOps(current.spec, [{ op: 'set_column_widths', args: { sheet: sheet.name, widths: [{ header, width: body.width }] } }]).spec;
+            return next ? { ...current, spec: next } : null;
+          } catch (err) {
+            conflict = String((err as Error).message || err);
+            return null;
+          }
+        });
+        if (!found) return fail(res, 404, '会话不存在');
+        if (conflict || !saved) return fail(res, 409, conflict || '列宽没有保存');
+        const preview = saved.spec ? previewOf(state, saved.spec) : null;
+        return json(res, 200, { ok: true, key: preview?.key ?? null, cols: preview?.cols ?? [] });
+      }
+
       const sessDel = /^DELETE \/api\/sessions\/([^/]+)$/.exec(route);
       if (sessDel) {
         const ok = await state.sessions.remove(decodeURIComponent(sessDel[1]));

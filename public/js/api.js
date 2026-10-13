@@ -74,6 +74,14 @@ export const api = {
     return req('GET', `/api/sessions/${q(id)}/preview?${query}`);
   },
 
+  /**
+   * Save one column's width (Excel units) from a drag in the preview. The
+   * column is named by position and header, which must both still match.
+   * Answers the preview's new `key` and `cols`; the rows are unchanged.
+   */
+  columnWidth: (id, { sheet, index, header, width }) =>
+    req('POST', `/api/sessions/${q(id)}/column-width`, { body: { sheet, index, header, width } }),
+
   /** Accept (or discard) a proposal that was held for confirmation. */
   applyTurn: (id, accept = true) => req('POST', `/api/sessions/${q(id)}/apply`, { body: { accept } }),
 

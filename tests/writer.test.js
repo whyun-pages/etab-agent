@@ -195,3 +195,9 @@ test('zip writer output is byte-identical across runs', () => {
 test('zip reader rejects non-zip input', () => {
   assert.throws(() => readZip(Buffer.from('definitely not a zip file at all')), /not a zip/);
 });
+
+test('the workbook part is declared, or Microsoft Excel refuses the file', () => {
+  const buf = writeSimpleSheet({ rows: [['a'], ['b']] });
+  const types = readZip(buf).get('[Content_Types].xml').data.toString('utf8');
+  assert.match(types, /<Override PartName="\/xl\/workbook\.xml" ContentType="application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet\.main\+xml"\/>/);
+});

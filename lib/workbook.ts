@@ -34,7 +34,11 @@
  *
  * Types
  * -----
- *   text | number | integer | currency | percent | date | boolean
+ *   text | number | integer | currency | percent | date | boolean | url
+ *
+ * A `url` cell is text that the xlsx carries as a real hyperlink: clickable in
+ * Excel, styled like a link. Only http(s) and mailto targets get a link (see
+ * `linkTarget`); anything else in a url column stays as plain text.
  *
  * A `date` is stored as a real Date (or an ISO string, coerced) and rendered to
  * an Excel serial number at write time. `dateToSerial` is shared with
@@ -57,14 +61,14 @@ import { writeFreshWorkbook } from './xlsx-writer.ts';
 // would make a pure data module depend on the XML layer.
 export const STYLE = {
   DEFAULT: 0, HEADER: 1, NUMBER: 2, DATE: 3, CURRENCY: 4, PERCENT: 5, INTEGER: 6, TOTAL: 7,
-  CURRENCY_TOTAL: 8, PERCENT_TOTAL: 9,
+  CURRENCY_TOTAL: 8, PERCENT_TOTAL: 9, LINK: 10,
 } as const;
 
 /** A style index understood by lib/xlsx-writer.js. */
 export type StyleIndex = (typeof STYLE)[keyof typeof STYLE];
 
 /** Column types this module understands. */
-export const TYPES = ['text', 'number', 'integer', 'currency', 'percent', 'date', 'boolean'] as const;
+export const TYPES = ['text', 'number', 'integer', 'currency', 'percent', 'date', 'boolean', 'url'] as const;
 
 /** One of the recognised column types. */
 export type ColumnType = (typeof TYPES)[number];
@@ -145,6 +149,8 @@ export interface WriteCell {
   row: number;
   value: CellValue | number;
   formula?: string;
+  /** hyperlink target, for a url cell whose text is a link worth following */
+  link?: string;
   styleIndex: StyleIndex;
 }
 
@@ -183,12 +189,14 @@ const TYPE_ALIASES: Record<string, ColumnType> = {
   pct: 'percent', percentage: 'percent', 百分比: 'percent',
   datetime: 'date', time: 'date', 日期: 'date',
   bool: 'boolean', yesno: 'boolean', 布尔: 'boolean',
+  link: 'url', hyperlink: 'url', href: 'url', uri: 'url', website: 'url',
+  链接: 'url', 网址: 'url', 超链接: 'url',
 };
 
 /** Recognised spellings of the type names themselves, in Chinese. */
 export const TYPE_LABELS: Record<ColumnType, string> = {
   text: '文本', number: '数字', integer: '整数', currency: '金额',
-  percent: '百分比', date: '日期', boolean: '是否',
+  percent: '百分比', date: '日期', boolean: '是否', url: '链接',
 };
 
 export const MAX_SHEETS = 12;
@@ -232,6 +240,31 @@ export function clampText(s: unknown): string {
   const t = String(s);
   if (t.length <= MAX_CELL_CHARS) return t;
   return t.slice(0, MAX_CELL_CHARS) + '…';
+}
+
+/**
+ * Excel refuses a hyperlink target longer than this; a file carrying one opens
+ * with a repair prompt. A longer URL stays in the cell as text.
+ */
+const MAX_LINK_CHARS = 2079;
+
+/**
+ * The hyperlink a url cell should carry, or null when it should stay text.
+ *
+ * An allow-list of schemes, not a block-list: tables are filled from fetched
+ * web pages (lib/fetch-url.ts), and a `file:`, `javascript:` or UNC target in
+ * a cell Excel will open on a click is exactly what a hostile page would put
+ * there. A bare `www.` host is what people type, and gets https.
+ */
+export function linkTarget(v: unknown): string | null {
+  if (typeof v !== 'string') return null;
+  const s = v.trim();
+  if (!s || /\s/.test(s)) return null;
+  let target: string;
+  if (/^https?:\/\/[^/]/i.test(s) || /^mailto:[^@\s]+@[^@\s]+$/i.test(s)) target = s;
+  else if (/^www\.[^/\s.]+\.[^\s]+$/i.test(s)) target = `https://${s}`;
+  else return null;
+  return target.length <= MAX_LINK_CHARS ? target : null;
 }
 
 /** A heading that is present, printable, and not absurdly long. */
@@ -337,6 +370,10 @@ export function coerce(raw: unknown, type: ColumnType): CoerceResult {
       return { value: Boolean(b), note: null };
     }
 
+    // A url column keeps whatever it was given as text. Whether that text is
+    // also a link is decided at write time (`linkTarget`), so a cell that is not
+    // a link loses nothing — it is shown, just not clickable.
+    case 'url':
     default:
       return { value: clampText(raw), note: null };
   }
@@ -744,8 +781,10 @@ export function toSheet(sheet: SheetSpec): SheetForWriter {
       const v = row[i];
       if (isBlank(v)) continue;
       const value = v instanceof Date ? dateToSerial(v) : v;
-      const style = styleFor(columns[i], v);
-      cells.push({ ref: cellRef(i + 1, rowNum), col: i + 1, row: rowNum, value, styleIndex: style });
+      const link = columns[i]?.type === 'url' ? linkTarget(v) : null;
+      const cell: WriteCell = { ref: cellRef(i + 1, rowNum), col: i + 1, row: rowNum, value, styleIndex: link ? STYLE.LINK : styleFor(columns[i], v) };
+      if (link) cell.link = link;
+      cells.push(cell);
     }
   });
 
@@ -787,7 +826,7 @@ export function toSheet(sheet: SheetSpec): SheetForWriter {
   return {
     name: sheet.name,
     cells,
-    cols: columnWidths(columns, width),
+    cols: columnWidths(columns, width, rows, totals),
     freeze: 1,
     dimensions: `A1:${colName(width)}${height}`,
     headerRow: 1,
@@ -816,19 +855,59 @@ function styleFor(column: ColumnSpec | undefined, value: CellValue): StyleIndex 
   return STYLE.DEFAULT;
 }
 
-/** Column widths: declared, or sized from the widest plausible content. */
-function columnWidths(columns: ColumnSpec[], width: number): Array<{ min: number; max: number; width: number }> {
+/** Bounds of an automatic width, in characters: Excel's default, and a cap. */
+const AUTO_MIN = 10;
+const AUTO_MAX = 40;
+
+/**
+ * Column widths: declared, or sized from the widest of the header and the cells.
+ *
+ * The cells count, not just the header. Sizing from the header alone gave a
+ * column headed 台标 holding 40-character URLs the same 10 characters as one
+ * holding 是/否 — every long value cut off, in the file and (since the preview
+ * draws the file's widths) on screen. Values are measured as they will be
+ * DISPLAYED (`cellChars`), so 1250000 in a currency column counts as
+ * ¥1,250,000.00. Capped at AUTO_MAX: one long note should not make a column
+ * wider than the window; the cell still holds all of it.
+ */
+function columnWidths(columns: ColumnSpec[], width: number, rows: CellValue[][], totals: TotalsSpec): Array<{ min: number; max: number; width: number }> {
   const out: Array<{ min: number; max: number; width: number }> = [];
   for (let i = 0; i < width; i++) {
     const c = columns[i];
     if (c && c.width) { out.push({ min: i + 1, max: i + 1, width: c.width }); continue; }
-    const header = (c && c.header) || '';
-    // CJK characters are about twice as wide, which is the only reason this is
-    // not just a length count.
-    const w = Math.max(10, Math.min(40, displayWidth(header) + 4));
-    out.push({ min: i + 1, max: i + 1, width: w });
+    // A bold header is a little wider than its characters, hence the larger pad.
+    let widest = displayWidth((c && c.header) || '') + 4;
+    for (const r of rows) {
+      if (widest >= AUTO_MAX) break;
+      widest = Math.max(widest, cellChars(r[i], c && c.type) + 2);
+    }
+    if (totals.enabled && totals.sumColumns.includes(i) && rows.length) {
+      const sum = rows.reduce((s, r) => s + (typeof r[i] === 'number' && Number.isFinite(r[i]) ? (r[i] as number) : 0), 0);
+      widest = Math.max(widest, cellChars(sum, c && c.type) + 2);
+    }
+    out.push({ min: i + 1, max: i + 1, width: Math.max(AUTO_MIN, Math.min(AUTO_MAX, widest)) });
   }
   return out;
+}
+
+/**
+ * How many characters a value takes once Excel formats it with the style
+ * `styleFor` gives it: grouped digits, two decimals unless the column is
+ * integer, a ¥ for currency, a % for percent. Text is measured on its first
+ * AUTO_MAX * 2 characters, which is enough to know it hits the cap.
+ */
+function cellChars(v: CellValue | undefined, type: ColumnType | undefined): number {
+  if (v === null || v === undefined || v === '') return 0;
+  if (v instanceof Date) return 10;                         // yyyy-mm-dd
+  if (typeof v === 'boolean') return 5;                     // TRUE / FALSE
+  if (typeof v === 'number') {
+    const n = type === 'percent' ? v * 100 : v;
+    const digits = Math.abs(n).toFixed(type === 'integer' ? 0 : 2);
+    const whole = digits.split('.')[0].length;
+    return digits.length + Math.floor((whole - 1) / 3) + (n < 0 ? 1 : 0)
+      + (type === 'currency' || type === 'percent' ? 1 : 0);
+  }
+  return displayWidth(String(v).slice(0, AUTO_MAX * 2));
 }
 
 /** Approximate rendered width of a string, counting CJK as two columns. */

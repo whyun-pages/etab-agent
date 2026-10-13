@@ -41,7 +41,8 @@ export const isComposing = () => composing;
  * sessions clear the box.
  *
  * @param {string|null} sessionId
- * @param {{ placeholder: string, onInput: (v: string) => void, onSend: () => void }} hooks
+ * @param {{ placeholder: string, onInput: (v: string) => void, onSend: () => void,
+ *           onPasteFiles?: (files: File[]) => void }} hooks
  * @returns {HTMLTextAreaElement}
  */
 export function prepareComposer(sessionId, hooks) {
@@ -69,6 +70,20 @@ export function prepareComposer(sessionId, hooks) {
   ta.addEventListener('input', () => {
     autoGrow(ta);
     ta.__hooks.onInput(ta.value);
+  });
+
+  // Ctrl+V with files on the clipboard — a screenshot, or files copied in
+  // Explorer — attaches them, the same as dropping them on the window.
+  //
+  // Only when the clipboard has no text. Copying cells in Excel puts the text
+  // AND a picture of the cells on the clipboard; that paste means the text,
+  // and uploading the picture instead would be a surprise.
+  ta.addEventListener('paste', (e) => {
+    const data = e.clipboardData;
+    const files = data ? [...data.files] : [];
+    if (!files.length || data.types.includes('text/plain') || !ta.__hooks.onPasteFiles) return;
+    e.preventDefault();
+    ta.__hooks.onPasteFiles(files);
   });
 
   ta.addEventListener('keydown', (e) => {

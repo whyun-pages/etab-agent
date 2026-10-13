@@ -28,7 +28,7 @@ let pager = null;
 
 /**
  * @param {object} state
- * @param {object} handlers { onDownload }
+ * @param {object} handlers { onDownload, onMorePreview, onColumnWidth }
  * @returns {HTMLElement}
  */
 export function previewView(state, handlers) {
@@ -75,7 +75,9 @@ export function previewView(state, handlers) {
   if (!sheet || !sheet.rows.length) {
     body.append(emptyPreview(state));
   } else {
-    body.append(sheetView(sheet));
+    // A held proposal is not the stored table, so its columns are not
+    // resizable: the width would land on a table the user has not accepted.
+    body.append(sheetView(sheet, { onResize: sheet.proposed ? null : handlers.onColumnWidth }));
     const more = moreRows(state, handlers, body);
     if (more) body.append(more);
     const cut = columnsCut(sheet);

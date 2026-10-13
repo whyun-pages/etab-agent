@@ -182,6 +182,7 @@ export function formatNumber(n: number): string {
  *   7  total            — bold, top border, #,##0.00
  *   8  currency total   — bold, top border, ¥#,##0.00
  *   9  percent total    — bold, top border, 0.00%
+ *  10  link             — blue, underlined: a cell carrying a hyperlink
  *
  * 8 and 9 exist because a totals cell has to keep its column's sign and scale
  * without losing the totals styling: a bare `2,130,000` sitting under a column
@@ -200,6 +201,7 @@ export const STYLE = {
   TOTAL: 7,
   CURRENCY_TOTAL: 8,
   PERCENT_TOTAL: 9,
+  LINK: 10,
 } as const;
 
 /**
@@ -217,6 +219,7 @@ export const NUM_FMT = {
 
 const FONT_HEADER = 1;
 const FONT_TOTAL = 2;
+const FONT_LINK = 3;
 const FILL_HEADER = 2;
 
 /**
@@ -234,7 +237,7 @@ export function buildStylesXml(): string {
     `<numFmt numFmtId="${NUM_FMT.total}" formatCode="#,##0.00"/>` +
     `</numFmts>`;
 
-  // Ordered to match STYLE: index 0..7.
+  // Ordered to match STYLE: index 0..10.
   const xfs = [
     // 0 default
     `<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>`,
@@ -256,17 +259,21 @@ export function buildStylesXml(): string {
     `<xf numFmtId="${NUM_FMT.currency}" fontId="${FONT_TOTAL}" fillId="0" borderId="2" xfId="0" applyNumberFormat="1" applyFont="1" applyBorder="1"/>`,
     // 9 percent total — same styling, keeps the %
     `<xf numFmtId="${NUM_FMT.percent}" fontId="${FONT_TOTAL}" fillId="0" borderId="2" xfId="0" applyNumberFormat="1" applyFont="1" applyBorder="1"/>`,
+    // 10 link — a hyperlink does not style its cell; without this it is black
+    // text that happens to be clickable, which nobody would think to click.
+    `<xf numFmtId="0" fontId="${FONT_LINK}" fillId="0" borderId="0" xfId="0" applyFont="1"/>`,
   ].join('');
 
   return XML_HEADER +
     `<styleSheet xmlns="${NS_MAIN}">` +
     numFmts +
-    // 0 = normal, 1 = bold, 2 = bold (totals). A theme-less palette keeps the
-    // file self-contained; there is no theme1.xml to reference.
-    `<fonts count="3">` +
+    // 0 = normal, 1 = bold, 2 = bold (totals), 3 = link. A theme-less palette
+    // keeps the file self-contained; there is no theme1.xml to reference.
+    `<fonts count="4">` +
     `<font><sz val="11"/><name val="等线"/><color theme="1"/></font>` +
     `<font><b/><sz val="11"/><name val="等线"/><color rgb="FF1F3A5F"/></font>` +
     `<font><b/><sz val="11"/><name val="等线"/></font>` +
+    `<font><u/><sz val="11"/><name val="等线"/><color rgb="FF0563C1"/></font>` +
     `</fonts>` +
     `<fills count="3">` +
     `<fill><patternFill patternType="none"/></fill>` +
@@ -279,7 +286,7 @@ export function buildStylesXml(): string {
     `<border><left/><right/><top style="thin"><color rgb="FFB7CBDD"/></top><bottom/><diagonal/></border>` +
     `</borders>` +
     `<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>` +
-    `<cellXfs count="${10}">${xfs}</cellXfs>` +
+    `<cellXfs count="11">${xfs}</cellXfs>` +
     `<cellStyles count="1"><cellStyle name="常规" xfId="0" builtinId="0"/></cellStyles>` +
     `</styleSheet>`;
 }
@@ -295,6 +302,8 @@ interface SheetCellSpec {
   row?: number;
   value?: WriteValue;
   formula?: string;
+  /** external hyperlink target; the cell's value is the text shown */
+  link?: string;
   styleIndex?: number | null;
   styleAttr?: number | null;
 }
@@ -423,7 +432,49 @@ export function buildSheetXml(sheet: SheetSpecForWriter, shared: string[]): stri
       ? `<mergeCells count="${sheet.merges.length}">` + sheet.merges.map((m) => `<mergeCell ref="${m}"/>`).join('') + `</mergeCells>`
       : '') +
     buildDataValidation(sheet.validations) +
+    buildHyperlinks(sheetLinks(sheet)) +
     `</worksheet>`;
+}
+
+/**
+ * The hyperlinks of one sheet, in cell order.
+ *
+ * `buildSheetXml` and the sheet's relationships part must number them the same
+ * way: link N is `rId<N>` in both. Both derive it from this one walk, so the
+ * two cannot drift. Cells are visited in row-then-column order — the order the
+ * sheet is written in — which keeps the ids deterministic for the same input.
+ */
+export function sheetLinks(sheet: SheetSpecForWriter): Array<{ ref: string; target: string }> {
+  const all: Array<{ ref: string; col: number; row: number; target: string }> = [];
+  const take = (c: SheetCellSpec, row?: number) => {
+    if (!c.link || c.value === null || c.value === undefined || c.value === '') return;
+    const parsed = c.ref ? parseRef(c.ref) : null;
+    const r = row ?? c.row ?? (parsed ? parsed.row : null);
+    const col = c.col ?? (parsed ? parsed.col : null);
+    if (!r || !col) return;
+    all.push({ ref: c.ref || cellRef(col, r), col, row: r, target: c.link });
+  };
+  for (const c of sheet.cells || []) take(c);
+  for (const r of sheet.rows || []) for (const c of r.cells || []) take(c, r.row);
+  all.sort((a, b) => a.row - b.row || a.col - b.col);
+  return all.map(({ ref, target }) => ({ ref, target }));
+}
+
+/**
+ * `<hyperlinks>` for a sheet. Its place in the schema's element order is right
+ * after `<dataValidations>`; Excel rejects the file if it is anywhere else.
+ */
+function buildHyperlinks(links: Array<{ ref: string }>): string {
+  if (!links.length) return '';
+  return `<hyperlinks>${links.map((l, i) => `<hyperlink ref="${l.ref}" r:id="rId${i + 1}"/>`).join('')}</hyperlinks>`;
+}
+
+/** The relationships part that resolves each `<hyperlink>`'s r:id to its URL. */
+function buildSheetRels(links: Array<{ target: string }>): string {
+  const rels = links.map((l, i) =>
+    `<Relationship Id="rId${i + 1}" Type="${NS_REL}/hyperlink" Target="${escapeXml(l.target)}" TargetMode="External"/>`
+  ).join('');
+  return XML_HEADER + `<Relationships xmlns="${NS_PKG_REL}">${rels}</Relationships>`;
 }
 
 function buildCols(cols: ColSpecOut[] | undefined): string {
@@ -499,6 +550,7 @@ export function writeWorkbook(wb: WorkbookSpecForWriter): Buffer {
     name: s.name || `Sheet${i + 1}`,
     file: `sheet${i + 1}.xml`,
     xml: buildSheetXml(s, shared),
+    links: sheetLinks(s),
     state: s.state || 'visible',
   }));
 
@@ -510,8 +562,14 @@ export function writeWorkbook(wb: WorkbookSpecForWriter): Buffer {
     data: buildWorkbookRels(sheetEntries, inherited, shared.length > 0),
   });
 
+  const written = new Set<string>();
   for (const s of sheetEntries) {
     files.push({ name: `xl/worksheets/${s.file}`, data: s.xml });
+    if (s.links.length) {
+      const rels = `xl/worksheets/_rels/${s.file}.rels`;
+      files.push({ name: rels, data: buildSheetRels(s.links) });
+      written.add(rels);
+    }
   }
 
   if (shared.length) {
@@ -522,6 +580,10 @@ export function writeWorkbook(wb: WorkbookSpecForWriter): Buffer {
   for (const [name, data] of inherited) {
     if (name === '[Content_Types].xml' || name === '_rels/.rels') continue;
     if (name === 'xl/workbook.xml' || name === 'xl/_rels/workbook.xml.rels') continue;
+    // A template's own sheet relationships are replaced by the ones just
+    // written, never kept beside them: two zip entries with one name is a
+    // corrupt package.
+    if (written.has(name)) continue;
     files.push({ name, data });
   }
 
@@ -538,6 +600,7 @@ interface SheetEntry {
   name: string;
   file: string;
   xml: string;
+  links: Array<{ ref: string; target: string }>;
   state: string;
 }
 
@@ -584,7 +647,13 @@ function buildRootRels(inherited: Map<string, Buffer>): string {
 }
 
 function buildContentTypes(inherited: Map<string, Buffer>, sheetCount: number, sharedCount: number): string {
-  const overrides: string[] = [];
+  // The workbook part MUST be declared. Without it the `xml` default makes it
+  // plain application/xml, and Microsoft Excel refuses the whole file as "文件
+  // 格式无效" — WPS and most parsers open it anyway, which is how every export
+  // shipped this way unnoticed.
+  const overrides: string[] = [
+    `<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>`,
+  ];
   for (let i = 1; i <= sheetCount; i++) {
     overrides.push(`<Override PartName="/xl/worksheets/sheet${i}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`);
   }

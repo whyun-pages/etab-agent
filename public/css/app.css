@@ -1,5 +1,10 @@
 /* ════════════════════════════════════════════════════════════════════
-   Tab Agent — Cursor-inspired shell.
+   Tab Agent — a VS Code-style shell, in the "Dark (Visual Studio)" palette.
+
+   The colours are VS Code's own (theme-defaults/dark_vs.json plus the
+   workbench defaults it inherits), so the app sits next to the editor without
+   looking like a different product: a #3C3C3C title bar, a #252526 side bar,
+   a #1E1E1E editor surface and a #007ACC status bar.
 
    Three columns under a title bar: the session rail, the conversation, and
    the workbook preview. The preview is on the RIGHT and is the widest of the
@@ -9,38 +14,63 @@
    ════════════════════════════════════════════════════════════════════ */
 
 /* ── tokens ────────────────────────────────────────────────────────── */
+/* Each value is named after the VS Code colour it comes from. */
 :root {
-  --bg: #181818;
-  --bg-elevated: #1f1f1f;
-  --bg-panel: #161616;
-  --bg-input: #232323;
-  --bg-hover: #ffffff0d;
-  --bg-active: #ffffff14;
-  --bg-overlay: #000000a6;
+  --bg: #1e1e1e;              /* editor.background */
+  --bg-elevated: #252526;     /* sideBar / editorWidget / notifications */
+  --bg-panel: #252526;        /* sideBar.background */
+  --bg-titlebar: #3c3c3c;     /* titleBar.activeBackground */
+  --bg-input: #3c3c3c;        /* input.background / dropdown.background */
+  --bg-hover: #2a2d2e;        /* list.hoverBackground */
+  --bg-active: #37373d;       /* list.inactiveSelectionBackground */
+  --bg-tool-hover: #5a5d5e50; /* toolbar.hoverBackground */
+  --bg-overlay: #00000099;
+  --bg-scrim: #1e1e1ed9;      /* editor.background, see-through */
 
-  --border: #2b2b2b;
-  --border-strong: #3a3a3a;
+  --border: #333333;          /* panel / editorGroup borders */
+  --border-strong: #454545;   /* menu.border */
+  --grid-line: #2d2d2d;
+  --grid-head: #252526;
 
-  --fg: #d6d6dd;
-  --fg-strong: #f4f4f6;
-  --fg-muted: #8b8b93;
-  --fg-faint: #616168;
+  --fg: #cccccc;              /* foreground */
+  --fg-strong: #e7e7e7;
+  --fg-muted: #a6a6a6;        /* tab.inactiveForeground */
+  --fg-faint: #858585;        /* editorLineNumber.foreground */
+  --fg-dim: #bbbbbb;          /* sideBarTitle.foreground */
 
-  --accent: #4ec9b0;
-  --accent-dim: #4ec9b033;
-  --blue: #4aa3ff;
-  --amber: #e2b93d;
-  --red: #f0564a;
-  --violet: #b98cf0;
+  --accent: #007acc;          /* statusBar / activityBarBadge */
+  --accent-strong: #3794ff;   /* textLink.foreground: accent as TEXT on dark */
+  --accent-dim: #007acc40;
+  --focus: #007fd4;           /* focusBorder */
+  --selection: #264f78;       /* editor.selectionBackground */
 
-  --ok-bg: #4ec9b01f;
-  --warn-bg: #e2b93d1f;
-  --err-bg: #f0564a1f;
-  --info-bg: #4aa3ff1f;
+  --btn-bg: #0e639c;          /* button.background */
+  --btn-hover: #1177bb;       /* button.hoverBackground */
+  --btn2-bg: #3a3d41;         /* button.secondaryBackground */
+  --btn2-hover: #45494e;      /* button.secondaryHoverBackground */
 
-  --r-sm: 3px;
-  --r-md: 5px;
-  --r-lg: 8px;
+  --blue: #3794ff;            /* textLink / editorInfo */
+  --green: #89d185;           /* debugIcon / testing passed */
+  --amber: #cca700;           /* editorWarning.foreground */
+  --red: #f48771;             /* errorForeground */
+  --violet: #c586c0;
+
+  /* Token colours of the editor itself, for the cells of the grid. */
+  --code-number: #b5cea8;
+  --code-keyword: #569cd6;
+
+  --ok-bg: #89d1851f;
+  --warn-bg: #cca7001f;
+  --err-bg: #f487711f;
+  --info-bg: #3794ff1f;
+
+  --statusbar-bg: #007acc;    /* statusBar.background */
+  --statusbar-fg: #ffffff;
+
+  /* VS Code is nearly square: 2px on inputs and buttons. */
+  --r-sm: 2px;
+  --r-md: 3px;
+  --r-lg: 4px;
 
   --rail-w: 244px;
   --rail-folded-w: 38px;
@@ -54,7 +84,7 @@
   --font-ui: "Segoe UI", "Microsoft YaHei UI", "PingFang SC", "Hiragino Sans GB", system-ui, -apple-system, sans-serif;
   --font-mono: "Cascadia Mono", "JetBrains Mono", Consolas, "SF Mono", Menlo, monospace;
 
-  --shadow: 0 8px 24px #00000059, 0 2px 6px #00000040;
+  --shadow: 0 0 8px 2px #0000005c;   /* widget.shadow */
   --t: 110ms cubic-bezier(0.2, 0, 0.2, 1);
 }
 
@@ -75,13 +105,15 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-::selection { background: var(--accent-dim); }
+::selection { background: var(--selection); }
 
 /* ── scrollbars ────────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #ffffff1a; border: 2px solid transparent; background-clip: content-box; border-radius: 6px; }
-::-webkit-scrollbar-thumb:hover { background: #ffffff2e; background-clip: content-box; }
+/* scrollbarSlider.*: square, like the editor's. */
+::-webkit-scrollbar-thumb { background: #79797966; }
+::-webkit-scrollbar-thumb:hover { background: #646464b3; }
+::-webkit-scrollbar-thumb:active { background: #bfbfbf66; }
 ::-webkit-scrollbar-corner { background: transparent; }
 
 /* ── title bar ─────────────────────────────────────────────────────── */
@@ -90,16 +122,16 @@ body {
   align-items: center;
   gap: 12px;
   padding: 0 12px;
-  background: var(--bg-panel);
-  border-bottom: 1px solid var(--border);
+  background: var(--bg-titlebar);
+  color: var(--fg);
   font-size: 12px;
   user-select: none;
 }
 
 .titlebar__brand { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.brand__mark { width: 17px; height: 17px; fill: none; stroke: var(--accent); stroke-width: 1.4; flex: none; }
-.brand__fold { stroke: var(--accent); opacity: 0.6; }
-.brand__line { stroke: var(--accent); opacity: 0.45; stroke-linecap: round; }
+.brand__mark { width: 17px; height: 17px; fill: none; stroke: var(--accent-strong); stroke-width: 1.4; flex: none; }
+.brand__fold { stroke: var(--accent-strong); opacity: 0.6; }
+.brand__line { stroke: var(--accent-strong); opacity: 0.45; stroke-linecap: round; }
 .brand__name { font-weight: 600; color: var(--fg-strong); letter-spacing: 0.2px; }
 
 /* The open session's name, centered like a document title. */
@@ -107,7 +139,7 @@ body {
   flex: 1;
   min-width: 0;
   text-align: center;
-  color: var(--fg-muted);
+  color: var(--fg);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -137,7 +169,7 @@ body {
 .splitter {
   position: relative;
   cursor: col-resize;
-  background: var(--bg-panel);
+  background: var(--bg);
   /* Take over panning so a drag on a touch device resizes instead of scrolls. */
   touch-action: none;
 }
@@ -154,7 +186,7 @@ body {
 }
 .splitter:hover::before,
 .splitter.is-dragging::before,
-.splitter:focus-visible::before { background: var(--accent); }
+.splitter:focus-visible::before { background: var(--focus); }   /* sash.hoverBorder */
 .splitter:focus-visible { outline: none; }
 
 /* ── session rail ──────────────────────────────────────────────────── */
@@ -177,7 +209,7 @@ body {
   font-weight: 700;
   letter-spacing: 0.7px;
   text-transform: uppercase;
-  color: var(--fg-muted);
+  color: var(--fg-dim);
 }
 .rail__head .rail__add { margin-left: auto; }
 
@@ -233,7 +265,7 @@ body {
   bottom: 8px;
   width: 2px;
   border-radius: 1px;
-  background: var(--accent);
+  background: var(--focus);
 }
 
 .rail__main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
@@ -283,7 +315,7 @@ body {
   border: 1px solid var(--red);
   border-radius: var(--r-md);
   background: var(--err-bg);
-  color: #ffb9b3;
+  color: var(--red);
   font-size: 12px;
 }
 /* `display: flex` beats the `[hidden]` attribute's UA `display: none`, so an
@@ -324,6 +356,38 @@ body {
   padding-right: 4px;
 }
 
+/* Holds the stream and the ↓ button floating over its bottom edge. */
+.chat__streamwrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.chat__jump {
+  position: absolute;
+  left: 50%;
+  bottom: 8px;
+  transform: translateX(-50%);
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  background: var(--bg-elevated);
+  color: var(--fg);
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  transition: background var(--t), border-color var(--t);
+}
+.chat__jump[hidden] { display: none; }
+.chat__jump:hover { background: var(--bg-hover); border-color: var(--focus); }
+.chat__jump:focus-visible { outline: 1px solid var(--focus); outline-offset: 1px; }
+.chat__jump svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
 .chat__empty {
   margin: auto;
   max-width: 400px;
@@ -351,7 +415,7 @@ body {
   transition: border-color var(--t), color var(--t), background var(--t);
 }
 .chat__idea:hover { border-color: var(--border-strong); color: var(--fg); background: var(--bg-hover); }
-.chat__idea:focus-visible { outline: none; border-color: var(--accent); color: var(--fg); }
+.chat__idea:focus-visible { outline: none; border-color: var(--focus); color: var(--fg); }
 
 /* A message is an avatar plus a body, so both speakers read the same way —
    bubbles that mirror each other make the model's prose look like an aside. */
@@ -368,8 +432,8 @@ body {
   color: var(--fg-muted);
 }
 .chat__avatar svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
-.chat__avatar--bot { background: var(--accent-dim); color: var(--accent); }
-.chat__row--me .chat__avatar { background: #4aa3ff26; color: var(--blue); }
+.chat__avatar--bot { background: var(--accent-dim); color: var(--accent-strong); }
+.chat__row--me .chat__avatar { background: var(--bg-input); color: var(--fg-dim); }
 
 .chat__body { flex: 1; min-width: 0; }
 .chat__text {
@@ -420,9 +484,9 @@ body {
   flex: 1;
   min-width: 0;
   padding: 11px 13px;
-  border: 1px solid #4ec9b066;
+  border: 1px solid #007acc80;
   border-radius: var(--r-md);
-  background: #4ec9b014;
+  background: #007acc1a;
 }
 .chat__cardtitle { font-size: 12.5px; font-weight: 600; color: var(--fg-strong); }
 .chat__cardmeta { margin-top: 5px; color: var(--fg-muted); font-size: 11.5px; line-height: 1.6; }
@@ -446,10 +510,10 @@ body {
   padding: 8px 8px 8px 11px;
   border: 1px solid var(--border-strong);
   border-radius: var(--r-lg);
-  background: var(--bg-input);
-  transition: border-color var(--t), box-shadow var(--t);
+  background: var(--bg-elevated);
+  transition: border-color var(--t);
 }
-.composer:focus-within { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent-dim); }
+.composer:focus-within { border-color: var(--focus); }
 
 /* The textarea row: clip + input + send, all on one baseline. */
 .composer__row {
@@ -496,7 +560,7 @@ body {
   color: var(--fg-faint);
   cursor: pointer;
 }
-.chip__x:hover { background: var(--bg-hover, #ffffff14); color: var(--fg); }
+.chip__x:hover { background: var(--bg-tool-hover); color: var(--fg); }
 .chip__x svg { width: 11px; height: 11px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .chip .spinner { width: 11px; height: 11px; }
 
@@ -516,7 +580,7 @@ body {
   outline: none;
   overflow-y: hidden;
 }
-.composer__input::placeholder { color: var(--fg-faint); }
+.composer__input::placeholder { color: var(--fg-faint); }   /* input.placeholderForeground is #A6A6A6, too loud for a hint this long */
 .composer__send { flex: none; width: 30px; height: 30px; padding: 0; justify-content: center; }
 .composer__send svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 
@@ -527,15 +591,15 @@ body {
   place-items: center;
   border-radius: var(--r-lg);
   border: 0;
-  background: #181818d9;
-  color: var(--fg-faint);
+  background: var(--bg-scrim);
+  color: var(--fg-muted);
   font: inherit;
   font-size: 12px;
   cursor: pointer;
   transition: color .12s, background .12s;
 }
-.composer__mask:hover:not(:disabled) { color: var(--fg); background: #181818ee; }
-.composer__mask:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+.composer__mask:hover:not(:disabled) { color: var(--fg); background: #1e1e1eee; }
+.composer__mask:focus-visible { outline: 1px solid var(--focus); outline-offset: -1px; }
 .composer__mask:disabled { cursor: progress; }
 
 /* ── preview ───────────────────────────────────────────────────────── */
@@ -545,28 +609,29 @@ body {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  background: var(--bg-panel);
+  background: var(--bg);
 }
 
+/* editorGroupHeader.tabsBackground: the strip above an editor. */
 .preview__head {
   flex: none;
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 9px 12px;
-  border-bottom: 1px solid var(--border);
+  background: var(--bg-panel);
 }
 .preview__title {
   font-size: 10.5px;
   font-weight: 700;
   letter-spacing: 0.7px;
   text-transform: uppercase;
-  color: var(--fg-muted);
+  color: var(--fg-dim);
 }
 .preview__tools { margin-left: auto; display: flex; align-items: center; gap: 10px; }
 .preview__format {
   padding: 3px 6px;
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--bg-input);   /* dropdown.border */
   border-radius: var(--r-md);
   background: var(--bg-input);
   color: var(--fg);
@@ -608,7 +673,10 @@ body {
 }
 .preview__moreerr { color: var(--red); overflow-wrap: anywhere; }
 .preview__cut { position: sticky; left: 0; padding: 0 12px; }
+/* Fixed layout: each column is as wide as its <col>, set from the file's own
+   column widths (sheet.js), so the preview and the download agree. */
 table.grid {
+  table-layout: fixed;
   border-collapse: separate;
   border-spacing: 0;
   font-family: var(--font-mono);
@@ -616,11 +684,9 @@ table.grid {
   white-space: nowrap;
 }
 table.grid th, table.grid td {
-  border-right: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
+  border-right: 1px solid var(--grid-line);
+  border-bottom: 1px solid var(--grid-line);
   padding: 3px 8px;
-  min-width: 34px;
-  max-width: 240px;
   overflow: hidden;
   text-overflow: ellipsis;
   text-align: left;
@@ -630,7 +696,7 @@ table.grid thead th {
   position: sticky;
   top: 0;
   z-index: 2;
-  background: var(--bg-elevated);
+  background: var(--grid-head);
   color: var(--fg-faint);
   text-align: center;
   font-size: 10.5px;
@@ -639,17 +705,35 @@ table.grid .rownum {
   position: sticky;
   left: 0;
   z-index: 1;
-  background: var(--bg-elevated);
+  background: var(--grid-head);
   color: var(--fg-faint);
   text-align: center;
   font-size: 10.5px;
   min-width: 34px;
 }
 table.grid thead .rownum { z-index: 3; }
-table.grid td.is-num { text-align: right; color: var(--fg-strong); font-variant-numeric: tabular-nums; }
+
+/* The draggable right edge of a column letter. Wider than it looks, so it is
+   easy to catch; it straddles the border the way Excel's does. */
+.grid__resize {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  bottom: 0;
+  width: 7px;
+  z-index: 1;
+  cursor: col-resize;
+  touch-action: none;
+}
+.grid__resize:hover, .grid__resize.is-dragging { background: var(--focus); }
+/* While dragging, the pointer is wherever the column edge is, not over the
+   handle: keep the cursor, and do not select the cells it passes. */
+body.is-col-resizing { cursor: col-resize; user-select: none; }
+table.grid td.is-num { text-align: right; color: var(--code-number); font-variant-numeric: tabular-nums; }
 table.grid td.is-empty { color: #ffffff12; }
-table.grid td.is-formula { color: var(--blue); }
-table.grid tr:hover td { background: #ffffff06; }
+table.grid td.is-formula { color: var(--code-keyword); }
+/* editor.lineHighlightBorder: the current line, outlined rather than filled. */
+table.grid tr:hover td { background: #ffffff0a; }
 table.grid td.is-merged { color: var(--fg-strong); font-weight: 600; }
 
 /* ── status bar ────────────────────────────────────────────────────── */
@@ -658,21 +742,26 @@ table.grid td.is-merged { color: var(--fg-strong); font-weight: 600; }
   align-items: center;
   gap: 12px;
   padding: 0 10px;
-  background: var(--bg-panel);
-  border-top: 1px solid var(--border);
+  background: var(--statusbar-bg);
   font-size: 11.5px;
-  color: var(--fg-faint);
+  color: var(--statusbar-fg);
   user-select: none;
 }
+/* On the blue strip every item is white, as in VS Code: coloured text on
+   #007ACC is unreadable. The state is carried by the dot next to it. */
 .status__group { margin-left: auto; display: flex; align-items: center; gap: 12px; }
 .status__item { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
-.status__item--ok { color: var(--accent); }
-.status__item--warn { color: var(--amber); }
-.status__item--err { color: var(--red); }
-#status-msg { color: var(--fg-muted); overflow: hidden; text-overflow: ellipsis; }
+/* statusBarItem.errorBackground / warningBackground: a state worth noticing
+   gets a block of its own, full height, the way VS Code flags one. */
+.status__item--err,
+.status__item--warn { align-self: stretch; margin: 0 -4px; padding: 0 6px; }
+.status__item--err { background: #c72e0f; }
+.status__item--warn { background: #7a6400; }
+#status-msg { color: var(--statusbar-fg); overflow: hidden; text-overflow: ellipsis; }
 
 .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--fg-faint); flex: none; }
-.dot--ok { background: var(--accent); }
+.statusbar .dot { box-shadow: 0 0 0 1px #ffffff99; }
+.dot--ok { background: var(--green); }
 .dot--warn { background: var(--amber); }
 .dot--err { background: var(--red); }
 .dot--info { background: var(--blue); }
@@ -684,25 +773,26 @@ table.grid td.is-merged { color: var(--fg-strong); font-weight: 600; }
   justify-content: center;
   gap: 6px;
   padding: 5px 11px;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--r-md);
-  background: var(--bg-elevated);
-  color: var(--fg);
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: var(--btn2-bg);
+  color: #ffffff;
   font: inherit;
   font-size: 12px;
   cursor: pointer;
   white-space: nowrap;
   transition: background var(--t), border-color var(--t), color var(--t), opacity var(--t);
 }
-.btn:hover:not(:disabled) { background: var(--bg-active); border-color: #4a4a4a; }
+.btn:hover:not(:disabled) { background: var(--btn2-hover); }
+.btn:focus-visible { outline: 1px solid var(--focus); outline-offset: 2px; }
 .btn:disabled { opacity: 0.45; cursor: default; }
 .btn svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 
-.btn--primary { background: var(--accent); border-color: var(--accent); color: #10241f; font-weight: 600; }
-.btn--primary:hover:not(:disabled) { background: #5fd6bc; border-color: #5fd6bc; }
-.btn--ghost { background: none; border-color: transparent; color: var(--fg-muted); }
-.btn--ghost:hover:not(:disabled) { background: var(--bg-hover); border-color: transparent; color: var(--fg); }
-.btn--danger { color: var(--red); border-color: #f0564a55; background: none; }
+.btn--primary { background: var(--btn-bg); color: #ffffff; }
+.btn--primary:hover:not(:disabled) { background: var(--btn-hover); }
+.btn--ghost { background: none; color: var(--fg-muted); }
+.btn--ghost:hover:not(:disabled) { background: var(--bg-tool-hover); color: var(--fg); }
+.btn--danger { color: var(--red); border-color: #f4877166; background: none; }
 .btn--danger:hover:not(:disabled) { background: var(--err-bg); border-color: var(--red); }
 .btn--sm { padding: 3px 9px; font-size: 11.5px; }
 
@@ -719,7 +809,7 @@ table.grid td.is-merged { color: var(--fg-strong); font-weight: 600; }
   cursor: pointer;
   transition: background var(--t), color var(--t);
 }
-.iconbtn:hover:not(:disabled) { background: var(--bg-hover); color: var(--fg); }
+.iconbtn:hover:not(:disabled) { background: var(--bg-tool-hover); color: var(--fg); }
 .iconbtn:disabled { opacity: 0.4; cursor: default; }
 .iconbtn svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 
@@ -732,7 +822,7 @@ table.grid td.is-merged { color: var(--fg-strong); font-weight: 600; }
   cursor: pointer;
   padding: 0;
 }
-.linkbtn:hover { color: var(--accent); }
+.linkbtn:hover { color: var(--accent-strong); }
 
 .spinner {
   display: inline-block;
@@ -785,9 +875,9 @@ table.grid td.is-merged { color: var(--fg-strong); font-weight: 600; }
 .settings__back:hover,
 .settings__tab:hover { background: var(--bg-hover); color: var(--fg); }
 .settings__back:focus-visible,
-.settings__tab:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+.settings__tab:focus-visible { outline: 1px solid var(--focus); outline-offset: -1px; }
 .settings__back { color: var(--fg); margin-bottom: 6px; }
-.settings__tab.is-active { background: var(--bg-active); color: var(--fg-strong); box-shadow: inset 2px 0 0 var(--accent); }
+.settings__tab.is-active { background: var(--bg-active); color: var(--fg-strong); box-shadow: inset 2px 0 0 var(--focus); }
 .settings__navtitle {
   padding: 8px 10px 4px;
   border-top: 1px solid var(--border);
@@ -827,8 +917,8 @@ table.grid td.is-merged { color: var(--fg-strong); font-weight: 600; }
   font-size: 12.5px;
   animation: settings-saved 260ms cubic-bezier(0.2, 0, 0.2, 1);
 }
-.settings__saved--ok { border-color: var(--accent); background: var(--ok-bg); color: var(--accent); }
-.settings__saved--err { border-color: var(--red); background: var(--err-bg); color: #ffb9b3; overflow-wrap: anywhere; }
+.settings__saved--ok { border-color: var(--green); background: var(--ok-bg); color: var(--green); }
+.settings__saved--err { border-color: var(--red); background: var(--err-bg); color: var(--red); overflow-wrap: anywhere; }
 @keyframes settings-saved { from { opacity: 0; transform: translateY(-4px); } }
 
 .settings__content { padding: 20px 32px 40px; max-width: 704px; }
@@ -864,8 +954,8 @@ textarea.settings__input { resize: vertical; min-height: 64px; font-family: var(
 .settings__hint { color: var(--fg-faint); font-size: 11px; line-height: 1.6; }
 .settings__input {
   padding: 7px 10px;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--r-md);
+  border: 1px solid var(--bg-input);   /* input.border: none, until focused */
+  border-radius: var(--r-sm);
   background: var(--bg-input);
   color: var(--fg);
   font: inherit;
@@ -873,10 +963,10 @@ textarea.settings__input { resize: vertical; min-height: 64px; font-family: var(
   outline: none;
   transition: border-color var(--t), box-shadow var(--t);
 }
-.settings__input:focus { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent-dim); }
+.settings__input:focus { border-color: var(--focus); }
 
 .settings__toggle { display: flex; align-items: flex-start; gap: 9px; cursor: pointer; }
-.settings__toggle input { margin-top: 2px; accent-color: var(--accent); flex: none; }
+.settings__toggle input { margin-top: 2px; accent-color: var(--btn-bg); flex: none; }
 .settings__toggletext { display: flex; flex-direction: column; gap: 3px; }
 
 .settings__actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
@@ -888,10 +978,10 @@ textarea.settings__input { resize: vertical; min-height: 64px; font-family: var(
   border-radius: var(--r-md);
   background: var(--bg-elevated);
 }
-.settings__result--ok { border-left: 3px solid var(--accent); }
+.settings__result--ok { border-left: 3px solid var(--green); }
 .settings__result--bad { border-left: 3px solid var(--red); }
 .settings__resulttitle { font-weight: 600; font-size: 12px; margin-bottom: 6px; }
-.settings__result--ok .settings__resulttitle { color: var(--accent); }
+.settings__result--ok .settings__resulttitle { color: var(--green); }
 .settings__result--bad .settings__resulttitle { color: var(--red); }
 .settings__resultbody {
   margin: 0;
@@ -909,7 +999,7 @@ textarea.settings__input { resize: vertical; min-height: 64px; font-family: var(
   z-index: 80;
   display: none;
   place-items: center;
-  background: #181818cc;
+  background: var(--bg-scrim);
   backdrop-filter: blur(1px);
   pointer-events: none;
 }
@@ -919,13 +1009,13 @@ textarea.settings__input { resize: vertical; min-height: 64px; font-family: var(
   align-items: center;
   gap: 10px;
   padding: 18px 26px;
-  border: 1.5px dashed var(--accent);
+  border: 1.5px dashed var(--focus);
   border-radius: var(--r-lg);
   background: var(--bg-panel);
   color: var(--fg);
   font-size: 13.5px;
 }
-.drag-overlay__card svg { width: 20px; height: 20px; fill: none; stroke: var(--accent); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.drag-overlay__card svg { width: 20px; height: 20px; fill: none; stroke: var(--accent-strong); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 
 /* ── toasts ────────────────────────────────────────────────────────── */
 /* Top centre, under the title bar: the bottom-right corner is where nobody is
@@ -960,13 +1050,13 @@ textarea.settings__input { resize: vertical; min-height: 64px; font-family: var(
   pointer-events: auto;
   animation: toast-in 160ms cubic-bezier(0.2, 0, 0.2, 1);
 }
-.toast--ok { border-left-color: var(--accent); }
+.toast--ok { border-left-color: var(--green); }
 .toast--err { border-left-color: var(--red); }
 .toast--warn { border-left-color: var(--amber); }
 .toast--info { border-left-color: var(--blue); }
 .toast__body { flex: 1; min-width: 0; word-break: break-word; }
 .toast__title { font-weight: 600; color: var(--fg-strong); display: block; margin-bottom: 1px; }
-.toast__act { border: 0; background: none; color: var(--accent); font: inherit; font-size: 11.5px; cursor: pointer; padding: 0 2px; }
+.toast__act { border: 0; background: none; color: var(--accent-strong); font: inherit; font-size: 11.5px; cursor: pointer; padding: 0 2px; }
 .toast__act:hover { text-decoration: underline; }
 .row__icon { display: inline-grid; place-items: center; width: 14px; height: 14px; flex: none; color: inherit; }
 .row__icon svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }

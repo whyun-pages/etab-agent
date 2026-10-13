@@ -603,3 +603,98 @@ test('normalizeSpec is idempotent: a spec read back from disk writes the same fi
   assert.strictEqual(twice.sheets[0].columns[1].width, 30);
   assert.ok(writeSpec(twice).equals(writeSpec(once)));
 });
+
+// ── url columns ─────────────────────────────────────────────────────
+
+test('normalizeType: link spellings map to url', () => {
+  for (const t of ['url', 'URL', 'link', 'hyperlink', '链接', '网址', '超链接']) {
+    assert.strictEqual(normalizeType(t), 'url', t);
+  }
+});
+
+test('linkTarget: only http(s), mailto and bare www. hosts become links', () => {
+  const { linkTarget } = require('../lib/workbook');
+  assert.strictEqual(linkTarget('https://i.imgur.com/a.png'), 'https://i.imgur.com/a.png');
+  assert.strictEqual(linkTarget('  http://example.com/x?a=1&b=2 '), 'http://example.com/x?a=1&b=2');
+  assert.strictEqual(linkTarget('mailto:a@b.cn'), 'mailto:a@b.cn');
+  assert.strictEqual(linkTarget('www.example.com/path'), 'https://www.example.com/path');
+  // A target Excel would act on locally, or run, is never a link.
+  for (const bad of ['javascript:alert(1)', 'file:///C:/Windows/System32/calc.exe', '\\\\host\\share\\x.exe',
+    'C:\\x.exe', 'ftp://example.com', 'https://', 'http://a b.com', '台标', '', null, 42]) {
+    assert.strictEqual(linkTarget(bad), null, String(bad));
+  }
+  assert.strictEqual(linkTarget(`https://e.com/${'a'.repeat(2100)}`), null, 'longer than Excel accepts');
+});
+
+test('toSheet: a url column carries links; text that is not a link stays plain', () => {
+  const { spec } = normalizeSpec({
+    sheets: [{
+      name: 'S',
+      columns: [{ header: '频道', type: 'text' }, { header: '台标', type: 'url' }],
+      rows: [['CCTV-1', 'https://i.imgur.com/a.png'], ['CCTV-2', '暂无'], ['CCTV-3', null], ['https://not-a-url-column.com', 'javascript:alert(1)']],
+    }],
+  });
+  assert.strictEqual(spec.sheets[0].columns[1].type, 'url');
+  const { cells } = toSheet(spec.sheets[0]);
+  const at = (ref) => cells.find((c) => c.ref === ref);
+  assert.strictEqual(at('B2').link, 'https://i.imgur.com/a.png');
+  assert.strictEqual(at('B2').styleIndex, 10);
+  assert.strictEqual(at('B3').value, '暂无', 'kept as text');
+  assert.strictEqual(at('B3').link, undefined);
+  assert.strictEqual(at('B3').styleIndex, 0);
+  assert.strictEqual(at('B4'), undefined);
+  assert.strictEqual(at('A5').link, undefined, 'a text column is never linked');
+  assert.strictEqual(at('B5').link, undefined);
+});
+
+test('writeSpec: url cells are real hyperlinks in the file', () => {
+  const { readZip } = require('../lib/xlsx');
+  const { spec } = normalizeSpec({
+    sheets: [
+      { name: 'A', columns: [{ header: '名', type: 'text' }, { header: '主页', type: 'url' }],
+        rows: [['甲', 'https://a.example/?x=1&y=2'], ['乙', '无'], ['丙', 'mailto:c@example.com']] },
+      { name: 'B', columns: [{ header: '名', type: 'text' }], rows: [['丁']] },
+    ],
+  });
+  const buf = writeSpec(spec);
+  const zip = readZip(buf);
+  const text = (name) => zip.get(name).data.toString('utf8');
+
+  const sheet = text('xl/worksheets/sheet1.xml');
+  assert.match(sheet, /<hyperlinks><hyperlink ref="B2" r:id="rId1"\/><hyperlink ref="B4" r:id="rId2"\/><\/hyperlinks><\/worksheet>$/);
+  const rels = text('xl/worksheets/_rels/sheet1.xml.rels');
+  assert.match(rels, /Id="rId1" Type="[^"]+\/hyperlink" Target="https:\/\/a\.example\/\?x=1&amp;y=2" TargetMode="External"/);
+  assert.match(rels, /Id="rId2" [^>]*Target="mailto:c@example\.com"/);
+  // A sheet without links gets no relationships part and no <hyperlinks>.
+  assert.ok(!zip.has('xl/worksheets/_rels/sheet2.xml.rels'));
+  assert.doesNotMatch(text('xl/worksheets/sheet2.xml'), /hyperlink/);
+  // The link style exists at the index the cells point at.
+  assert.match(text('xl/styles.xml'), /<cellXfs count="11">/);
+  // Same spec, same bytes.
+  assert.ok(buf.equals(writeSpec(spec)));
+});
+
+test('toSheet: an automatic width fits the cells as displayed, not just the header', () => {
+  const { spec } = normalizeSpec({
+    sheets: [{
+      name: 'S',
+      columns: [
+        { header: '台标', type: 'url' },
+        { header: '金额', type: 'currency' },
+        { header: '是否', type: 'boolean' },
+        { header: '备注', type: 'text' },
+        { header: '宽', type: 'text', width: 7 },
+      ],
+      rows: [
+        ['https://i.imgur.com/abc123.png', 1250000, true, '很长'.repeat(100), 'x'.repeat(50)],
+        [null, null, false, null, null],
+      ],
+    }],
+  });
+  const widths = toSheet(spec.sheets[0]).cols.map((c) => c.width);
+  assert.strictEqual(widths[0], 'https://i.imgur.com/abc123.png'.length + 2, 'the URL fits');
+  assert.strictEqual(widths[1], '¥1,250,000.00'.length + 2, 'measured as formatted');
+  assert.strictEqual(widths[2], 10, 'never under the default');
+  assert.strictEqual(widths[3], 40, 'capped');
+  assert.strictEqual(widths[4], 7, 'a declared width is kept as is');
+});

@@ -31,6 +31,7 @@ const PATHS = {
   eye: '<path d="M2.5 12S6 6 12 6s9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.6"/>',
   save: '<path d="M5 3h11l3 3v15H5z"/><path d="M8 3v6h7V3"/><path d="M8 21v-7h8v7"/>',
   chevron: '<path d="m9 6 6 6-6 6"/>',
+  arrowdown: '<path d="M12 5v14"/><path d="m6 13 6 6 6-6"/>',
   back: '<path d="M19 12H5"/><path d="m11 18-6-6 6-6"/>',
   cpu: '<rect x="6" y="6" width="12" height="12" rx="2"/><path d="M10 10h4v4h-4zM9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/>',
   panel: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/>',

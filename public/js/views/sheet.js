@@ -22,30 +22,76 @@ import { colName } from '../colname.js';
  */
 let memo = null;
 
+// ── column widths ─────────────────────────────────────────────────────
+// The grid draws each column at the width the FILE gives it, so dragging an
+// edge here is the same as dragging it in Excel, and what is saved is what the
+// download will have. Widths are in Excel's unit, characters of the default
+// font; Excel itself draws a character as 7px plus 5px of padding at 100%,
+// and the grid's 11.5px monospace is close enough to that for the same rule.
+
+const PX_PER_CHAR = 7;
+const PX_PAD = 5;
+/** The bounds the spec clamps a declared width to (4..80 characters). */
+const MIN_CHARS = 4;
+const MAX_CHARS = 80;
+/** A column the file gives no width: Excel's default, near enough. */
+const DEFAULT_CHARS = 10;
+const ROWNUM_PX = 44;
+
+const charsToPx = (w) => Math.round(w * PX_PER_CHAR + PX_PAD);
+/** To a tenth of a character: finer than that is noise no one can see. */
+const pxToChars = (px) => Math.round(((px - PX_PAD) / PX_PER_CHAR) * 10) / 10;
+
+/** A column's width in characters, from the `cols` ranges of the preview. */
+function charsFor(cols, c) {
+  const hit = (cols || []).find((r) => r.min <= c && c <= r.max && r.width);
+  return hit ? hit.width : DEFAULT_CHARS;
+}
+
 /**
  * @param {{name?:string, rows:Array<Array<*>>, merged?:string[],
  *          formats?:Array<Array<string|null>>, cols?:Array, startRow?:number,
- *          key?:string, proposed?:boolean}} sheet
+ *          key?:string, view?:string, proposed?:boolean}} sheet
+ * @param {{onResize?:(index:number, chars:number) => void}} [opts]
+ *   `onResize` makes the column edges draggable; it is called once per drag,
+ *   on release, with the zero-based column and its new width in characters.
  * @returns {HTMLElement}
  */
-export function sheetView(sheet) {
+export function sheetView(sheet, opts = {}) {
   const rows = (sheet && sheet.rows) || [];
   const width = rows.reduce((m, r) => Math.max(m, r.length), 0);
-  const id = sheet && sheet.key ? `${sheet.key}:${sheet.proposed ? 1 : 0}:${width}` : null;
+  // `view` outlives a width change: saving one gives the table a new `key`
+  // (the bytes changed) without changing a single row, so the loaded rows,
+  // and the scroll position over them, carry on.
+  const view = sheet && (sheet.view || sheet.key);
+  const id = view ? `${view}:${sheet.proposed ? 1 : 0}:${width}` : null;
 
   if (id && memo && memo.id === id && rows.length >= memo.rendered) {
     appendRows(memo, sheet, memo.rendered, rows.length);
     memo.rendered = rows.length;
+    memo.onResize = opts.onResize || null;
+    setWidths(memo, sheet.cols);
     return memo.node;
   }
 
   const table = el('table', { class: 'grid' });
 
+  // Fixed layout: a column is exactly as wide as its <col>, whatever is in
+  // it, which is how a spreadsheet behaves and what makes a drag predictable.
+  const colgroup = el('colgroup');
+  colgroup.append(el('col', { style: `width:${ROWNUM_PX}px` }));
+  const cols = [];
+  for (let c = 0; c < width; c++) {
+    const col = el('col');
+    cols.push(col);
+    colgroup.append(col);
+  }
+  table.append(colgroup);
+
   // ── header: column letters ────────────────────────────────────────
   const thead = el('thead');
   const headRow = el('tr');
   headRow.append(el('th', { class: 'rownum', text: '' }));
-  for (let c = 0; c < width; c++) headRow.append(el('th', { text: colName(c + 1) }));
   thead.append(headRow);
   table.append(thead);
 
@@ -53,16 +99,89 @@ export function sheetView(sheet) {
   table.append(tbody);
 
   const grid = {
+    table,
     tbody,
     width,
+    cols,
+    px: [],
+    dragging: null,
+    onResize: opts.onResize || null,
     // Track which cells open a merged range so the span can be emitted once.
     spans: parseMerges((sheet && sheet.merged) || []),
   };
+  for (let c = 0; c < width; c++) {
+    headRow.append(el('th', {}, [colName(c + 1), resizer(grid, c)]));
+  }
+  setWidths(grid, sheet && sheet.cols);
   appendRows(grid, sheet, 0, rows.length);
 
   const node = el('div', { class: 'grid-wrap' }, [table]);
-  memo = id ? { ...grid, id, node, rendered: rows.length } : null;
+  // The memo IS the grid, not a copy: the drag handles hold `grid`, and a
+  // copy would leave them reading a stale `onResize` after the next repaint.
+  memo = id ? Object.assign(grid, { id, node, rendered: rows.length }) : null;
   return node;
+}
+
+/** Size every column from the preview's `cols`, except one being dragged. */
+function setWidths(grid, ranges) {
+  for (let c = 0; c < grid.width; c++) {
+    if (grid.dragging === c) continue;
+    setColPx(grid, c, charsToPx(charsFor(ranges, c + 1)));
+  }
+}
+
+function setColPx(grid, c, px) {
+  grid.px[c] = px;
+  grid.cols[c].style.width = `${px}px`;
+  // A fixed-layout table needs its own width, or the browser shares the
+  // container's width out between the columns and ignores the <col>s.
+  grid.table.style.width = `${ROWNUM_PX + grid.px.reduce((a, b) => a + (b || 0), 0)}px`;
+}
+
+/**
+ * The drag handle on a column letter's right edge.
+ *
+ * The grid is resized live while dragging; the width is reported once, on
+ * release, so a drag is one save rather than one per pixel. The handle reads
+ * `grid.onResize` at the moment of the drag: the grid is reused across
+ * repaints, and the callback (or its absence, for a proposal) can change.
+ */
+function resizer(grid, c) {
+  const handle = el('span', { class: 'grid__resize', title: '拖动调整列宽' });
+  let start = null;
+
+  handle.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 || !grid.onResize) return;
+    start = { x: e.clientX, px: grid.px[c] };
+    grid.dragging = c;
+    // Capture keeps the moves coming once the pointer leaves the 6px strip,
+    // which it does on any real drag.
+    handle.setPointerCapture(e.pointerId);
+    handle.classList.add('is-dragging');
+    document.body.classList.add('is-col-resizing');
+    e.preventDefault();
+    e.stopPropagation();
+  });
+
+  handle.addEventListener('pointermove', (e) => {
+    if (!start) return;
+    const px = Math.max(charsToPx(MIN_CHARS), Math.min(charsToPx(MAX_CHARS), start.px + e.clientX - start.x));
+    setColPx(grid, c, px);
+  });
+
+  const end = () => {
+    if (!start) return;
+    const moved = grid.px[c] !== start.px;
+    start = null;
+    grid.dragging = null;
+    handle.classList.remove('is-dragging');
+    document.body.classList.remove('is-col-resizing');
+    if (moved && grid.onResize) grid.onResize(c, pxToChars(grid.px[c]));
+  };
+  handle.addEventListener('pointerup', end);
+  handle.addEventListener('pointercancel', end);
+  handle.addEventListener('lostpointercapture', end);
+  return handle;
 }
 
 /** Draw `sheet.rows[from..to)` into the grid's body. */

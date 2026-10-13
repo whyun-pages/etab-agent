@@ -32,7 +32,16 @@ export function chatView(state, handlers) {
   const root = el('section', { class: 'chat' });
 
   root.append(head(state));
-  root.append(stream(state, handlers));
+  // The stream sits in a wrapper so the ↓ button can float over its bottom
+  // edge. It starts hidden; chat-scroll.js shows it once output arrives below
+  // a transcript the user has scrolled up.
+  const wrap = el('div', { class: 'chat__streamwrap' });
+  wrap.append(stream(state, handlers));
+  wrap.append(el('button', {
+    class: 'chat__jump', type: 'button', title: '有新内容，回到底部', html: icon('arrowdown'),
+    hidden: true,
+  }));
+  root.append(wrap);
   root.append(composerBox(state, handlers));
   return root;
 }
@@ -221,7 +230,7 @@ function composerBox(state, handlers) {
 
   // The paperclip opens the same file input a drag-drop lands in — one code
   // path for both, so a file that works one way works the other.
-  const clip = el('button', { class: 'iconbtn composer__clip', type: 'button', title: '添加文件（也可以直接拖进来）', html: icon('paperclip') });
+  const clip = el('button', { class: 'iconbtn composer__clip', type: 'button', title: '添加文件（也可以拖进来，或 Ctrl+V 粘贴）', html: icon('paperclip') });
   clip.disabled = Boolean(state.attaching) || !state.activeId;
   clip.addEventListener('click', handlers.onPickFiles);
   row.append(clip);
@@ -230,6 +239,7 @@ function composerBox(state, handlers) {
     placeholder: PLACEHOLDER,
     onInput: handlers.onDraft,
     onSend: handlers.onSend,
+    onPasteFiles: handlers.onPasteFiles,
   });
   // Hand the live node back so the controller can read it without re-querying
   // the DOM, and so a repaint does not lose track of it.

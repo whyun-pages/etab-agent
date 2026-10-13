@@ -778,3 +778,76 @@ test('a held proposal pages its own rows, not the stored table', async (t) => {
   const after = await get(base, `/api/sessions/${id}/preview?key=${key}&from=41&count=10&proposed=1`);
   assert.strictEqual(after.json.stale, true);
 });
+
+// ── column widths ────────────────────────────────────────────────────
+
+test('a column width dragged in the preview is stored, exported and previewed', async (t) => {
+  const { base, dataDir } = await startServer(t, { replies: [ACTION], chatConfirmEdits: false });
+  const id = (await post(base, '/api/sessions', {})).json.session.id;
+  const turn = await post(base, `/api/sessions/${id}/turn`, { message: '做一个销售台账' });
+
+  const r = await post(base, `/api/sessions/${id}/column-width`, { sheet: '明细', index: 1, header: '金额', width: 31.5 });
+  assert.strictEqual(r.status, 200, JSON.stringify(r.json));
+  assert.notStrictEqual(r.json.key, turn.json.preview.key, 'the file changed, so the key did');
+  assert.ok(r.json.cols.some((c) => c.min <= 2 && 2 <= c.max && c.width === 31.5), JSON.stringify(r.json.cols));
+
+  const stored = JSON.parse(fs.readFileSync(path.join(dataDir, 'sessions', `${id}.json`), 'utf8'));
+  assert.strictEqual(stored.spec.sheets[0].columns[1].width, 31.5);
+  assert.strictEqual(stored.changes.length, 1, 'a width is not logged as a change the model is told about');
+  assert.strictEqual(stored.messages.length, 2, 'nor said in the transcript');
+
+  // The page endpoint accepts the new key: rows already loaded stay valid.
+  const page = await get(base, `/api/sessions/${id}/preview?key=${r.json.key}&from=2&count=10`);
+  assert.strictEqual(page.json.stale, false);
+});
+
+test('a column width aimed at a column that has moved is refused, and nothing is written', async (t) => {
+  const { base, dataDir } = await startServer(t, { replies: [ACTION], chatConfirmEdits: false });
+  const id = (await post(base, '/api/sessions', {})).json.session.id;
+  await post(base, `/api/sessions/${id}/turn`, { message: '做一个销售台账' });
+  const file = path.join(dataDir, 'sessions', `${id}.json`);
+  const before = fs.readFileSync(file, 'utf8');
+
+  for (const body of [
+    { sheet: '明细', index: 0, header: '金额', width: 20 },   // header is elsewhere now
+    { sheet: '明细', index: 5, header: '金额', width: 20 },
+    { sheet: '没有', index: 1, header: '金额', width: 20 },
+    { sheet: '明细', index: 1, header: '金额', width: 'wide' },
+  ]) {
+    const r = await post(base, `/api/sessions/${id}/column-width`, body);
+    assert.strictEqual(r.status, 409, JSON.stringify(body));
+    assert.strictEqual(r.json.ok, false);
+  }
+  assert.strictEqual(fs.readFileSync(file, 'utf8'), before, 'the session file was not touched');
+
+  const missing = await post(base, '/api/sessions/nope/column-width', { sheet: '明细', index: 1, header: '金额', width: 20 });
+  assert.strictEqual(missing.status, 404);
+});
+
+test('a column width saved while a turn is in flight survives the turn landing', async (t) => {
+  // The turn's operations are replayed on the stored table, which by then has
+  // the new width; writing back its snapshot would have erased it.
+  let release;
+  const gate = new Promise((r) => { release = r; });
+  let entered;
+  const inFlight = new Promise((r) => { entered = r; });
+  const held = (context) => {
+    if (context.messages.some((m) => m.role === 'toolResult')) return '改好了。';
+    entered();
+    return gate.then(() => ({ tool: 'update_cells', args: { cells: [{ row: 1, column: '金额', value: 1 }] } }));
+  };
+  const { base, dataDir } = await startServer(t, { replies: [ACTION, [held, held]], chatConfirmEdits: false });
+  const id = (await post(base, '/api/sessions', {})).json.session.id;
+  await post(base, `/api/sessions/${id}/turn`, { message: '做一个销售台账' });
+
+  const slow = post(base, `/api/sessions/${id}/turn`, { message: '把甲的金额改成 1' });
+  await inFlight;
+  const w = await post(base, `/api/sessions/${id}/column-width`, { sheet: '明细', index: 0, header: '客户名称', width: 40 });
+  assert.strictEqual(w.status, 200);
+  release();
+  assert.strictEqual((await slow).json.applied, true);
+
+  const sheet = JSON.parse(fs.readFileSync(path.join(dataDir, 'sessions', `${id}.json`), 'utf8')).spec.sheets[0];
+  assert.strictEqual(sheet.columns[0].width, 40, 'the width survived');
+  assert.strictEqual(sheet.rows[0][1], 1, 'and the turn landed');
+});

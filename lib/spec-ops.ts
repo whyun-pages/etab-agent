@@ -286,6 +286,33 @@ function updateColumns(spec: WorkbookSpec | null, args: Record<string, unknown>)
   return finish(raw, done.length ? `「${sheet.name}」：${done.join('；')}` : `「${sheet.name}」的列没有变化`);
 }
 
+/**
+ * Column widths, in Excel's units (characters of the default font).
+ *
+ * Not a model tool: this is what dragging a column edge in the preview sends.
+ * It is an operation all the same, so it lands through the same pure path and
+ * survives a turn replayed on top of it — `toRaw` carries widths through.
+ * Clamped by normalisation like any declared width (4..80).
+ */
+function setColumnWidths(spec: WorkbookSpec | null, args: Record<string, unknown>): OpResult {
+  const raw = toRaw(requireSpec(spec));
+  const sheet = findSheet(raw, args.sheet);
+  const widths = list(args.widths);
+  if (!widths.length) throw new SpecOpError('set_column_widths 没有给出任何列宽。');
+  const done: string[] = [];
+  for (const w of widths) {
+    const src = (w && typeof w === 'object' ? w : {}) as Record<string, unknown>;
+    const col = sheet.columns[findColumn(sheet, src.header)];
+    const n = Number(src.width);
+    if (src.width === null || src.width === undefined || src.width === '' || !Number.isFinite(n) || n <= 0) {
+      throw new SpecOpError(`列「${col.header}」的宽度「${str(src.width)}」不是正数。`);
+    }
+    col.width = n;
+    done.push(col.header);
+  }
+  return finish(raw, `已调整「${sheet.name}」的列宽：${done.join('、')}`);
+}
+
 function addRows(spec: WorkbookSpec | null, args: Record<string, unknown>): OpResult {
   const raw = toRaw(requireSpec(spec));
   const sheet = findSheet(raw, args.sheet);
@@ -426,6 +453,7 @@ export const OPS: Record<string, (spec: WorkbookSpec | null, args: Record<string
   add_sheet: addSheet,
   remove_sheet: removeSheet,
   rename,
+  set_column_widths: setColumnWidths,
 };
 
 /** Apply one recorded operation. */

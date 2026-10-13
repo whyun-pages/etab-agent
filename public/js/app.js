@@ -19,6 +19,7 @@ import { toast, openModal, closeModal, initModal, initDragDrop } from './ui.js';
 import { resetComposer, fillComposer } from './composer.js';
 import { initSplitters } from './splitters.js';
 import { chatView } from './views/chat.js';
+import { captureChatScroll, restoreChatScroll, stickChat } from './chat-scroll.js';
 import { previewView } from './views/preview.js';
 import { sessionsView } from './views/sessions.js';
 import { settingsView } from './views/settings.js';
@@ -214,6 +215,25 @@ function bindFileInput() {
   document.body.append(fileInput);
 }
 
+/**
+ * Files pasted into the composer.
+ *
+ * A pasted screenshot is always called `image.png` by the browser, so two of
+ * them would be two chips with one name and no way to tell which is which.
+ * They get the time of the paste instead; a file copied from disk keeps its
+ * own name.
+ */
+function pasteFiles(files) {
+  const stamp = new Date().toTimeString().slice(0, 8).replace(/:/g, '');
+  const named = files.map((f, i) => {
+    const m = /^image\.(\w+)$/i.exec(f.name || '');
+    if (!m) return f;
+    const n = files.length > 1 ? `-${i + 1}` : '';
+    return new File([f], `截图-${stamp}${n}.${m[1].toLowerCase()}`, { type: f.type, lastModified: f.lastModified });
+  });
+  handleFiles(named);
+}
+
 function pickFiles() {
   if (!state.activeId) {
     toast({ tone: 'warn', title: '先新建一个会话', body: '附件会跟着这次对话走。', ms: 4000 });
@@ -345,6 +365,9 @@ async function send(text) {
   const ta = state.draftNode;
   if (ta) ta.value = '';
 
+  // Sending is a request to see the answer: follow it even if the transcript
+  // was scrolled up. Before setBusy, whose repaint is the first to show it.
+  stickChat();
   setBusy('turn', true);
   // Show the user's own message immediately; a turn is a model call and can
   // take seconds, and a box that empties with nothing appearing reads as a
@@ -490,6 +513,46 @@ async function loadMorePreview() {
 
 /** Rows per page request; the server caps it too. */
 const PREVIEW_PAGE = 200;
+
+/**
+ * Save a column width dragged in the preview.
+ *
+ * Shown at the new width at once; the server's answer brings the table's new
+ * `key` (the file's bytes changed) and its `cols`. `view` keeps the table's
+ * identity across that key change, so the rows already loaded and the scroll
+ * position stay — not a single row changed. A refusal (the table changed
+ * under the drag) puts the old width back and says why.
+ */
+async function setColumnWidth(index, width) {
+  const p = state.preview;
+  const id = state.activeId;
+  // The first window always starts at row 1, which is the header row.
+  const header = p && (p.startRow || 1) === 1 && p.rows[0] ? p.rows[0][index] : null;
+  if (!p || !id || p.proposed || header === null || header === undefined) return;
+
+  const view = p.view || p.key;
+  const same = () => state.activeId === id && state.preview && (state.preview.view || state.preview.key) === view;
+  set({ preview: { ...p, view, cols: withWidth(p.cols, index + 1, width) } });
+  try {
+    const res = await api.columnWidth(id, { sheet: p.name, index, header: String(header), width });
+    if (same()) set({ preview: { ...state.preview, key: res.key, cols: res.cols || [] } });
+  } catch (err) {
+    if (same()) set({ preview: { ...state.preview, cols: p.cols } });
+    fail('列宽没有保存', err);
+  }
+}
+
+/** `cols` ranges with column `c` (1-based) set to `width`, splitting a range it sits in. */
+function withWidth(cols, c, width) {
+  const out = [];
+  for (const r of cols || []) {
+    if (c < r.min || c > r.max) { out.push(r); continue; }
+    if (r.min < c) out.push({ ...r, max: c - 1 });
+    if (r.max > c) out.push({ ...r, min: c + 1 });
+  }
+  out.push({ min: c, max: c, width });
+  return out;
+}
 
 /** Discard a held change. The stored spec never moved, so this is local. */
 async function dismissPending() {
@@ -757,8 +820,12 @@ function renderSettings() {
   return true;
 }
 
+/** Repaint the conversation; chat-scroll.js decides where it ends up scrolled. */
 function renderPane() {
-  mount($('#pane-body'), [chatView(state, handlers)]);
+  const body = $('#pane-body');
+  const before = captureChatScroll(body, state.activeId);
+  mount(body, [chatView(state, handlers)]);
+  restoreChatScroll(body, before);
 }
 
 /**
@@ -769,7 +836,9 @@ function renderPane() {
 function renderPreview() {
   const pane = $('#preview-pane');
   const p = state.preview;
-  const identity = p ? `${p.key || ''}:${p.proposed ? 1 : 0}` : '';
+  // `view` rather than `key` when there is one: a saved column width changes
+  // the key but not the table, and must not throw the user back to row 1.
+  const identity = p ? `${p.view || p.key || ''}:${p.proposed ? 1 : 0}` : '';
   const prev = pane.querySelector('.preview__body');
   const keep = prev && pane.dataset.preview === identity ? { top: prev.scrollTop, left: prev.scrollLeft } : null;
   mount(pane, previewView(state, handlers));
@@ -804,11 +873,13 @@ const handlers = {
   onIdea: (text) => { useIdea(text); },
   onStartSession: () => { startSession(); },
   onPickFiles: pickFiles,
+  onPasteFiles: pasteFiles,
   onRemoveAttachment: removeAttachment,
   onApply: applyPending,
   onDismiss: dismissPending,
   onDownload: downloadWorkbook,
   onMorePreview: loadMorePreview,
+  onColumnWidth: setColumnWidth,
 
   // ── settings ──────────────────────────────────────────────────────
   onSaveSettings: saveSettings,
