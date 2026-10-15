@@ -294,7 +294,16 @@ function chipsRow(state, handlers) {
   list.forEach((a, i) => {
     const chip = el('div', { class: `chip chip--${a.kind || 'unknown'}`, title: a.note || a.name });
     chip.append(el('span', { class: 'chip__icon', html: icon(kindGlyph(a)) }));
-    chip.append(el('span', { class: 'chip__name', text: a.name }));
+    // An openable file's name is a button: it opens the file with this
+    // computer's default program. The tooltip says it is a copy, because edits
+    // made there do not come back into the conversation.
+    chip.append(a.openable && a.id
+      ? el('button', {
+        class: 'chip__name chip__open', type: 'button', text: a.name,
+        title: `用电脑上的默认程序打开（打开的是副本，修改不会回到对话里）\n${a.note || a.name}`,
+        onclick: () => handlers.onOpenAttachment(a),
+      })
+      : el('span', { class: 'chip__name', text: a.name }));
     if (a.kind === 'error') chip.classList.add('chip--err');
     chip.append(el('button', {
       class: 'chip__x', type: 'button', title: '移除', html: icon('x'),

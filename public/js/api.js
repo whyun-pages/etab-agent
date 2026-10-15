@@ -105,6 +105,8 @@ export const api = {
   // Per session: a file is context for one conversation, not for the app.
   listAttachments: (id) => req('GET', `/api/sessions/${q(id)}/attachments`),
   clearAttachments: (id) => req('DELETE', `/api/sessions/${q(id)}/attachments`),
+  /** Open one attachment with this computer's default program (a copy of it). */
+  openAttachment: (id, attId) => req('POST', `/api/sessions/${q(id)}/attachments/${q(attId)}/open`),
 
   /** Upload files as multipart/form-data under the `files` field. */
   attach(id, files) {

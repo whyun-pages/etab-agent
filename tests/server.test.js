@@ -304,6 +304,81 @@ test('deleting a session drops its attachments; an unknown session is a 404', as
   assert.strictEqual((await request(base, 'GET', '/api/attachments')).status, 404);
 });
 
+/** A server whose "open with the default program" records the path instead. */
+async function startOpenServer(t) {
+  const started = await startServer(t);
+  const opened = [];
+  started.server.state.openFile = async (file) => { opened.push(file); };
+  started.server.state.openDir = path.join(started.dir, 'opened');
+  return { ...started, opened };
+}
+
+async function uploadOne(base, att, filename, data) {
+  const mp = multipart([{ name: 'files', filename, data }]);
+  return JSON.parse((await request(base, 'POST', att, mp)).buffer.toString('utf8')).attachments[0];
+}
+
+test('an attachment opens as a copy under its own name, reused on a second click', async (t) => {
+  const { base, opened } = await startOpenServer(t);
+  const att = await sessionAttachments(base);
+  const up = await uploadOne(base, att, '会员 名单.csv', 'a,b\n1,2\n');
+  assert.ok(up.id, 'an upload carries an id to address it by');
+  assert.strictEqual(up.openable, true);
+
+  const r = await request(base, 'POST', `${att}/${up.id}/open`);
+  assert.strictEqual(r.status, 200);
+  assert.strictEqual(path.basename(opened[0]), '会员 名单.csv');
+  assert.strictEqual(fs.readFileSync(opened[0], 'utf8'), 'a,b\n1,2\n');
+
+  await request(base, 'POST', `${att}/${up.id}/open`);
+  assert.strictEqual(opened[1], opened[0], 'the copy is reused, not written again');
+
+  // Clearing drops the copies with the uploads (removal is best-effort, async).
+  await request(base, 'DELETE', att);
+  assert.strictEqual((await request(base, 'POST', `${att}/${up.id}/open`)).status, 404);
+  for (let i = 0; i < 20 && fs.existsSync(opened[0]); i++) await new Promise((r) => setTimeout(r, 25));
+  assert.strictEqual(fs.existsSync(opened[0]), false);
+});
+
+test('an executable attachment is never handed to the OS', async (t) => {
+  const { base, opened } = await startOpenServer(t);
+  const att = await sessionAttachments(base);
+  for (const name of ['run.bat', 'setup.exe', 'x.ps1', 'page.html']) {
+    const up = await uploadOne(base, att, name, 'echo hi');
+    assert.strictEqual(up.openable, false, name);
+    assert.strictEqual((await request(base, 'POST', `${att}/${up.id}/open`)).status, 400, name);
+  }
+  assert.deepStrictEqual(opened, []);
+});
+
+test('opening refuses another site and a rebinding host', async (t) => {
+  const { base, opened } = await startOpenServer(t);
+  const att = await sessionAttachments(base);
+  const up = await uploadOne(base, att, 'a.csv', 'a\n1\n');
+  const open = (headers) => request(base, 'POST', `${att}/${up.id}/open`, { headers });
+  const port = new URL(base).port;
+
+  // Any web page can fire a form POST at 127.0.0.1; its Origin gives it away.
+  assert.strictEqual((await open({ Origin: 'https://evil.example' })).status, 403);
+  // DNS rebinding: a hostile name resolving to 127.0.0.1 matches its own Origin.
+  assert.strictEqual((await open({ Host: `evil.example:${port}`, Origin: `http://evil.example:${port}` })).status, 403);
+  assert.deepStrictEqual(opened, []);
+
+  // The app's own page is fine.
+  assert.strictEqual((await open({ Origin: `http://127.0.0.1:${port}` })).status, 200);
+  assert.strictEqual(opened.length, 1);
+});
+
+test('a failed open is reported, not a crash', async (t) => {
+  const { server, base } = await startOpenServer(t);
+  server.state.openFile = async () => { throw new Error('系统没有能打开这类文件的程序'); };
+  const att = await sessionAttachments(base);
+  const up = await uploadOne(base, att, 'a.csv', 'a\n1\n');
+  const r = await request(base, 'POST', `${att}/${up.id}/open`);
+  assert.strictEqual(r.status, 502);
+  assert.match(JSON.parse(r.buffer.toString('utf8')).error, /没有能打开/);
+});
+
 test('an unsupported attachment is reported per-file without failing the batch', async (t) => {
   const { base } = await startServer(t);
   const mp = multipart([

@@ -185,6 +185,7 @@ OpenAI 兼容协议默认按保守的兼容设置发请求（系统提示用 `sy
 | GET | `/api/sessions/:id/workbook.(xlsx\|csv\|json)` | 下载当前表格；`?sheet=` 指定工作表（CSV 默认第一个） |
 | POST | `/api/sessions/:id/attachments` | 给该会话添加附件：`multipart`，字段 `files`（可多个） |
 | GET / DELETE | `/api/sessions/:id/attachments` | 列出 / 清空该会话的附件（附件只在内存里，重启后需要重新添加） |
+| POST | `/api/sessions/:id/attachments/:attId/open` | 用电脑上的默认程序打开附件的副本。只接受本机、本应用页面发来的请求；只打开文档 / 表格 / 图片类扩展名，可执行文件一律拒绝 |
 
 `/api/health` 返回的 `app: 'tab-agent'` 不是装饰——桌面端的单实例判定靠它。
 之前它靠的是「响应里有没有 `templates` 字段」，模板概念一删就会静默失灵，

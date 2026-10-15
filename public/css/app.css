@@ -548,6 +548,16 @@ body {
 .chip__icon { display: inline-flex; flex: none; color: var(--fg-faint); }
 .chip__icon svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .chip__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The name as a button: reset to look like the label it replaces. */
+.chip__open {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.chip__open:hover { color: var(--fg); text-decoration: underline; }
 .chip__x {
   flex: none;
   display: inline-grid;

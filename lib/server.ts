@@ -12,10 +12,12 @@
 
 import http from 'node:http';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 
 import { readAttachment } from './attachments.ts';
+import { isOpenable, openWithSystem } from './open-file.ts';
 import { readAsset } from './assets.ts';
 import { Settings, resolveExportDir } from './settings.ts';
 import { SessionStore, safeId as safeSessionId } from './session-store.ts';
@@ -83,8 +85,12 @@ interface MultipartFile extends MultipartPart {
  * which are held so a later request can re-read the same upload.
  */
 interface UploadedAttachment extends Attachment {
+  /** Names the upload in URLs; an index would shift under a concurrent clear. */
+  id: string;
   filename: string;
   data: Buffer;
+  /** Where the copy for "open on this computer" was written, once it was. */
+  openedPath?: string;
 }
 
 /** A change held for confirmation, per session. */
@@ -290,6 +296,14 @@ class AppState {
   previews: Map<string, ParsedWorkbook>;
   /** A spec's serialisation to its preview key; see `previewSource`. */
   previewKeys: Map<string, string>;
+  /**
+   * Where attachment copies are written to be opened with the system's
+   * default program, one folder per session. Under the OS temp directory: a
+   * copy is disposable, and one left behind by a crash is the OS's to clean.
+   */
+  openDir: string;
+  /** Hands a file to the OS. Test seam: a test records the path instead. */
+  openFile: (file: string) => Promise<void>;
 
   constructor({ dataDir }: { dataDir: string }) {
     this.dataDir = dataDir;
@@ -299,6 +313,21 @@ class AppState {
     this.settings = new Settings(dataDir);
     this.previews = new Map();
     this.previewKeys = new Map();
+    this.openDir = path.join(os.tmpdir(), 'etab-agent', 'opened');
+    this.openFile = openWithSystem;
+  }
+
+  /**
+   * Forget a session's attachments, and the copies opened from them.
+   *
+   * The copies are removed best-effort: a program can still hold one open
+   * (Excel locks the file on Windows), and failing a clear over that would
+   * be worse than a stray file in the temp directory.
+   */
+  dropUploads(sid: string): void {
+    this.uploads.delete(sid);
+    const key = safeSessionId(sid);
+    if (key) fs.promises.rm(path.join(this.openDir, key), { recursive: true, force: true }).catch(() => {});
   }
 }
 
@@ -701,7 +730,7 @@ function createHandler({ state, staticDir, imageExtractor, textExtractor, onMode
       if (sessDel) {
         const sid = decodeURIComponent(sessDel[1]);
         const ok = await state.sessions.remove(sid);
-        state.uploads.delete(sid);
+        state.dropUploads(sid);
         return json(res, ok ? 200 : 404, { ok });
       }
 
@@ -1017,6 +1046,38 @@ function createHandler({ state, staticDir, imageExtractor, textExtractor, onMode
 
 
       // ------------------------------------------------------ attachments
+      /**
+       * Open an attachment with the computer's default program.
+       *
+       * This is the one route that makes the server START a program, so it
+       * carries the guards the others do not need:
+       *   - the request must come from this machine (`--host` can expose the
+       *     server to a LAN, and nobody else gets to launch things here);
+       *   - a browser request must come from this app's own page: any web page
+       *     can fire a form POST at 127.0.0.1, and its Origin gives it away;
+       *   - the Host must be a loopback name, which stops DNS rebinding — a
+       *     hostile name resolving to 127.0.0.1 would otherwise pass the Origin
+       *     check by matching itself;
+       *   - only allowlisted extensions open (see lib/open-file.ts).
+       */
+      const attOpen = /^POST \/api\/sessions\/([^/]+)\/attachments\/([^/]+)\/open$/.exec(route);
+      if (attOpen) {
+        if (!isLocalRequest(req)) return fail(res, 403, '只能在本机打开附件');
+        const sid = decodeURIComponent(attOpen[1]);
+        if (!(await state.sessions.load(sid))) return fail(res, 404, '会话不存在');
+        const upload = (state.uploads.get(sid) || []).find((u) => u.id === decodeURIComponent(attOpen[2]));
+        if (!upload) return fail(res, 404, '附件不存在，可能已被清空');
+        if (!isOpenable(upload.filename)) return fail(res, 400, `出于安全考虑，不直接打开这类文件：${upload.filename}`);
+        const file = await openCopy(state, sid, upload);
+        try {
+          await state.openFile(file);
+        } catch (err) {
+          // Not a server fault: no program for the type, or no opener at all.
+          return fail(res, 502, String((err as Error).message || err));
+        }
+        return json(res, 200, { ok: true });
+      }
+
       const sessAtt = /^(POST|GET|DELETE) \/api\/sessions\/([^/]+)\/attachments$/.exec(route);
       if (sessAtt) {
         const [, method, rawId] = sessAtt;
@@ -1024,10 +1085,10 @@ function createHandler({ state, staticDir, imageExtractor, textExtractor, onMode
         if (!(await state.sessions.load(sid))) return fail(res, 404, '会话不存在');
 
         if (method === 'GET') {
-          return json(res, 200, { ok: true, attachments: (state.uploads.get(sid) || []).map(publicAttachment) });
+          return json(res, 200, { ok: true, attachments: (state.uploads.get(sid) || []).map(publicUpload) });
         }
         if (method === 'DELETE') {
-          state.uploads.delete(sid);
+          state.dropUploads(sid);
           return json(res, 200, { ok: true });
         }
 
@@ -1046,8 +1107,9 @@ function createHandler({ state, staticDir, imageExtractor, textExtractor, onMode
               imageExtractor: imgEx,
               textExtractor: txtEx,
             });
-            parsed.push({ ...att, filename, data: f.data });
-            results.push(publicAttachment(att));
+            const upload: UploadedAttachment = { ...att, id: crypto.randomBytes(6).toString('hex'), filename, data: f.data };
+            parsed.push(upload);
+            results.push(publicUpload(upload));
           } catch (err) {
             results.push({ name: filename, kind: 'error', error: String((err as HttpError).message || err) });
           }
@@ -1144,6 +1206,50 @@ function publicAttachment(att: Attachment): Record<string, unknown> {
   };
 }
 
+/** An upload as the client sees it: the attachment, plus how to address and open it. */
+function publicUpload(u: UploadedAttachment): Record<string, unknown> {
+  return { id: u.id, ...publicAttachment(u), openable: isOpenable(u.filename) };
+}
+
+/** Loopback hosts, as the Host header and the socket report them. */
+const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]']);
+const LOOPBACK_ADDRS = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
+
+/** See the open route: from this machine, to a loopback name, from our own page. */
+function isLocalRequest(req: http.IncomingMessage): boolean {
+  if (!LOOPBACK_ADDRS.has(req.socket.remoteAddress || '')) return false;
+  const host = String(req.headers.host || '');
+  const hostname = host.replace(/:\d+$/, '').toLowerCase();
+  if (!LOOPBACK_HOSTS.has(hostname)) return false;
+  // No Origin is a non-browser client (curl, the tests); a browser always sends
+  // one on a POST, and it must be this server's own.
+  const origin = req.headers.origin;
+  return !origin || origin === `http://${host}`;
+}
+
+/**
+ * Write an upload to a file the OS can open, reusing the copy from an earlier
+ * click while it still exists.
+ *
+ * Each copy gets its own folder so the file keeps its real name — that is the
+ * name the opened program shows in its title bar — without two uploads that
+ * share a name overwriting each other.
+ */
+async function openCopy(state: AppState, sid: string, u: UploadedAttachment): Promise<string> {
+  if (u.openedPath) {
+    try {
+      await fs.promises.access(u.openedPath);
+      return u.openedPath;
+    } catch { /* removed since; write it again */ }
+  }
+  const dir = path.join(state.openDir, safeSessionId(sid) || 'session', u.id);
+  await fs.promises.mkdir(dir, { recursive: true });
+  const file = path.join(dir, safeFilename(u.filename));
+  await fs.promises.writeFile(file, u.data);
+  u.openedPath = file;
+  return file;
+}
+
 /**
  * The current attachments, as the text the model reads this turn.
  *
@@ -1221,6 +1327,9 @@ interface ServerOptions {
   settingsOverride?: SettingsLike;
   /** Test seam for `fetch_url`; see `AppState.fetchOptions`. */
   fetchOptions?: FetchOptions;
+  /** Test seams for opening attachments; see `AppState.openFile` / `openDir`. */
+  openFile?: (file: string) => Promise<void>;
+  openDir?: string;
 }
 
 /**
@@ -1252,6 +1361,8 @@ function createServer(opts: ServerOptions): ServerWithState {
   if (opts.model) state.agentModel = opts.model;
   if (opts.settingsOverride) state.settings = opts.settingsOverride;
   if (opts.fetchOptions) state.fetchOptions = opts.fetchOptions;
+  if (opts.openFile) state.openFile = opts.openFile;
+  if (opts.openDir) state.openDir = opts.openDir;
 
   const handler = createHandler({
     state,

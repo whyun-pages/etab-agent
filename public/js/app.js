@@ -324,6 +324,17 @@ async function removeAttachment(index) {
   }
 }
 
+/** Open one attachment on this computer; the server hands a copy to the OS. */
+async function openAttachment(a) {
+  if (!state.activeId || !a.id) return;
+  try {
+    await api.openAttachment(state.activeId, a.id);
+    set({ status: `已在电脑上打开 ${a.name}` });
+  } catch (err) {
+    fail('打开失败', err);
+  }
+}
+
 // ── conversation ────────────────────────────────────────────────────
 
 /**
@@ -892,6 +903,7 @@ const handlers = {
   onPickFiles: pickFiles,
   onPasteFiles: pasteFiles,
   onRemoveAttachment: removeAttachment,
+  onOpenAttachment: openAttachment,
   onApply: applyPending,
   onDismiss: dismissPending,
   onDownload: downloadWorkbook,
