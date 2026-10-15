@@ -5,6 +5,7 @@
  *
  * Supported without any external service:
  *   .xlsx/.xlsm  rows (via our own reader)
+ *   .xls         rows (Excel 97-2003 / BIFF8, via lib/xls.ts)
  *   .csv/.tsv    rows (RFC 4180 quoting, GBK/UTF-8 aware)
  *   .json/.jsonl rows or object
  *   .txt/.md/.log/.xml/.html  text
@@ -18,6 +19,7 @@
 
 import path from 'node:path';
 import * as xlsx from './xlsx.ts';
+import { isCfb, readCfb, readXls } from './xls.ts';
 
 /**
  * The part of `lib/xlsx.ts` this module calls.
@@ -34,7 +36,7 @@ interface XlsxModule {
 const { readZip, readWorkbook }: XlsxModule = xlsx;
 
 export const TEXT_EXT = new Set(['.txt', '.md', '.markdown', '.log', '.ini', '.conf', '.yml', '.yaml', '.sql', '.sh', '.ps1', '.js', '.ts', '.py']);
-export const TABLE_EXT = new Set(['.xlsx', '.xlsm', '.csv', '.tsv']);
+export const TABLE_EXT = new Set(['.xlsx', '.xlsm', '.xls', '.csv', '.tsv']);
 export const IMAGE_EXT = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.tif', '.tiff']);
 
 /**
@@ -151,6 +153,14 @@ export function sniffKind(buffer: Buffer, filename = ''): string {
       if (zip.has('word/document.xml')) return 'docx';
       if (zip.has('ppt/presentation.xml')) return 'pptx';
       return 'zip';
+    } catch { /* fall through to extension */ }
+  }
+  if (isCfb(buffer)) {
+    // OLE2 compound file: legacy .xls, .doc and .ppt all share this container.
+    // Only the .xls case is read; the others fall through to their extension.
+    try {
+      const streams = readCfb(buffer);
+      if (streams.has('Workbook') || streams.has('WORKBOOK') || streams.has('Book')) return 'xls';
     } catch { /* fall through to extension */ }
   }
   if (buffer.length >= 5 && buffer.subarray(0, 5).toString('latin1') === '%PDF-') return 'pdf';
@@ -474,21 +484,22 @@ export async function readAttachment(buffer: Buffer, filename: string, opts: Rea
   };
 
   // ---- spreadsheets
+  // Checked on the sniffed kind first: an .xls renamed to .xlsx (common when a
+  // system "upgrades" an export by extension only) must not reach readWorkbook.
+  if (kind === 'xls') {
+    let parsed: ReturnType<typeof readXls>;
+    try {
+      parsed = readXls(buffer);
+    } catch (err) {
+      // Encrypted and Excel 95 files are reported, not dropped silently: the
+      // note tells the model what to ask the user for.
+      return { ...unknownAttachment(buffer, filename, meta), note: `${filename} 读取失败：${(err as Error).message}` };
+    }
+    return workbookAttachment(parsed.sheets, filename, meta, opts.sheet);
+  }
+
   if (kind === 'xlsx' || kind === 'xlsm' || ext === '.xlsx' || ext === '.xlsm') {
-    const wb = readWorkbook(buffer);
-    // A workbook is a set of tables, one per sheet.
-    const sheets = wb.sheets.map((s) => matrixToTable(sheetToMatrix(s), { sheetName: s.name }));
-    const primary = opts.sheet ? sheets.find((t) => t.sheet === opts.sheet) : null;
-    const chosen = primary || sheets.find((t) => t.rows.length) || sheets[0] || null;
-    return {
-      kind: 'table',
-      name: filename,
-      meta: { ...meta, sheetNames: wb.sheets.map((s) => s.name), ...meta },
-      sheets,
-      table: chosen,
-      rows: chosen ? chosen.rows : [],
-      header: chosen ? chosen.header : [],
-    };
+    return workbookAttachment(readWorkbook(buffer).sheets, filename, meta, opts.sheet);
   }
 
   if (kind === 'csv' || kind === 'tsv' || ext === '.csv' || ext === '.tsv') {
@@ -609,6 +620,22 @@ export async function readAttachment(buffer: Buffer, filename: string, opts: Rea
   }
 
   return unknownAttachment(buffer, filename, meta);
+}
+
+/** A workbook is a set of tables, one per sheet; .xlsx and .xls share this. */
+function workbookAttachment(parsedSheets: xlsx.ParsedSheet[], filename: string, meta: AttachmentMeta, sheet?: string): Attachment {
+  const sheets = parsedSheets.map((s) => matrixToTable(sheetToMatrix(s), { sheetName: s.name }));
+  const primary = sheet ? sheets.find((t) => t.sheet === sheet) : null;
+  const chosen = primary || sheets.find((t) => t.rows.length) || sheets[0] || null;
+  return {
+    kind: 'table',
+    name: filename,
+    meta: { ...meta, sheetNames: parsedSheets.map((s) => s.name) },
+    sheets,
+    table: chosen,
+    rows: chosen ? chosen.rows : [],
+    header: chosen ? chosen.header : [],
+  };
 }
 
 function unknownAttachment(buffer: Buffer, filename: string, meta: AttachmentMeta): Attachment {

@@ -196,7 +196,8 @@ export function blockedBy(host: string, list: string[] | undefined): string | nu
 // ------------------------------------------------------------ request
 
 const TYPE_EXT: Array<[RegExp, string]> = [
-  [/spreadsheetml|ms-excel/, '.xlsx'],
+  [/spreadsheetml/, '.xlsx'],
+  [/ms-excel/, '.xls'],
   [/text\/csv|application\/csv/, '.csv'],
   [/tab-separated/, '.tsv'],
   [/json/, '.json'],
