@@ -115,9 +115,10 @@ async function main() {
     await sleep(600);
 
     // A session is required: attachments follow the open conversation.
-    await fetch(`${base}/api/sessions`, {
+    const created = await (await fetch(`${base}/api/sessions`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}),
-    });
+    })).json();
+    const attUrl = `${base}/api/sessions/${encodeURIComponent(created.session.id)}/attachments`;
     await page.evaluate('location.reload()');
     await sleep(1500);
     // Open the session so the composer is live.
@@ -180,7 +181,7 @@ async function main() {
     })()`);
     check('the chip carries the file name', /附件探针/.test(chipName), JSON.stringify(chipName));
 
-    const listed = await (await fetch(`${base}/api/attachments`)).json();
+    const listed = await (await fetch(attUrl)).json();
     check('the server holds one attachment after upload', listed.attachments && listed.attachments.length === 1,
       JSON.stringify(listed.attachments && listed.attachments.length));
     check('the parsed kind is a table', listed.attachments && listed.attachments[0] && listed.attachments[0].kind === 'table',
@@ -243,7 +244,7 @@ async function main() {
     }
     const chipsGone = await page.evaluate('document.querySelectorAll(".chip").length');
     check('removing the file leaves no chips', chipsGone === 0, `chips=${chipsGone}`);
-    const cleared = await (await fetch(`${base}/api/attachments`)).json();
+    const cleared = await (await fetch(attUrl)).json();
     check('the server has no attachments after removal', cleared.attachments.length === 0);
 
     // ── 5. drag-and-drop ───────────────────────────────────────────────
@@ -261,7 +262,7 @@ async function main() {
     })()`).then((s) => JSON.parse(s));
     check('dragenter shows the drop overlay', dragResult.overlayOn === true, JSON.stringify(dragResult));
     await sleep(800);
-    const afterDrop = await (await fetch(`${base}/api/attachments`)).json();
+    const afterDrop = await (await fetch(attUrl)).json();
     check('dropping a file uploads it', afterDrop.attachments.length === 1, JSON.stringify(afterDrop.attachments.length));
     const droppedChip = await page.evaluate(`(() => {
       const n = document.querySelector('.chip .chip__name');

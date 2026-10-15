@@ -54,7 +54,8 @@ async function main() {
   });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   const base = `http://127.0.0.1:${server.address().port}`;
-  await fetch(`${base}/api/sessions`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+  const created = await (await fetch(`${base}/api/sessions`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).json();
+  const attUrl = `${base}/api/sessions/${encodeURIComponent(created.session.id)}/attachments`;
 
   let page = null;
   try {
@@ -78,8 +79,8 @@ async function main() {
       return ev.defaultPrevented;
     })()`);
     const chips = () => page.evaluate(`JSON.stringify([...document.querySelectorAll('.chip .chip__name')].map((n) => n.textContent))`).then(JSON.parse);
-    const onServer = async () => (await (await fetch(`${base}/api/attachments`)).json()).attachments.map((a) => a.name);
-    const clear = () => fetch(`${base}/api/attachments`, { method: 'DELETE' });
+    const onServer = async () => (await (await fetch(attUrl)).json()).attachments.map((a) => a.name);
+    const clear = () => fetch(attUrl, { method: 'DELETE' });
 
     const shot = { name: 'image.png', type: 'image/png', b64: PNG };
     const took = await paste([shot]);

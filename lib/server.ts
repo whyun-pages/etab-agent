@@ -245,8 +245,19 @@ function readBody(req: http.IncomingMessage, limit = MAX_UPLOAD): Promise<Buffer
 class AppState {
   dataDir: string;
   sessions: SessionStore;
-  /** Uploaded attachments, kept for the life of the process. */
-  uploads: UploadedAttachment[];
+  /**
+   * Uploaded attachments, per session, kept for the life of the process.
+   *
+   * Keyed by session because a file is context for one conversation: with a
+   * single process-wide list, a file attached in one session showed up in
+   * every other one and was sent to the model with their turns too. Deleting
+   * a session drops its entry.
+   *
+   * In memory, as before: the bytes are not written into the session file.
+   * A restart losing them asks the user to attach again, which is visible;
+   * a session file that grows by every upload is not.
+   */
+  uploads: Map<string, UploadedAttachment[]>;
   /**
    * Changes held for confirmation, per session.
    *
@@ -283,7 +294,7 @@ class AppState {
   constructor({ dataDir }: { dataDir: string }) {
     this.dataDir = dataDir;
     this.sessions = new SessionStore(dataDir);
-    this.uploads = [];
+    this.uploads = new Map();
     this.pending = new Map();
     this.settings = new Settings(dataDir);
     this.previews = new Map();
@@ -493,7 +504,7 @@ function createHandler({ state, staticDir, imageExtractor, textExtractor, onMode
         return json(res, 200, {
           ok: true,
           app: 'tab-agent',
-          uploads: state.uploads.length,
+          uploads: [...state.uploads.values()].reduce((n, list) => n + list.length, 0),
           modelConfigured: await state.settings.isConfigured(),
         });
       }
@@ -688,7 +699,9 @@ function createHandler({ state, staticDir, imageExtractor, textExtractor, onMode
 
       const sessDel = /^DELETE \/api\/sessions\/([^/]+)$/.exec(route);
       if (sessDel) {
-        const ok = await state.sessions.remove(decodeURIComponent(sessDel[1]));
+        const sid = decodeURIComponent(sessDel[1]);
+        const ok = await state.sessions.remove(sid);
+        state.uploads.delete(sid);
         return json(res, ok ? 200 : 404, { ok });
       }
 
@@ -717,8 +730,9 @@ function createHandler({ state, staticDir, imageExtractor, textExtractor, onMode
 
         // Snapshotted before the model call: an upload or a clear landing while
         // the turn is in flight must not change what this turn says it read.
-        const files = attachmentNames(state.uploads);
-        const context = attachmentContext(state.uploads);
+        const uploads = state.uploads.get(session.id) || [];
+        const files = attachmentNames(uploads);
+        const context = attachmentContext(uploads);
 
         // Read once: the same values decide which tools the model is offered
         // and, below, whether a change may land and where a save goes.
@@ -1003,7 +1017,20 @@ function createHandler({ state, staticDir, imageExtractor, textExtractor, onMode
 
 
       // ------------------------------------------------------ attachments
-      if (route === 'POST /api/attachments') {
+      const sessAtt = /^(POST|GET|DELETE) \/api\/sessions\/([^/]+)\/attachments$/.exec(route);
+      if (sessAtt) {
+        const [, method, rawId] = sessAtt;
+        const sid = decodeURIComponent(rawId);
+        if (!(await state.sessions.load(sid))) return fail(res, 404, '会话不存在');
+
+        if (method === 'GET') {
+          return json(res, 200, { ok: true, attachments: (state.uploads.get(sid) || []).map(publicAttachment) });
+        }
+        if (method === 'DELETE') {
+          state.uploads.delete(sid);
+          return json(res, 200, { ok: true });
+        }
+
         const { files } = await readUpload(req);
         if (files.length > MAX_FILES) return fail(res, 400, `一次最多 ${MAX_FILES} 个附件`);
 
@@ -1011,6 +1038,7 @@ function createHandler({ state, staticDir, imageExtractor, textExtractor, onMode
         const { imageExtractor: imgEx, textExtractor: txtEx } = extractorsFor(wantModel);
 
         const results: Array<Record<string, unknown>> = [];
+        const parsed: UploadedAttachment[] = [];
         for (const f of files) {
           const filename = f.filename;
           try {
@@ -1018,11 +1046,17 @@ function createHandler({ state, staticDir, imageExtractor, textExtractor, onMode
               imageExtractor: imgEx,
               textExtractor: txtEx,
             });
-            state.uploads.push({ ...att, filename, data: f.data });
+            parsed.push({ ...att, filename, data: f.data });
             results.push(publicAttachment(att));
           } catch (err) {
             results.push({ name: filename, kind: 'error', error: String((err as HttpError).message || err) });
           }
+        }
+        // Added after the reads, not one by one inside them: the session can be
+        // deleted while a model-backed parse is in flight, and re-checking here
+        // keeps a late upload from bringing back an entry the delete removed.
+        if (parsed.length && (await state.sessions.load(sid))) {
+          state.uploads.set(sid, [...(state.uploads.get(sid) || []), ...parsed]);
         }
         // Tell the UI when the model was wanted but did not deliver, so a
         // degraded parse is visible rather than mysterious.
@@ -1030,15 +1064,6 @@ function createHandler({ state, staticDir, imageExtractor, textExtractor, onMode
           return json(res, 200, { ok: true, attachments: results, modelNotes });
         }
         return json(res, 200, { ok: true, attachments: results });
-      }
-
-      if (route === 'GET /api/attachments') {
-        return json(res, 200, { ok: true, attachments: state.uploads.map(publicAttachment) });
-      }
-
-      if (route === 'DELETE /api/attachments') {
-        state.uploads = [];
-        return json(res, 200, { ok: true });
       }
 
       return fail(res, 404, `未知接口：${req.method} ${url.pathname}`);
@@ -1153,7 +1178,7 @@ function attachmentContext(uploads: UploadedAttachment[]): string {
  * Names of the attachments a turn was sent with, for the stored message.
  *
  * No error filter here or above: a file that failed to parse is reported in
- * the upload response and never enters `state.uploads`.
+ * the upload response and never enters the session's uploads.
  */
 function attachmentNames(uploads: UploadedAttachment[]): string[] {
   return uploads.map((u) => u.name);

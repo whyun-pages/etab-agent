@@ -374,11 +374,11 @@ test('a session survives a server restart', async (t) => {
 
 // ── attachments ─────────────────────────────────────────────────────
 
-/** Upload one file the way the browser's paperclip does. */
-async function upload(base, filename, text) {
+/** Upload one file to a session the way the browser's paperclip does. */
+async function upload(base, id, filename, text) {
   const fd = new FormData();
   fd.append('files', new Blob([text], { type: 'text/csv' }), filename);
-  const res = await fetch(`${base}/api/attachments`, { method: 'POST', body: fd });
+  const res = await fetch(`${base}/api/sessions/${encodeURIComponent(id)}/attachments`, { method: 'POST', body: fd });
   return res.json();
 }
 
@@ -390,7 +390,7 @@ test('attachment content reaches the model but is not stored as what the user sa
   const { base } = await startServer(t, { replies: [ANSWER, ANSWER], seen });
   const { json: created } = await post(base, '/api/sessions', {});
   const id = created.session.id;
-  const up = await upload(base, '客户.csv', '客户名称,金额\n北京甲公司,100\n');
+  const up = await upload(base, id, '客户.csv', '客户名称,金额\n北京甲公司,100\n');
   assert.strictEqual(up.ok, true);
 
   const turn = await post(base, `/api/sessions/${id}/turn`, { message: '照着这个做表' });
@@ -411,6 +411,19 @@ test('attachment content reaches the model but is not stored as what the user sa
 
   const back = await get(base, `/api/sessions/${id}`);
   assert.ok(back.json.session.messages.every((m) => !/附件资料/.test(m.content)));
+});
+
+test("a turn reads only its own session's attachments", async (t) => {
+  const seen = [];
+  const { base } = await startServer(t, { replies: [ANSWER], seen });
+  const a = (await post(base, '/api/sessions', {})).json.session.id;
+  const b = (await post(base, '/api/sessions', {})).json.session.id;
+  await upload(base, a, '客户.csv', '客户名称,金额\n北京甲公司,100\n');
+
+  const turn = await post(base, `/api/sessions/${b}/turn`, { message: '你好' });
+  assert.strictEqual(turn.status, 200);
+  assert.doesNotMatch(seen[0], /附件资料|北京甲公司/);
+  assert.strictEqual(turn.json.messages[0].attachments, undefined);
 });
 
 test('a turn with no attachments sends the message unchanged and records no names', async (t) => {

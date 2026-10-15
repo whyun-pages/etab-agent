@@ -102,14 +102,15 @@ export const api = {
   },
 
   // ── attachments ───────────────────────────────────────────────────
-  listAttachments: () => req('GET', '/api/attachments'),
-  clearAttachments: () => req('DELETE', '/api/attachments'),
+  // Per session: a file is context for one conversation, not for the app.
+  listAttachments: (id) => req('GET', `/api/sessions/${q(id)}/attachments`),
+  clearAttachments: (id) => req('DELETE', `/api/sessions/${q(id)}/attachments`),
 
   /** Upload files as multipart/form-data under the `files` field. */
-  attach(files) {
+  attach(id, files) {
     const fd = new FormData();
     for (const f of files) fd.append('files', f, f.name);
-    return req('POST', '/api/attachments', { formData: fd });
+    return req('POST', `/api/sessions/${q(id)}/attachments`, { formData: fd });
   },
 };
 

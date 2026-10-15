@@ -115,7 +115,7 @@ async function main() {
     }
     check('uploading in the exe renders a chip', chip === true);
 
-    const listed = await (await fetch(`${base}/api/attachments`)).json();
+    const listed = await (await fetch(`${base}/api/sessions/${encodeURIComponent(created.session.id)}/attachments`)).json();
     check('the exe server holds the attachment', listed.attachments.length === 1,
       JSON.stringify(listed.attachments.length));
 

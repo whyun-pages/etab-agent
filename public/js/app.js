@@ -40,7 +40,8 @@ async function boot() {
   subscribe(render);
   render();
 
-  await Promise.all([refreshSettings(), refreshSessions(), refreshAttachments()]);
+  // No attachments here: they belong to a session, and openSession reads them.
+  await Promise.all([refreshSettings(), refreshSessions()]);
   checkHealth();
 
   if (!ready()) {
@@ -102,7 +103,12 @@ async function openSession(id) {
   if (!id || state.busy.sessions) return;
   setBusy('sessions', true);
   try {
-    const res = await api.getSession(id);
+    // Attachments are per session, so they come with it. A failed list read is
+    // an empty list, not a failed open: the transcript is what was asked for.
+    const [res, att] = await Promise.all([
+      api.getSession(id),
+      api.listAttachments(id).catch((err) => { console.warn('attachments read failed', err); return null; }),
+    ]);
     // A different conversation means a different message box. The cached node
     // is keyed by session id, so this also clears the half-typed text.
     if (state.activeId !== id) resetComposer();
@@ -110,6 +116,7 @@ async function openSession(id) {
       activeId: id,
       title: res.session.title || '',
       messages: res.session.messages || [],
+      attachments: (att && att.attachments) || [],
       preview: res.preview || null,
       previewError: null,
       pending: null,
@@ -143,6 +150,7 @@ async function createSession() {
       activeId: res.session.id,
       title: '',
       messages: [],
+      attachments: [],
       preview: null,
       pending: null,
       draft: '',
@@ -178,7 +186,7 @@ function confirmRemoveSession(session) {
       await refreshSessions();
       if (wasActive) {
         resetComposer();
-        set({ activeId: null, title: '', messages: [], preview: null, pending: null, draft: '' });
+        set({ activeId: null, title: '', messages: [], attachments: [], preview: null, pending: null, draft: '' });
         const next = state.sessions[0];
         if (next) await openSession(next.id);
       }
@@ -257,14 +265,17 @@ async function handleFiles(files) {
   }
   const list = [...files];
   if (!list.length) return;
+  // Captured now: the user can switch sessions while the upload is in flight,
+  // and the files belong to the session they were dropped on.
+  const id = state.activeId;
   setBusy('attach', true);
   set({ attaching: true, status: `正在读取 ${list.length} 个文件…` });
   try {
-    const res = await api.attach(list);
+    const res = await api.attach(id, list);
     if (res.modelNotes && res.modelNotes.length) {
       toast({ tone: 'warn', title: '模型读取失败', body: res.modelNotes.map((n) => n.error).join('；'), ms: 8000 });
     }
-    await refreshAttachments();
+    await refreshAttachments(id);
     const bad = (res.attachments || []).filter((a) => a.kind === 'error');
     set({ status: bad.length ? `${bad.length} 个文件读不了` : `已添加 ${list.length} 个文件` });
     if (bad.length) toast({ tone: 'err', title: '有一部文件读不了', body: bad.map((a) => `${a.name}：${a.error || '不支持'}`).join('\n'), ms: 8000 });
@@ -276,11 +287,16 @@ async function handleFiles(files) {
   }
 }
 
-/** Pull the server's current attachment list into state. */
-async function refreshAttachments() {
+/**
+ * Pull a session's attachment list into state — only if it is still the open
+ * one, so a slow read for a session the user left does not overwrite the chips
+ * of the one they are looking at.
+ */
+async function refreshAttachments(id = state.activeId) {
+  if (!id) return;
   try {
-    const res = await api.listAttachments();
-    set({ attachments: res.attachments || [] });
+    const res = await api.listAttachments(id);
+    if (state.activeId === id) set({ attachments: res.attachments || [] });
   } catch (err) {
     console.warn('attachments read failed', err);
   }
@@ -289,15 +305,16 @@ async function refreshAttachments() {
 /**
  * Remove one file.
  *
- * The server offers only clear-all, and the bytes live only in this process,
- * so dropping one file means clearing and re-sending the survivors. We no
+ * The server offers only clear-all (per session), and the bytes live only in
+ * this process, so dropping one file means clearing and re-sending the survivors. We no
  * longer hold the File objects for those survivors, so the honest move is to
  * clear and say so — silently keeping a file the user removed would be worse.
  */
 async function removeAttachment(index) {
+  if (!state.activeId) return;
   setBusy('attach', true);
   try {
-    await api.clearAttachments();
+    await api.clearAttachments(state.activeId);
     set({ attachments: [], status: '已清空附件' });
     void index;
   } catch (err) {

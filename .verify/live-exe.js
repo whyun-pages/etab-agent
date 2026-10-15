@@ -56,12 +56,13 @@ function check(name, cond, extra = '') {
     check(`packaged exe: serves ${p}`, r.status === 200, `status ${r.status}`);
   }
 
-  // 3. attachments
+  // 3. attachments (they belong to a session)
+  const owner = JSON.parse((await request('POST', '/api/sessions', '{}', { 'Content-Type': 'application/json' })).buffer.toString('utf8'));
   const mp = multipart([
     { filename: '数据.csv', data: Buffer.from('客户名称,数量,单价\n北京甲公司,10,250\n上海乙,5,300\n', 'utf8'), contentType: 'text/csv' },
     { filename: 'doc.pdf', data: Buffer.from('%PDF-1.4\n%x'), contentType: 'application/pdf' },
   ]);
-  const up = JSON.parse((await request('POST', '/api/attachments', mp.buffer, mp.headers)).buffer.toString('utf8'));
+  const up = JSON.parse((await request('POST', `/api/sessions/${encodeURIComponent(owner.session.id)}/attachments`, mp.buffer, mp.headers)).buffer.toString('utf8'));
   check('packaged exe: attachment upload works', up.attachments.length === 2);
   check('packaged exe: csv -> table', up.attachments[0].kind === 'table');
 

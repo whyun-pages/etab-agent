@@ -239,11 +239,22 @@ test('the removed template routes are gone, not merely unreachable', async (t) =
 
 // ------------------------------------------------------------- attachments
 
+/** Create a session and return its attachments path. */
+async function sessionAttachments(base) {
+  const r = await request(base, 'POST', '/api/sessions', {
+    body: Buffer.from('{}'),
+    headers: { 'Content-Type': 'application/json' },
+  });
+  const { session } = JSON.parse(r.buffer.toString('utf8'));
+  return `/api/sessions/${encodeURIComponent(session.id)}/attachments`;
+}
+
 test('attachments are accepted, described and clearable', async (t) => {
   const { base } = await startServer(t);
+  const att = await sessionAttachments(base);
   const csv = '客户名称,数量,单价\n北京甲公司的,10,250\n上海乙,5,300\n';
   const mp = multipart([{ name: 'files', filename: '数据.csv', data: Buffer.from(csv, 'utf8'), contentType: 'text/csv' }]);
-  const up = JSON.parse((await request(base, 'POST', '/api/attachments', mp)).buffer.toString('utf8'));
+  const up = JSON.parse((await request(base, 'POST', att, mp)).buffer.toString('utf8'));
   assert.strictEqual(up.ok, true);
   assert.strictEqual(up.attachments.length, 1);
   // CSV becomes a parsed table; the kind reports the shape, not the extension.
@@ -253,11 +264,44 @@ test('attachments are accepted, described and clearable', async (t) => {
   // Raw bytes must never leak into the JSON response.
   assert.strictEqual(up.attachments[0].data, undefined);
 
-  const list = await getJson(base, '/api/attachments');
+  const list = await getJson(base, att);
   assert.strictEqual(list.attachments.length, 1);
 
-  await request(base, 'DELETE', '/api/attachments');
-  assert.strictEqual((await getJson(base, '/api/attachments')).attachments.length, 0);
+  await request(base, 'DELETE', att);
+  assert.strictEqual((await getJson(base, att)).attachments.length, 0);
+});
+
+test('attachments belong to one session', async (t) => {
+  // They used to be one process-wide list: a file attached in one session
+  // showed up in every other, and went to the model with their turns too.
+  const { base } = await startServer(t);
+  const a = await sessionAttachments(base);
+  const b = await sessionAttachments(base);
+  const mp = multipart([{ name: 'files', filename: 'a.csv', data: 'x,y\n1,2\n', contentType: 'text/csv' }]);
+  await request(base, 'POST', a, mp);
+
+  assert.deepStrictEqual((await getJson(base, a)).attachments.map((x) => x.name), ['a.csv']);
+  assert.deepStrictEqual((await getJson(base, b)).attachments, []);
+  // Clearing one session leaves the other alone.
+  await request(base, 'POST', b, mp);
+  await request(base, 'DELETE', b);
+  assert.strictEqual((await getJson(base, a)).attachments.length, 1);
+  assert.strictEqual((await getJson(base, '/api/health')).uploads, 1);
+});
+
+test('deleting a session drops its attachments; an unknown session is a 404', async (t) => {
+  const { base } = await startServer(t);
+  const att = await sessionAttachments(base);
+  const mp = multipart([{ name: 'files', filename: 'a.csv', data: 'x,y\n1,2\n', contentType: 'text/csv' }]);
+  await request(base, 'POST', att, mp);
+  assert.strictEqual((await getJson(base, '/api/health')).uploads, 1);
+
+  await request(base, 'DELETE', att.replace(/\/attachments$/, ''));
+  assert.strictEqual((await getJson(base, '/api/health')).uploads, 0);
+  assert.strictEqual((await request(base, 'GET', att)).status, 404);
+  assert.strictEqual((await request(base, 'POST', '/api/sessions/nope/attachments', mp)).status, 404);
+  // The old process-wide route is gone, not silently kept as a second store.
+  assert.strictEqual((await request(base, 'GET', '/api/attachments')).status, 404);
 });
 
 test('an unsupported attachment is reported per-file without failing the batch', async (t) => {
@@ -266,7 +310,7 @@ test('an unsupported attachment is reported per-file without failing the batch',
     { name: 'files', filename: 'ok.csv', data: 'a,b\n1,2\n', contentType: 'text/csv' },
     { name: 'files', filename: 'doc.pdf', data: Buffer.from('%PDF-1.4\n%bytes'), contentType: 'application/pdf' },
   ]);
-  const up = JSON.parse((await request(base, 'POST', '/api/attachments', mp)).buffer.toString('utf8'));
+  const up = JSON.parse((await request(base, 'POST', await sessionAttachments(base), mp)).buffer.toString('utf8'));
   assert.strictEqual(up.ok, true);
   assert.strictEqual(up.attachments.length, 2);
   const pdf = up.attachments.find((a) => a.name === 'doc.pdf');
@@ -280,13 +324,14 @@ test('an unsupported attachment is reported per-file without failing the batch',
 
 test('an oversized attachment body is refused rather than buffered', async (t) => {
   const { base } = await startServer(t);
+  const att = await sessionAttachments(base);
   const oversized = Buffer.alloc(33 * 1024 * 1024, 0x41);
   const mp = multipart([{ name: 'files', filename: 'big.csv', data: oversized }]);
   // The server drops the connection mid-upload, so a socket error here is the
   // expected outcome; buffering 33MB first would be the bug.
   let status = null;
   try {
-    status = (await request(base, 'POST', '/api/attachments', mp)).status;
+    status = (await request(base, 'POST', att, mp)).status;
   } catch (err) {
     assert.match(err.code, /ECONNRESET|EPIPE/);
   }
@@ -295,7 +340,7 @@ test('an oversized attachment body is refused rather than buffered', async (t) =
 
 test('a non-multipart attachment upload is rejected', async (t) => {
   const { base } = await startServer(t);
-  const r = await request(base, 'POST', '/api/attachments', {
+  const r = await request(base, 'POST', await sessionAttachments(base), {
     body: Buffer.from('{"a":1}'),
     headers: { 'Content-Type': 'application/json' },
   });

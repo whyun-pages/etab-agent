@@ -55,25 +55,29 @@ function multipart(files) {
   check('health reports app identity', h.app === 'tab-agent');
   check('health dropped templates field', !('templates' in h), JSON.stringify(h));
 
+  // Attachments belong to a session.
+  const created = JSON.parse((await request(base, 'POST', '/api/sessions', '{}', { 'Content-Type': 'application/json' })).body);
+  const att = `/api/sessions/${encodeURIComponent(created.session.id)}/attachments`;
+
   // POST multipart
   const mp = multipart([
     { filename: '数据.csv', data: Buffer.from('客户名称,数量,单价\n北京甲公司,10,250\n上海乙,5,300\n', 'utf8'), contentType: 'text/csv' },
     { filename: 'doc.pdf', data: Buffer.from('%PDF-1.4\n%x'), contentType: 'application/pdf' },
   ]);
-  const up = JSON.parse((await request(base, 'POST', '/api/attachments', mp.buffer, mp.headers)).body);
+  const up = JSON.parse((await request(base, 'POST', att, mp.buffer, mp.headers)).body);
   check('POST returns both files', up.attachments && up.attachments.length === 2);
   check('csv parsed as table', up.attachments[0].kind === 'table');
   check('pdf described, not fatal', up.attachments[1].kind === 'unknown' && /PDF/.test(up.attachments[1].note));
   check('raw bytes never returned', up.attachments[0].data === undefined);
 
   // GET list
-  const list = JSON.parse((await request(base, 'GET', '/api/attachments')).body);
+  const list = JSON.parse((await request(base, 'GET', att)).body);
   check('GET lists one item', list.attachments.length === 2);
   check('health reflects upload count', JSON.parse((await request(base, 'GET', '/api/health')).body).uploads === 2);
 
   // DELETE
-  await request(base, 'DELETE', '/api/attachments');
-  const after = JSON.parse((await request(base, 'GET', '/api/attachments')).body);
+  await request(base, 'DELETE', att);
+  const after = JSON.parse((await request(base, 'GET', att)).body);
   check('DELETE clears the list', after.attachments.length === 0);
 
   // the removed routes must genuinely be gone, not silently 200
