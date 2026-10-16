@@ -33,6 +33,8 @@
 
 import { normalizeSpec, validateSpec, TYPES } from './workbook.ts';
 import type { CellValue, ColumnType, SpecNote, WorkbookSpec } from './workbook.ts';
+import { QueryError, selectRows, computeRows, describeFailures, cellText, isBlank } from './table-query.ts';
+import type { QueryTable, Selection } from './table-query.ts';
 
 /** An operation as the agent records it: the tool's name and its arguments. */
 export interface SpecOp {
@@ -340,16 +342,182 @@ function updateCells(spec: WorkbookSpec | null, args: Record<string, unknown>): 
   return finish(raw, `已修改「${sheet.name}」${cells.length} 个单元格`);
 }
 
+// ------------------------------------------------------- by condition
+//
+// The operations below choose rows by a condition (`where`) instead of by
+// number, and compute values by an expression instead of listing them. Both
+// are evaluated by lib/table-query.ts against the table the operation is
+// applied to — which, on the server's replay, is the STORED table. So "delete
+// the rows marked 已签收" deletes the rows marked 已签收 in the newer table, not
+// the row numbers that were marked so in the snapshot the turn saw. That is
+// the meaning the user asked for, and it is why these record the condition
+// rather than the row numbers it produced.
+
+/** A sheet as lib/table-query.ts reads it: header and rows, sharing the arrays. */
+function view(sheet: RawSheetOut): QueryTable {
+  return { header: sheet.columns.map((c) => c.header), rows: sheet.rows };
+}
+
+/** Run a table-query call, turning its refusal into this module's. */
+function query<T>(fn: () => T): T {
+  try {
+    return fn();
+  } catch (err) {
+    if (err instanceof QueryError) throw new SpecOpError(err.message);
+    throw err;
+  }
+}
+
+function selection(args: Record<string, unknown>): Selection {
+  return { where: list(args.where) as Selection['where'], match: str(args.match).toLowerCase() === 'any' ? 'any' : 'all' };
+}
+
+/** A selection in words, for summaries: 「状态 = 已签收」且「金额 > 100」. */
+function describeWhere(args: Record<string, unknown>): string {
+  const conds = list(args.where).map((c) => {
+    const o = (c && typeof c === 'object' ? c : {}) as Record<string, unknown>;
+    const v = Array.isArray(o.value) ? o.value.map(cellText).join('/') : o.value === undefined ? '' : ` ${cellText(o.value)}`;
+    return `「${str(o.column)} ${str(o.op) || '='}${Array.isArray(o.value) ? ` ${v}` : v}」`;
+  });
+  return conds.join(str(args.match).toLowerCase() === 'any' ? '或' : '且');
+}
+
 function deleteRows(spec: WorkbookSpec | null, args: Record<string, unknown>): OpResult {
   const raw = toRaw(requireSpec(spec));
   const sheet = findSheet(raw, args.sheet);
   const nums = list(args.rows);
-  if (!nums.length) throw new SpecOpError('delete_rows 没有给出行号。');
+  const where = list(args.where);
+  if (!nums.length && !where.length) throw new SpecOpError('delete_rows 需要 rows（行号）或 where（条件）。');
+  if (nums.length && where.length) throw new SpecOpError('delete_rows 的 rows 和 where 只能给一个。');
   // Resolve all first, then delete from the bottom, so the numbers the model
   // gave all refer to the table it saw rather than to a table half-deleted.
-  const indices = [...new Set(nums.map((n) => rowIndex(sheet, n)))].sort((a, b) => b - a);
+  const indices = where.length
+    ? query(() => selectRows(view(sheet), selection(args))).sort((a, b) => b - a)
+    : [...new Set(nums.map((n) => rowIndex(sheet, n)))].sort((a, b) => b - a);
   for (const i of indices) sheet.rows.splice(i, 1);
-  return finish(raw, `已从「${sheet.name}」删除 ${indices.length} 行，剩 ${sheet.rows.length} 行`);
+  const why = where.length ? `符合${describeWhere(args)}的 ` : '';
+  return finish(raw, `已从「${sheet.name}」删除${why}${indices.length} 行，剩 ${sheet.rows.length} 行`);
+}
+
+/**
+ * Set columns to fixed values on every row a condition selects — or on every
+ * row, when there is no condition. "把所有派送中的改成已签收" is one call, not
+ * one `update_cells` entry per row.
+ */
+function updateRows(spec: WorkbookSpec | null, args: Record<string, unknown>): OpResult {
+  const raw = toRaw(requireSpec(spec));
+  const sheet = findSheet(raw, args.sheet);
+  const set = (args.set && typeof args.set === 'object' && !Array.isArray(args.set) ? args.set : {}) as Record<string, unknown>;
+  const cols = Object.entries(set).map(([h, v]) => ({ c: findColumn(sheet, h), v }));
+  if (!cols.length) throw new SpecOpError('update_rows 的 set 没有给出任何列。');
+  const indices = query(() => selectRows(view(sheet), selection(args)));
+  for (const i of indices) {
+    const row = sheet.rows[i];
+    for (const { c, v } of cols) {
+      while (row.length <= c) row.push(null);
+      row[c] = v === undefined ? null : v;
+    }
+  }
+  const where = list(args.where).length ? `符合${describeWhere(args)}的` : '全部';
+  return finish(raw, `已把「${sheet.name}」${where} ${indices.length} 行的 ${cols.map(({ c }) => `「${sheet.columns[c].header}」`).join('、')} 改为指定值`);
+}
+
+/** The column type a set of computed values suggests, for a new column. */
+function inferType(values: unknown[]): ColumnType {
+  const present = values.filter((v) => !isBlank(v));
+  if (!present.length) return 'text';
+  if (present.every((v) => v instanceof Date)) return 'date';
+  if (present.every((v) => typeof v === 'boolean')) return 'boolean';
+  if (present.every((v) => typeof v === 'number')) return present.every((v) => Number.isInteger(v)) ? 'integer' : 'number';
+  return 'text';
+}
+
+/**
+ * Fill a column from an expression over each row: an existing column is
+ * overwritten (on the selected rows), a new one is added. The expression is
+ * what is recorded, so the replay recomputes from the stored values.
+ */
+function computeColumn(spec: WorkbookSpec | null, args: Record<string, unknown>): OpResult {
+  const raw = toRaw(requireSpec(spec));
+  const sheet = findSheet(raw, args.sheet);
+  const header = str(args.column);
+  if (!header) throw new SpecOpError('compute_column 必须给出 column（列名）。');
+  const expression = str(args.expression);
+  if (!expression) throw new SpecOpError('compute_column 必须给出 expression。');
+  const t = view(sheet);
+  const indices = query(() => selectRows(t, selection(args)));
+  const { values, failed } = query(() => computeRows(t, expression, indices));
+
+  let c = sheet.columns.findIndex((x) => x.header === header);
+  const created = c < 0;
+  if (created) {
+    c = str(args.before) ? findColumn(sheet, args.before) : sheet.columns.length;
+    const type = str(args.type) ? columnType(args.type) : inferType([...values.values()]);
+    sheet.columns.splice(c, 0, { key: header, header, type, format: null });
+    for (const r of sheet.rows) {
+      while (r.length < c) r.push(null);
+      r.splice(c, 0, null);
+    }
+  } else if (str(args.type)) {
+    sheet.columns[c].type = columnType(args.type);
+  }
+  for (const [i, v] of values) {
+    const row = sheet.rows[i];
+    while (row.length <= c) row.push(null);
+    row[c] = v as CellValue;
+  }
+  const where = list(args.where).length ? `符合${describeWhere(args)}的 ${indices.length} 行` : `${indices.length} 行`;
+  return finish(raw, `已${created ? '新增' : '重新计算'}「${sheet.name}」的列「${header}」 = ${expression}（${where}）${describeFailures(failed)}`);
+}
+
+/**
+ * Bring columns over from another sheet by a matching key, as VLOOKUP does:
+ * for each row, the first row of `fromSheet` whose `fromKey` equals this row's
+ * `key`. A row with no match gets blanks, and the summary counts them — a
+ * lookup that silently misses half the keys is the classic spreadsheet bug.
+ */
+function lookupColumns(spec: WorkbookSpec | null, args: Record<string, unknown>): OpResult {
+  const raw = toRaw(requireSpec(spec));
+  const sheet = findSheet(raw, args.sheet);
+  const src = findSheet(raw, args.fromSheet);
+  if (src === sheet) throw new SpecOpError('lookup_columns 的 fromSheet 不能是同一个工作表。');
+  const key = findColumn(sheet, args.key);
+  const srcKey = findColumn(src, str(args.fromKey) || args.key);
+  const wanted = list(args.columns).map(str).filter(Boolean);
+  if (!wanted.length) throw new SpecOpError('lookup_columns 必须给出 columns（要带过来的列）。');
+  const names = list(args.names).map(str);
+  const cols = wanted.map((h, k) => ({ from: findColumn(src, h), header: names[k] || h }));
+
+  // Keys compared as trimmed text: "1001" in one sheet and 1001 in the other
+  // are the same order number to anyone reading them.
+  const norm = (v: unknown) => cellText(v).trim();
+  const index = new Map<string, unknown[]>();
+  for (const r of src.rows) {
+    const k = norm(r[srcKey]);
+    if (k && !index.has(k)) index.set(k, r);
+  }
+
+  const targets = cols.map(({ from, header }) => {
+    let c = sheet.columns.findIndex((x) => x.header === header);
+    if (c < 0) {
+      c = sheet.columns.length;
+      const s = src.columns[from];
+      sheet.columns.push({ key: header, header, type: s.type, format: s.format });
+      for (const r of sheet.rows) { while (r.length < c) r.push(null); r.push(null); }
+    }
+    return { from, c };
+  });
+  let missed = 0;
+  for (const r of sheet.rows) {
+    const hit = index.get(norm(r[key]));
+    if (!hit) { if (norm(r[key])) missed++; }
+    for (const { from, c } of targets) {
+      while (r.length <= c) r.push(null);
+      r[c] = hit ? (hit[from] ?? null) : null;
+    }
+  }
+  const miss = missed ? `；${missed} 行在「${src.name}」里找不到对应的「${src.columns[srcKey].header}」，已留空` : '';
+  return finish(raw, `已按「${sheet.columns[key].header}」从「${src.name}」带入列：${cols.map((x) => x.header).join('、')}${miss}`);
 }
 
 /** Collation for sorting text the way a Chinese reader expects. Fixed locale: same input, same order. */
@@ -448,6 +616,9 @@ export const OPS: Record<string, (spec: WorkbookSpec | null, args: Record<string
   add_rows: addRows,
   update_cells: updateCells,
   delete_rows: deleteRows,
+  update_rows: updateRows,
+  compute_column: computeColumn,
+  lookup_columns: lookupColumns,
   sort_rows: sortRows,
   set_totals: setTotals,
   add_sheet: addSheet,

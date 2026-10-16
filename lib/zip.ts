@@ -103,17 +103,50 @@ function findEOCD(buf: Buffer): number {
   return -1;
 }
 
-/** Decode a filename: CP437-ish ASCII fast path, else UTF-8. */
+/**
+ * Decode a filename.
+ *
+ * The UTF-8 flag is authoritative when set. Without it the bytes are whatever
+ * the archiver's code page was — and an archive made by Explorer or WinRAR on
+ * a Chinese Windows writes GBK without setting the flag. ASCII (every XLSX
+ * part name) reads the same in any of these; otherwise valid UTF-8 is taken as
+ * UTF-8 (many tools omit the flag), and anything else as GBK, the code page
+ * this app's users actually have.
+ */
 function decodeName(bytes: Buffer, utf8Flag: boolean): string {
   if (utf8Flag) return bytes.toString('utf8');
-  return bytes.toString('latin1');
+  if (bytes.every((b) => b < 0x80)) return bytes.toString('latin1');
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  } catch { /* not UTF-8 */ }
+  try {
+    return new TextDecoder('gbk').decode(bytes);
+  } catch {
+    return bytes.toString('latin1');
+  }
+}
+
+/**
+ * Bounds for reading an archive someone else made.
+ *
+ * An XLSX the app wrote, or one a user picked, is read without limits as
+ * before. An archive uploaded as an attachment is different: a few kilobytes
+ * can inflate to gigabytes (a "zip bomb"), and this is one process serving
+ * every request. So the caller can cap the entry count and the total inflated
+ * size; going over either throws rather than returning a partial archive.
+ */
+export interface ReadZipLimits {
+  maxEntries?: number;
+  maxBytes?: number;
 }
 
 /**
  * Read a ZIP archive into a Map<name, ZipEntry>.
  * Entries are decompressed eagerly; XLSX parts are small.
  */
-export function readZip(buf: Buffer): Map<string, ZipEntry> {
+export function readZip(buf: Buffer, limits: ReadZipLimits = {}): Map<string, ZipEntry> {
+  const maxEntries = limits.maxEntries ?? Infinity;
+  let budget = limits.maxBytes ?? Infinity;
   const eocd = findEOCD(buf);
   if (eocd < 0) throw new Error('not a zip: EOCD signature not found');
 
@@ -171,7 +204,12 @@ export function readZip(buf: Buffer): Map<string, ZipEntry> {
 
     // Directory entries have trailing '/'; skip them but keep the count in sync.
     if (!name.endsWith('/')) {
-      const data = readLocalEntry(buf, localOffset, method, compSize);
+      if (entries.size >= maxEntries) throw new Error(`压缩包里的文件超过 ${maxEntries} 个`);
+      // The declared size is checked first, so an honest bomb is refused before
+      // any inflating; `maxOutputLength` catches one that lies about its size.
+      if (uncompSize !== 0xffffffff && uncompSize > budget) throw new Error('压缩包解压后太大');
+      const data = readLocalEntry(buf, localOffset, method, compSize, budget);
+      budget -= data.length;
       entries.set(normalize(name), { name, data, method, modTime, modDate });
     }
     p += 46 + nameLen + extraLen + commentLen;
@@ -180,7 +218,7 @@ export function readZip(buf: Buffer): Map<string, ZipEntry> {
 }
 
 /** Resolve one entry's payload from its local header. */
-function readLocalEntry(buf: Buffer, localOffset: number, cdMethod: number, cdCompSize: number): Buffer {
+function readLocalEntry(buf: Buffer, localOffset: number, cdMethod: number, cdCompSize: number, budget = Infinity): Buffer {
   if (u32(buf, localOffset) !== SIG_LOC) throw new Error('bad local header at ' + localOffset);
   const nameLen = u16(buf, localOffset + 26);
   const extraLen = u16(buf, localOffset + 28);
@@ -192,8 +230,19 @@ function readLocalEntry(buf: Buffer, localOffset: number, cdMethod: number, cdCo
   const compSize = cdCompSize;
   const raw = buf.subarray(dataStart, dataStart + compSize);
 
-  if (method === 0) return Buffer.from(raw);
-  if (method === 8) return zlib.inflateRawSync(raw);
+  if (method === 0) {
+    if (raw.length > budget) throw new Error('压缩包解压后太大');
+    return Buffer.from(raw);
+  }
+  if (method === 8) {
+    if (budget === Infinity) return zlib.inflateRawSync(raw);
+    try {
+      return zlib.inflateRawSync(raw, { maxOutputLength: Math.max(1, budget) });
+    } catch (err) {
+      if ((err as { code?: string }).code === 'ERR_BUFFER_TOO_LARGE' || err instanceof RangeError) throw new Error('压缩包解压后太大');
+      throw err;
+    }
+  }
   throw new Error('unsupported compression method: ' + method);
 }
 

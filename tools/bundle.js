@@ -19,48 +19,16 @@
  *
  * Providers that are not shipped
  * ------------------------------
- * pi-ai loads each provider with a literal `import('./x.js')`, so esbuild
- * would bundle every one of them, SDKs included — Mistral's even needs an
- * optional OpenTelemetry package that is not installed. The settings panel
- * offers three protocols (lib/model.ts); the others are replaced with a stub
- * that throws when called. Nothing can call them: an unknown protocol in the
- * settings reads as the default.
+ * Up to pi-ai 0.x, a global registry loaded every provider with a literal
+ * `import('./x.js')`, so esbuild bundled all of them, SDKs included, and a
+ * plugin here swapped the unused ones for a stub. Since 1.x, lib/pi.ts imports
+ * the three protocols the settings panel offers by name, and nothing else is
+ * reachable — the graph itself leaves the other SDKs out, so the stub is gone.
  */
 
 const path = require('node:path');
 const esbuild = require('esbuild');
 const { isBuiltin } = require('node:module');
-
-/**
- * Provider modules pi-ai can load that this app never routes to. Keep in step
- * with MODEL_APIS in lib/model.ts: a protocol added there must come off this
- * list, or its first request fails with the stub's error.
- */
-const UNSHIPPED_PROVIDERS = [
-  'amazon-bedrock',
-  'azure-openai-responses',
-  'google-vertex',
-  'mistral',
-  'openai-codex-responses',
-  'openai-responses',
-];
-
-const UNSHIPPED_RE = new RegExp(`^\\./(${UNSHIPPED_PROVIDERS.join('|')})\\.js$`);
-
-/** Swap the unshipped providers for a stub, only where pi-ai registers them. */
-const unshippedProviders = {
-  name: 'unshipped-providers',
-  setup(build) {
-    build.onResolve({ filter: UNSHIPPED_RE }, (args) => {
-      if (!/[\\/]pi-ai[\\/]dist[\\/]providers[\\/]register-builtins\.js$/.test(args.importer)) return undefined;
-      return { path: path.basename(args.path, '.js'), namespace: 'unshipped' };
-    });
-    build.onLoad({ filter: /.*/, namespace: 'unshipped' }, (args) => ({
-      loader: 'js',
-      contents: `throw new Error(${JSON.stringify(`provider not included in this build: ${args.path}`)});`,
-    }));
-  },
-};
 
 /**
  * Bundle `entry` into `outfile`.
@@ -83,7 +51,6 @@ async function bundle({ entry, outfile, banner = '' }) {
     banner: banner ? { js: banner } : undefined,
     legalComments: 'none',
     logLevel: 'silent',
-    plugins: [unshippedProviders],
   });
   const out = result.metafile.outputs[path.relative(process.cwd(), outfile).replace(/\\/g, '/')]
     || Object.values(result.metafile.outputs)[0];
@@ -97,4 +64,4 @@ async function bundle({ entry, outfile, banner = '' }) {
   };
 }
 
-module.exports = { bundle, UNSHIPPED_PROVIDERS };
+module.exports = { bundle };

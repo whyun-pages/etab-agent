@@ -5,7 +5,8 @@
  * Checks:
  *   1. the shipped entry bundles, and every import left for runtime is a Node
  *      builtin or a known optional package (see OPTIONAL)
- *   2. no protocol the settings panel offers is stubbed out (tools/bundle.js)
+ *   2. every protocol the settings panel offers has a stream implementation
+ *      in lib/pi.ts
  *   3. the bundled server code RUNS somewhere with no node_modules at all: a
  *      probe bundle is copied to a temp directory outside the repository and
  *      driven in a child process — one plain call and one full agent turn
@@ -22,7 +23,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
-const { bundle, UNSHIPPED_PROVIDERS } = require('./bundle');
+const { bundle } = require('./bundle');
 
 const ROOT = path.join(__dirname, '..');
 const BUILT = path.join(ROOT, '.build', 'js');
@@ -38,13 +39,6 @@ const OPTIONAL = {
   bufferutil: 'ws: optional native speed-up for masking frames',
   'utf-8-validate': 'ws: optional native UTF-8 validator',
   'supports-color': 'debug: optional terminal colour detection',
-};
-
-/** pi-ai's provider module for each protocol the settings panel offers. */
-const PROVIDER_MODULE = {
-  'openai-completions': 'openai-completions',
-  'anthropic-messages': 'anthropic',
-  'google-generative-ai': 'google',
 };
 
 let failures = 0;
@@ -70,12 +64,11 @@ async function main() {
   for (const s of r.thirdParty.filter((x) => OPTIONAL[x])) console.log(`     optional: ${s} — ${OPTIONAL[s]}`);
   for (const w of r.warnings) console.log(`     warning: ${w}`);
 
-  console.log('\n===== 2) offered protocols are bundled =====');
+  console.log('\n===== 2) offered protocols have a stream implementation =====');
   const { MODEL_APIS } = require(path.join(BUILT, 'lib', 'model.js'));
+  const { apis } = await require(path.join(BUILT, 'lib', 'pi.js')).loadPi();
   for (const api of MODEL_APIS) {
-    const mod = PROVIDER_MODULE[api];
-    check(`${api} has a provider module`, Boolean(mod), 'add it to PROVIDER_MODULE');
-    if (mod) check(`${api} (${mod}.js) is not stubbed`, !UNSHIPPED_PROVIDERS.includes(mod));
+    check(`${api} is in lib/pi.ts's stream table`, apis.has(api), 'import its .lazy module in loadPi');
   }
 
   console.log('\n===== 3) bundled server code runs with no node_modules =====');
@@ -171,15 +164,16 @@ const report = (label, ok, detail) => console.log((ok ? 'ok ' : 'FAIL ') + label
   server.close();
 
   // The other offered providers: each must LOAD. Pointed at a closed port, a
-  // loaded provider fails with a connection error; a stubbed or broken one
+  // loaded provider fails with a connection error; a missing or broken one
   // fails with something else.
-  const { ai } = await b.pi.loadPi();
+  const pi = await b.pi.loadPi();
   for (const api of b.model.MODEL_APIS.filter((a) => a !== 'openai-completions')) {
     const model = b.model.modelFromSecrets({ api, baseUrl: 'http://127.0.0.1:9/v1', apiKey: 'k', model: 'm' });
     try {
-      const res = await ai.complete(model, { messages: [{ role: 'user', content: 'x', timestamp: 0 }] }, { apiKey: 'k', maxRetries: 0 });
+      const context = pi.ai.normalizeContext({ messages: [{ role: 'user', content: 'x', timestamp: 0 }] });
+      const res = await pi.stream(model, context, { apiKey: 'k', maxRetries: 0 }).result();
       const msg = String(res.errorMessage || '');
-      const loaded = res.stopReason === 'error' && !/not included in this build|Cannot find module|is not a function/i.test(msg);
+      const loaded = res.stopReason === 'error' && !/no stream implementation|Cannot find module|is not a function/i.test(msg);
       report(api + ' provider loads', loaded, msg.slice(0, 200));
     } catch (e) { report(api + ' provider loads', false, e.message); }
   }

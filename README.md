@@ -8,8 +8,8 @@
   同一份 spec 每次产出字节相同的文件。
 - **模型的话不算数。** 回复里说「改好了」不会改动任何东西，只有工具调用才会，
   而且每次调用的结果都要先过校验。见下面的三道闸。
-- **对话轮跑在 [pi-agent](https://github.com/badlogic/pi-mono) 上**
-  （`@mariozechner/pi-agent-core` + `@mariozechner/pi-ai`），支持 OpenAI 兼容、
+- **对话轮跑在 [pi-agent](https://github.com/earendil-works/pi) 上**
+  （`@earendil-works/pi-agent-core` + `@earendil-works/pi-ai` 1.x），支持 OpenAI 兼容、
   Anthropic、Gemini 三种接口协议。
 
 ## 快速开始
@@ -24,7 +24,8 @@ pnpm install                    # 运行时依赖 pi-agent（pi-agent-core / pi-
 pnpm start --port 3179          # 先跑 tsc，再启动 .build/js/server.js
 ```
 
-源码是 `server.ts` / `desktop.ts` / `lib/*.ts`，仓库里没有可以直接 `node` 的 `.js`。
+源码是 `server.ts` / `desktop.ts` / `lib/**/*.ts`，仓库里没有可以直接 `node` 的 `.js`。
+HTTP 层是 [Koa](https://koajs.com/)：`lib/server.ts` 组装应用，接口按领域分在 `lib/routes/` 下。
 `pnpm start` 和 `pnpm desktop` 启动前都会先编译（`prestart` / `predesktop`），
 跑的永远是最新代码；直接 `node .build/js/server.js` 则需要自己先 `pnpm build:js`。
 
@@ -144,7 +145,8 @@ OpenAI 兼容协议默认按保守的兼容设置发请求（系统提示用 `sy
 
 - **保存发生在修改落定之后。** `save_file` 只登记请求，服务端在本轮修改真正写入会话后才导出，
   保存的一定是落盘后的表。修改在等待确认时，确认后才保存；修改被拦下或与并发修改冲突时不保存，
-  并在回复里说明。模型只能指定文件名，不能指定目录；同名文件不覆盖，自动加 ` (1)`、` (2)`。
+  并在回复里说明。模型只能指定文件名，不能指定目录（「允许读写本机文件」为读写时除外，见下）；
+  同名文件不覆盖，自动加 ` (1)`、` (2)`。
 - **CSV** 带 UTF-8 BOM（Excel 打开中文不乱码）、CRLF 换行；以 `=` `+` `-` `@` 开头的文本单元格
   前面加 `'`，防止 Excel 把抓来的内容当公式执行。合计行按 xlsx 的同一算法写成数值。
 - **抓取的安全限制**（[lib/fetch-url.ts](lib/fetch-url.ts)）：只允许 http/https；回环、私网、
@@ -157,6 +159,33 @@ OpenAI 兼容协议默认按保守的兼容设置发请求（系统提示用 `sy
 - 开关关闭时模型拿不到对应工具，但会被告知开关在哪，用户要求抓取或保存时它会提示去设置里打开。
 - 导入是一个普通的编辑操作（`create_workbook` 或 `add_sheet`），抓到的行写在操作参数里：
   照样过校验和删行保护，服务端重放时也不会重新联网。
+
+### 读写本机文件
+
+| 设置 | 默认 | 说明 |
+|---|---|---|
+| 允许读写本机文件 | **关** | 只读：模型可以 `read`、`ls`、`find`、`grep`、`import_file`；读写：另有 `write`、`edit`、执行命令（Windows 上是 `powershell`，其他系统是 `bash`），`save_file` 可指定文件夹 |
+| 禁止访问的路径 | 空 | 每行一个：文件夹路径（连同里面的内容）或文件名模式（`*.bak`） |
+
+- 文件工具是 [pi](https://github.com/earendil-works/pi) 的 `read`、`write`、`edit`、`ls`、`find`、`grep`、
+  `bash`/`powershell`，源码移植在 [lib/pi-tools/](lib/pi-tools/)（MIT），每次磁盘访问都经过下面的检查。
+  `find`、`grep` 在进程内实现，不下载也不调用 `fd`、`ripgrep`。
+- 在对话里给出完整路径（`D:\tmp\box3.zip 统计订单状态`）即可，相对路径以用户主目录为准。`read` 读文本和图片；
+  表格要统计时用 `import_file`：读文件、文件夹（最多 4 层、100 个文件、共 200 MB）或 zip，
+  读到的每个文件成为会话附件，之后用 `query_table` 统计。
+- **始终禁止**（不能在设置里去掉，见 [lib/file-access.ts](lib/file-access.ts)）：`~/.ssh` 等密钥目录、
+  浏览器配置、Windows 凭据、系统目录、本程序的数据目录（存着 API key），以及 `*.pem`、`id_rsa*`、
+  `.env` 等文件名。检查在解析符号链接之后进行；`\\` 开头的网络共享路径一律拒绝（在 Windows 上
+  访问它就会把当前用户的 NTLM 凭据发给对方）。
+- **写入更严：** 只能写文本类文件（txt、md、csv、json……），不能写脚本和可执行文件。
+  `write`、`edit` 在本轮中只是记下新内容（本轮后面的读取能看到），本轮结束、修改落定后才真正写入：
+  先写临时文件再替换，执行前重新检查路径；修改被拦下时不写。
+- **执行命令不受以上任何限制。** 读写模式下模型可以执行命令，命令立即执行，
+  能读写这个账户能访问的一切，禁止列表管不到。只在确实需要时选「读写」。
+- 只对**本机**发起的请求提供文件工具，设置也只能在本机修改：用 `--host` 开放到局域网时，
+  别人的对话读不到这台电脑的文件。
+- **风险：** 和联网抓取一样是黑名单模式。读到的文件内容可能诱导模型去读别的文件；
+  敏感数据所在的位置请加到禁止列表，或者保持关闭。
 
 ### 快捷键
 

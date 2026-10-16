@@ -260,3 +260,15 @@ test('the connection test gives the model room to think', async (t) => {
   const budget = sent.max_tokens ?? sent.max_completion_tokens;
   assert.ok(budget >= 256, `token budget too small for a reasoning model: ${budget}`);
 });
+
+test('file access: off by default, validated, and the blocklist normalised', async (t) => {
+  const { base } = await boot(t);
+  const fresh = (await getJson(base, '/api/settings')).body.settings;
+  assert.equal(fresh.chatFileAccess, 'off', 'local files are off until the user turns them on');
+  assert.deepEqual(fresh.fileBlocklist, []);
+  const bad = await postJson(base, '/api/settings', { chatFileAccess: 'everything' });
+  assert.equal(bad.status, 400);
+  const ok = await postJson(base, '/api/settings', { chatFileAccess: 'read', fileBlocklist: 'D:\\财务\n\n*.bak' });
+  assert.equal(ok.body.settings.chatFileAccess, 'read');
+  assert.deepEqual(ok.body.settings.fileBlocklist, ['D:\\财务', '*.bak']);
+});

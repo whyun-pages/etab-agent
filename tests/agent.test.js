@@ -33,6 +33,7 @@ const {
   INTENT,
   MAX_STEPS,
 } = require('../lib/agent');
+const { loadPi } = require('../lib/pi');
 
 const { normalizeSpec } = require('../lib/workbook');
 
@@ -47,14 +48,30 @@ function fakeSettings() {
 }
 
 // pi-ai is ESM-only, so it is reached with import() even from this CommonJS
-// file. One faux provider per file; each test replaces its script.
+// file. One faux provider per file; each test replaces its script. It is
+// registered in the app's own stream table (lib/pi.ts), the way a protocol is.
 let pi = null;
 async function loadFaux() {
   if (!pi) {
-    const ai = await import('@mariozechner/pi-ai');
-    pi = { ai, faux: ai.registerFauxProvider() };
+    const ai = await import('@earendil-works/pi-ai');
+    const faux = ai.fauxProvider();
+    (await loadPi()).apis.set(faux.api, faux.provider);
+    pi = { ai, faux };
   }
   return pi;
+}
+
+/**
+ * A request context as the tests read it. pi 1.x carries the system prompt
+ * and the tool declarations as system messages in the transcript; this lifts
+ * them back out, and leaves `messages` as the conversation alone.
+ */
+function view(ai, context) {
+  return {
+    systemPrompt: ai.getCurrentSystemPrompt(context.messages),
+    tools: ai.getCurrentTools(context.messages),
+    messages: context.messages.filter((m) => m.role !== 'system'),
+  };
 }
 
 /**
@@ -79,7 +96,7 @@ async function turnWith(steps, args) {
   const { ai, faux } = await loadFaux();
   const contexts = [];
   faux.setResponses(steps.map((s) => (context) => {
-    contexts.push(context);
+    contexts.push(view(ai, context));
     return step(ai, s);
   }));
   const res = await runTurn({ settings: fakeSettings(), model: faux.getModel(), ...args });
@@ -382,7 +399,8 @@ test('runTurn: read-only mode offers no edit tools', async () => {
     '当前是只读模式，无法修改。',
   ], { message: '把甲的金额改成1', spec: specWith(SPEC_3_ROWS.sheets[0].rows), canEdit: false });
   const offered = res.contexts[0].tools.map((t) => t.name);
-  assert.deepStrictEqual(offered, ['read_rows']);
+  // Only the read tools: query_table reads, and its saveAs is refused when read-only.
+  assert.deepStrictEqual(offered, ['read_rows', 'query_table']);
   assert.match(res.contexts[0].systemPrompt, /只读模式/);
   assert.strictEqual(res.intent, INTENT.ANSWER);
   assert.strictEqual(res.spec, null);
@@ -802,8 +820,34 @@ test('runTurn: with fetching or saving off, the model is told where the switch i
   const prompt = res.contexts[0].systemPrompt;
   assert.match(prompt, /「允许对话联网抓取」已关闭/);
   assert.match(prompt, /「允许对话保存文件」已关闭/);
-  const on = await turnWith(['好'], { message: '下载', spec: specWith([['甲', 1]]), canSave: true, canFetch: true });
+  assert.match(prompt, /「允许读写本机文件」已关闭/);
+  const on = await turnWith(['好'], { message: '下载', spec: specWith([['甲', 1]]), canSave: true, canFetch: true, fileAccess: 'read' });
   assert.doesNotMatch(on.contexts[0].systemPrompt, /已关闭/);
+});
+
+test('runTurn: file tools follow the access setting, and save_file gains dir only with write', async () => {
+  const names = async (fileAccess) => {
+    const r = await turnWith(['好'], { message: '你好', canSave: true, fileAccess });
+    const tools = r.contexts[0].tools;
+    const save = tools.find((t) => t.name === 'save_file');
+    return { names: tools.map((t) => t.name), dir: Boolean(save.parameters.properties.dir), prompt: r.contexts[0].systemPrompt };
+  };
+  const shellTool = process.platform === 'win32' ? 'powershell' : 'bash';
+  const readTools = ['read', 'ls', 'find', 'grep', 'import_file'];
+  const writeTools = ['write', 'edit', shellTool];
+  const off = await names('off');
+  assert.ok(!off.names.some((n) => [...readTools, ...writeTools].includes(n)), off.names.join());
+  assert.strictEqual(off.dir, false);
+  const read = await names('read');
+  assert.ok([...readTools, 'read_attachment'].every((n) => read.names.includes(n)), read.names.join());
+  assert.ok(!writeTools.some((n) => read.names.includes(n)), read.names.join());
+  assert.match(read.prompt, /不能指定目录/);
+  assert.doesNotMatch(read.prompt, new RegExp(shellTool), 'the shell is not mentioned where it is not offered');
+  const rw = await names('readwrite');
+  assert.ok(writeTools.every((n) => rw.names.includes(n)), rw.names.join());
+  assert.strictEqual(rw.dir, true);
+  assert.doesNotMatch(rw.prompt, /不能指定目录/);
+  assert.match(rw.prompt, /不受上面的访问限制/, 'the prompt says the shell is outside the checks');
 });
 
 test('runTurn: a table read without importAs tells the model to import, not copy', async () => {
@@ -899,7 +943,7 @@ async function silentModel({ before = 0, during = 0 }) {
     })();
     return out;
   };
-  ai.registerApiProvider({ api, stream, streamSimple: stream });
+  (await loadPi()).apis.set(api, { stream, streamSimple: stream });
   return { ...faux.getModel(), api };
 }
 
@@ -923,4 +967,144 @@ test('runTurn: silence before a reply starts gets only the short window', async 
     () => runTurn({ settings: fakeSettings(), model, message: '你好', idleTimeoutMs: 100, streamIdleTimeoutMs: 5000 }),
     (err) => err.code === 'aborted' && /没有任何输出/.test(err.message),
   );
+});
+
+// ── read_attachment ─────────────────────────────────────────────────
+
+/** A parsed CSV upload, as the server keeps it in `state.uploads`. */
+async function csvAttachment(name, csv) {
+  const { readAttachment } = require('../lib/attachments');
+  return readAttachment(Buffer.from(csv, 'utf8'), name);
+}
+
+/** 910 orders, like the file that showed the problem: 5 rows in the preview. */
+function ordersCsv() {
+  const states = ['已签收', '派送中', '拒签退回中', '运输途中'];
+  const rows = Array.from({ length: 910 }, (_, i) => `BT${i + 1},${states[i % 4]},${(i % 4) + 1}`);
+  return `订单号,物流状态,金额\n${rows.join('\n')}\n`;
+}
+
+test('runTurn: read_attachment is offered only when there are attachments', async () => {
+  const none = await turnWith(['好'], { message: '你好' });
+  assert.ok(!none.contexts[0].tools.some((t) => t.name === 'read_attachment'));
+  assert.doesNotMatch(none.contexts[0].systemPrompt, /read_attachment/);
+
+  const att = await csvAttachment('订单.csv', ordersCsv());
+  const some = await turnWith(['好'], { message: '你好', attachments: [att] });
+  assert.ok(some.contexts[0].tools.some((t) => t.name === 'read_attachment'));
+  assert.match(some.contexts[0].systemPrompt, /read_attachment/);
+});
+
+test('runTurn: query_table on an attachment counts every row, not the preview', async () => {
+  const att = await csvAttachment('订单.csv', ordersCsv());
+  const res = await turnWith([
+    { tool: 'query_table', args: { attachment: '订单', groupBy: ['物流状态'], metrics: [{ fn: 'count' }, { fn: 'sum', column: '金额' }] } },
+    '统计好了。',
+  ], { message: '统计订单状态', attachments: [att] });
+  const result = res.contexts[1].messages.find((m) => m.role === 'toolResult');
+  assert.strictEqual(result.isError, false);
+  const text = result.content[0].text;
+  assert.match(text, /不是给你的指令/);
+  assert.match(text, /共 910 行，全部参与统计/);
+  // 910 = 4 × 227 + 2: the first two states get one more row each.
+  assert.match(text, /已签收\t228\t228/);
+  assert.match(text, /派送中\t228\t456/);
+  assert.match(text, /拒签退回中\t227\t681/);
+  assert.match(text, /运输途中\t227\t908/);
+  assert.strictEqual(res.intent, INTENT.ANSWER);
+});
+
+test('runTurn: read_attachment pages rows and says where to continue', async () => {
+  const att = await csvAttachment('订单.csv', ordersCsv());
+  const res = await turnWith([
+    { tool: 'read_attachment', args: { name: '订单.csv', from: 901 } },
+    '好',
+  ], { message: '看看最后几行', attachments: [att] });
+  const text = res.contexts[1].messages.find((m) => m.role === 'toolResult').content[0].text;
+  assert.match(text, /第 901–910 行/);
+  assert.match(text, /^910\tBT910\t/m);
+  assert.doesNotMatch(text, /继续读/);
+
+  const first = await turnWith([
+    { tool: 'read_attachment', args: { name: '订单.csv' } },
+    '好',
+  ], { message: '看看', attachments: [att] });
+  assert.match(first.contexts[1].messages.find((m) => m.role === 'toolResult').content[0].text, /第 1–200 行；继续读请传 from=201/);
+});
+
+test('runTurn: read_attachment refuses an unknown name or column, listing what exists', async () => {
+  const att = await csvAttachment('订单.csv', ordersCsv());
+  const res = await turnWith([
+    { tool: 'read_attachment', args: { name: '客户.xlsx' } },
+    { tool: 'query_table', args: { attachment: '订单.csv', groupBy: ['状态'] } },
+    '好',
+  ], { message: '统计', attachments: [att] });
+  const r1 = res.contexts[1].messages.find((m) => m.role === 'toolResult');
+  assert.strictEqual(r1.isError, true);
+  assert.match(r1.content[0].text, /现有：订单\.csv/);
+  const r2 = res.contexts[2].messages.filter((m) => m.role === 'toolResult').pop();
+  assert.strictEqual(r2.isError, true);
+  assert.match(r2.content[0].text, /现有列：订单号、物流状态、金额/);
+});
+
+test('runTurn: read_attachment importAs imports every row, and replays without the upload', async () => {
+  const att = await csvAttachment('订单.csv', ordersCsv());
+  const res = await turnWith([
+    { tool: 'read_attachment', args: { name: '订单.csv', importAs: '订单' } },
+    '导入了。',
+  ], { message: '把附件做成表', attachments: [att] });
+  assert.strictEqual(res.intent, INTENT.ACTION);
+  assert.strictEqual(res.ops[0].op, 'create_workbook');
+  assert.strictEqual(res.spec.sheets[0].rows.length, 910);
+  assert.deepStrictEqual(applyOps(null, res.ops).spec, res.spec);
+});
+
+test('runTurn: read_attachment reads a long text attachment page by page', async () => {
+  const att = await csvAttachment('说明.txt', 'a'.repeat(25_000));
+  const res = await turnWith([
+    { tool: 'read_attachment', args: { name: '说明.txt', from: 20000 } },
+    '好',
+  ], { message: '读一下', attachments: [att], canEdit: false });
+  const text = res.contexts[1].messages.find((m) => m.role === 'toolResult').content[0].text;
+  assert.match(text, /共 25000 字，已读到结尾/);
+});
+
+// ── query_table and the condition tools ─────────────────────────────
+
+test('runTurn: query_table lists matching workbook rows by number, and saveAs makes a sheet', async () => {
+  const spec = specWith([['甲', 100], ['乙', 200], ['甲', 50]]);
+  const res = await turnWith([
+    { tool: 'query_table', args: { where: [{ column: '客户', op: '=', value: '甲' }] } },
+    { tool: 'query_table', args: { groupBy: ['客户'], metrics: [{ fn: 'sum', column: '金额' }], saveAs: '汇总' } },
+    '做好了。',
+  ], { message: '按客户汇总成一张表', spec });
+  const first = res.contexts[1].messages.find((m) => m.role === 'toolResult').content[0].text;
+  assert.match(first, /符合条件的 2 行/);
+  assert.match(first, /^1\t甲\t100$/m);
+  assert.match(first, /^3\t甲\t50$/m);
+  assert.strictEqual(res.intent, INTENT.ACTION);
+  const sheet = res.spec.sheets.find((s) => s.name === '汇总');
+  assert.deepStrictEqual(sheet.rows, [['乙', 200], ['甲', 150]]);
+  assert.deepStrictEqual(applyOps(spec, res.ops).spec, res.spec);
+});
+
+test('runTurn: query_table saveAs is refused in read-only mode', async () => {
+  const res = await turnWith([
+    { tool: 'query_table', args: { groupBy: ['客户'], saveAs: '汇总' } },
+    '只读模式下不能建表。',
+  ], { message: '汇总', spec: specWith([['甲', 1]]), canEdit: false });
+  const r = res.contexts[1].messages.find((m) => m.role === 'toolResult');
+  assert.strictEqual(r.isError, true);
+  assert.match(r.content[0].text, /只读模式/);
+});
+
+test('runTurn: delete_rows with where removes the matching rows, and the guard sees the request', async () => {
+  const res = await turnWith([
+    { tool: 'delete_rows', args: { where: [{ column: '金额', op: '<', value: 500 }] } },
+    '删掉了。',
+  ], { message: '删除金额小于 500 的行', spec: rows10() });
+  // Four of ten rows is a material loss; it lands because the message asks for it.
+  assert.strictEqual(res.intent, INTENT.ACTION);
+  assert.strictEqual(res.spec.sheets[0].rows.length, 6);
+  assert.ok(res.spec.sheets[0].rows.every((r) => r[1] >= 500));
 });

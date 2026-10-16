@@ -280,3 +280,63 @@ test('a workbook with several sheets can select a sheet explicitly', async () =>
   const att = await readAttachment(buf, 'multi.xlsx', { sheet: '第二' });
   assert.deepStrictEqual(att.header, ['乙', '丙']);
 });
+
+// ── archives ─────────────────────────────────────────────────────────
+
+test('ingestFile: a zip becomes one attachment per readable member, named by its path', async () => {
+  const { ingestFile } = require('../lib/attachments');
+  const { writeZip } = require('../lib/zip');
+  const zip = writeZip([
+    { name: '订单/5月.csv', data: '订单,状态\nA1,已签收\nA2,派送中\n' },
+    { name: '说明.txt', data: '看这里' },
+    { name: '__MACOSX/._5月.csv', data: 'junk' },
+    { name: 'tool.exe', data: 'MZ' },
+  ]);
+  const { items, skipped } = await ingestFile(zip, 'box3.zip');
+  assert.deepStrictEqual(items.map((i) => i.name), ['box3.zip/订单/5月.csv', 'box3.zip/说明.txt']);
+  assert.deepStrictEqual(items.map((i) => i.filename), ['5月.csv', '说明.txt']);
+  assert.strictEqual(items[0].att.kind, 'table');
+  assert.strictEqual(items[0].att.table.rows.length, 2);
+  assert.deepStrictEqual(skipped, ['tool.exe']);
+});
+
+test('ingestFile: an xlsx is a zip but stays one workbook', async () => {
+  const { ingestFile } = require('../lib/attachments');
+  const buf = writeSimpleSheet({ rows: [['a', 'b'], [1, 2]] });
+  const { items } = await ingestFile(buf, 'x.xlsx');
+  assert.strictEqual(items.length, 1);
+  assert.strictEqual(items[0].att.kind, 'table');
+});
+
+test('zip limits: a bomb is refused, not inflated', async () => {
+  const { ingestFile, readAttachment } = require('../lib/attachments');
+  const { writeZip, readZip } = require('../lib/zip');
+  // 300 MB of zeros compresses to a few hundred KB.
+  const bomb = writeZip([{ name: 'zeros.txt', data: Buffer.alloc(300 * 1024 * 1024) }], { level: 9 });
+  assert.throws(() => readZip(bomb, { maxBytes: 1024 * 1024 }), /太大/);
+  const { items } = await ingestFile(bomb, 'bomb.zip');
+  assert.match(items[0].error || items[0].att.note, /超过|太大/);
+  // Renamed to .xlsx, it must not reach the unbounded workbook reader either.
+  const att = await readAttachment(bomb, 'bomb.xlsx');
+  assert.match(att.note, /没有读取/);
+});
+
+test('zip names: GBK without the UTF-8 flag decodes as Chinese', () => {
+  const { readZip, writeZip } = require('../lib/zip');
+  const zip = writeZip([{ name: 'ABCD.txt', data: 'x' }]);
+  // Patch the ASCII placeholder name to the GBK bytes of 订单 and clear the flag.
+  const gbk = Buffer.from([0xb6, 0xa9, 0xb5, 0xa5]);
+  let at = -1;
+  while ((at = zip.indexOf('ABCD.txt', at + 1)) !== -1) {
+    const patched = Buffer.concat([gbk, Buffer.from('.txt')]);
+    patched.copy(zip, at);
+  }
+  for (const sig of [0x04034b50, 0x02014b50]) {
+    let p = -1;
+    while ((p = zip.indexOf(Buffer.from([sig & 0xff, (sig >> 8) & 0xff, (sig >> 16) & 0xff, sig >>> 24]), p + 1)) !== -1) {
+      const flagAt = p + (sig === 0x04034b50 ? 6 : 8);
+      zip.writeUInt16LE(zip.readUInt16LE(flagAt) & ~0x800, flagAt);
+    }
+  }
+  assert.deepStrictEqual([...readZip(zip).keys()], ['订单.txt']);
+});

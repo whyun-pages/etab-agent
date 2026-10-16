@@ -25,7 +25,7 @@
  *   of our own clocks fired when it was one of those.
  */
 
-import type { AssistantMessage, AssistantMessageEvent, Context, Message } from '@mariozechner/pi-ai';
+import type { AssistantMessage, AssistantMessageEvent, Context, Message } from '@earendil-works/pi-ai';
 import { loadPi } from './pi.ts';
 import { modelFromSecrets } from './model.ts';
 import type { ModelApi } from './model.ts';
@@ -190,8 +190,12 @@ const NETWORK_RE = /connection error|fetch failed|ECONNREFUSED|ECONNRESET|ENOTFO
  * is only "request aborted", which hides the real story. Otherwise the
  * provider's words go through, with the status code pulled out when the SDK
  * put one at the front ("401 Incorrect API key…").
+ *
+ * A stream that ended with nothing in it is `EMPTY_REPLY` (see there), not the
+ * SDK's words — pi 1.x reports it as an error where 0.x reported an empty
+ * success, and "Stream ended without finish_reason" tells the user nothing.
  */
-export function toLlmError(message: Pick<AssistantMessage, 'stopReason' | 'errorMessage'>, clocks?: Clocks): LlmError {
+export function toLlmError(message: Pick<AssistantMessage, 'stopReason' | 'errorMessage'> & { content?: AssistantMessage['content'] }, clocks?: Clocks): LlmError {
   const why = clocks ? clocks.reason() : null;
   if (why === 'timeout') {
     return new LlmError(`请求超时（${Math.round(clocks!.timeoutMs / 1000)} 秒）`, { code: 'aborted' });
@@ -206,6 +210,9 @@ export function toLlmError(message: Pick<AssistantMessage, 'stopReason' | 'error
   }
 
   const text = String(message.errorMessage || '').trim();
+  if (message.content && isEmptyReply(message as Pick<AssistantMessage, 'content'>) && NO_FINISH_RE.test(text)) {
+    return new LlmError(EMPTY_REPLY, { code: 'empty' });
+  }
   const m = /^(\d{3})\b\s*([\s\S]*)$/.exec(text);
   if (m) {
     const status = Number(m[1]);
@@ -229,13 +236,19 @@ export function toLlmError(message: Pick<AssistantMessage, 'stopReason' | 'error
  * tool call.
  *
  * The one way this happens in practice: a provider that ignores `stream: true`
- * and answers with a single JSON body. pi-ai reads only the event stream,
- * finds no events in it, and reports an EMPTY SUCCESS. The hand-rolled client
- * this replaced read such a body whole; pi-ai does not, and passing the empty
- * reply on would surface as "the model did not understand" — a wrong story
- * about a different problem. So it is an error, and it names the likely cause.
+ * and answers with a single JSON body. pi-ai reads only the event stream and
+ * finds no events in it. Up to 0.x it reported an EMPTY SUCCESS; 1.x's
+ * OpenAI-compatible client reports an error instead ("Stream ended without
+ * finish_reason", matched by `NO_FINISH_RE`), so both shapes are read as this.
+ * The hand-rolled client this replaced read such a body whole; pi-ai does not,
+ * and passing the empty reply on would surface as "the model did not
+ * understand" — a wrong story about a different problem. So it is an error,
+ * and it names the likely cause.
  */
 export const EMPTY_REPLY = '模型没有返回任何内容。如果该接口不支持流式输出（stream），请换用支持的接口或协议。';
+
+/** pi-ai's error for a stream that closed without saying why it stopped. */
+const NO_FINISH_RE = /stream ended without finish_reason/i;
 
 /** True for a reply with no content blocks at all. See `EMPTY_REPLY`. */
 export function isEmptyReply(message: Pick<AssistantMessage, 'content'>): boolean {
@@ -292,11 +305,13 @@ export async function chat({
   signal,
 }: ChatArgs): Promise<string> {
   const creds = requireCredentials(credentials);
-  const { ai } = await loadPi();
+  const pi = await loadPi();
   const model = modelFromSecrets({ api: creds.api || 'openai-completions', baseUrl: creds.baseUrl, apiKey: creds.apiKey, model: creds.model });
   const clocks = createClocks({ timeoutMs, idleTimeoutMs, signal });
   try {
-    const events = ai.stream(model, toContext(messages, creds.model), {
+    // A direct API call skips the normalisation a `Models` collection would
+    // do, so it is done here: the system prompt moves into the transcript.
+    const events = pi.stream(model, pi.ai.normalizeContext(toContext(messages, creds.model)), {
       apiKey: creds.apiKey,
       // Parsing wants the same answer twice, not a creative one.
       temperature,

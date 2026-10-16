@@ -21,7 +21,7 @@
  * reads as the default rather than as a request pi cannot route.
  */
 
-import type { Model, OpenAICompletionsCompat } from '@mariozechner/pi-ai';
+import type { Model, OpenAICompletionsCompat } from '@earendil-works/pi-ai';
 import type { Secrets } from './settings.ts';
 
 /** The wire protocols the settings panel offers, in display order. */

@@ -214,7 +214,7 @@ test('applyOps stops at the first failing operation', () => {
 });
 
 test('every operation the agent offers is implemented', () => {
-  for (const name of ['create_workbook', 'add_columns', 'remove_columns', 'update_columns', 'add_rows', 'update_cells', 'delete_rows', 'sort_rows', 'set_totals', 'add_sheet', 'remove_sheet', 'rename']) {
+  for (const name of ['create_workbook', 'add_columns', 'remove_columns', 'update_columns', 'add_rows', 'update_cells', 'delete_rows', 'update_rows', 'compute_column', 'lookup_columns', 'sort_rows', 'set_totals', 'add_sheet', 'remove_sheet', 'rename']) {
     assert.strictEqual(typeof OPS[name], 'function', name);
   }
 });
@@ -245,4 +245,95 @@ test('set_column_widths: an unknown header or a width that is not a positive num
     assert.throws(() => run(base(), 'set_column_widths', { widths: [{ header: '客户', width }] }), SpecOpError, String(width));
   }
   assert.throws(() => run(base(), 'set_column_widths', { widths: [] }), SpecOpError);
+});
+
+// ── by condition ─────────────────────────────────────────────────────
+
+const orders = () => normalizeSpec({
+  title: '订单',
+  sheets: [
+    {
+      name: '订单',
+      columns: [
+        { header: '订单号', type: 'text' },
+        { header: '状态', type: 'text' },
+        { header: '单价', type: 'number' },
+        { header: '数量', type: 'integer' },
+        { header: '客户编号', type: 'text' },
+      ],
+      rows: [
+        ['A1', '已签收', 10, 2, 'C1'],
+        ['A2', '派送中', 5, 3, 'C2'],
+        ['A3', '已签收', 'abc', 1, 'C9'],
+        ['A4', '拒签', 8, 0, 'C1'],
+      ],
+    },
+    {
+      name: '客户',
+      columns: [{ header: '编号', type: 'text' }, { header: '客户名', type: 'text' }, { header: '城市', type: 'text' }],
+      rows: [['C1', '张三', '杭州'], ['C2', '李四', '宁波'], ['C1', '重复', '不该用']],
+    },
+  ],
+}).spec;
+
+test('delete_rows: where deletes every matching row; rows and where are exclusive', () => {
+  const r = applyOp(orders(), op('delete_rows', { sheet: '订单', where: [{ column: '状态', op: '=', value: '已签收' }] }));
+  assert.deepStrictEqual(rows(r.spec).map((x) => x[0]), ['A2', 'A4']);
+  assert.match(r.summary, /符合「状态 = 已签收」的 2 行/);
+  assert.throws(() => run(orders(), 'delete_rows', { sheet: '订单', rows: [1], where: [{ column: '状态', op: '=', value: 'x' }] }), /只能给一个/);
+  assert.throws(() => run(orders(), 'delete_rows', { sheet: '订单', where: [{ column: '没有', op: '=', value: 'x' }] }), SpecOpError);
+});
+
+test('delete_rows: a where replayed on a newer table hits the rows that match THERE', () => {
+  const recorded = op('delete_rows', { sheet: '订单', where: [{ column: '状态', op: 'in', value: ['拒签'] }] });
+  const newer = run(orders(), 'add_rows', { sheet: '订单', rows: [['A5', '拒签', 1, 1, 'C2']], before: 1 });
+  assert.deepStrictEqual(rows(applyOp(newer, recorded).spec).map((x) => x[0]), ['A1', 'A2', 'A3']);
+});
+
+test('update_rows: sets fixed values on matching rows only', () => {
+  const s = run(orders(), 'update_rows', { sheet: '订单', where: [{ column: '状态', op: '=', value: '派送中' }], set: { 状态: '已签收' } });
+  assert.deepStrictEqual(rows(s).map((x) => x[1]), ['已签收', '已签收', '已签收', '拒签']);
+  assert.throws(() => run(orders(), 'update_rows', { sheet: '订单', set: { 不存在: 1 } }), /没有列「不存在」/);
+});
+
+test('compute_column: adds a column from an expression; bad rows are blank and counted', () => {
+  // Normalisation already blanked the 'abc' in the number column, and a blank
+  // multiplies as 0, as in Excel.
+  const r = applyOp(orders(), op('compute_column', { sheet: '订单', column: '金额', expression: '[单价]*[数量]' }));
+  assert.deepStrictEqual(rows(r.spec).map((x) => x[5]), [20, 15, 0, 0]);
+  assert.strictEqual(r.spec.sheets[0].columns[5].type, 'integer');
+  const per = applyOp(orders(), op('compute_column', { sheet: '订单', column: '每件', expression: '100/[数量]' }));
+  assert.deepStrictEqual(rows(per.spec).map((x) => x[5]), [50, 33.333333, 100, null]);
+  assert.match(per.summary, /1 行无法计算.*第 4 行（除数为 0）/);
+});
+
+test('compute_column: overwrites only the selected rows of an existing column', () => {
+  const s = run(orders(), 'compute_column', {
+    sheet: '订单', column: '状态', expression: 'IF([数量]>=2,"大单","小单")',
+    where: [{ column: '状态', op: '!=', value: '拒签' }],
+  });
+  assert.deepStrictEqual(rows(s).map((x) => x[1]), ['大单', '大单', '小单', '拒签']);
+});
+
+test('compute_column: refuses an unknown column or function before touching anything', () => {
+  assert.throws(() => run(orders(), 'compute_column', { sheet: '订单', column: 'x', expression: '[价格]*2' }), /没有名为「价格」的列/);
+  assert.throws(() => run(orders(), 'compute_column', { sheet: '订单', column: 'x', expression: 'EVAL("1")' }), /不认识的函数/);
+  assert.throws(() => run(orders(), 'compute_column', { sheet: '订单', column: 'x', expression: '单价*2' }), /列名要写在 \[ \] 里/);
+});
+
+test('lookup_columns: first match wins, misses are blank and counted', () => {
+  const r = applyOp(orders(), op('lookup_columns', { sheet: '订单', key: '客户编号', fromSheet: '客户', fromKey: '编号', columns: ['客户名', '城市'], names: ['客户'] }));
+  const s = r.spec.sheets[0];
+  assert.deepStrictEqual(s.columns.slice(5).map((c) => c.header), ['客户', '城市']);
+  assert.deepStrictEqual(s.rows.map((x) => x.slice(5)), [['张三', '杭州'], ['李四', '宁波'], [null, null], ['张三', '杭州']]);
+  assert.match(r.summary, /1 行在「客户」里找不到/);
+});
+
+test('condition ops are replay-stable: same spec and ops, same bytes', () => {
+  const ops = [
+    op('compute_column', { sheet: '订单', column: '金额', expression: 'ROUND([单价]*[数量]*1.1, 2)' }),
+    op('update_rows', { sheet: '订单', where: [{ column: '金额', op: '>', value: 15 }], set: { 状态: '大单' } }),
+    op('delete_rows', { sheet: '订单', where: [{ column: '数量', op: '=', value: 0 }] }),
+  ];
+  assert.strictEqual(JSON.stringify(applyOps(orders(), ops).spec), JSON.stringify(applyOps(orders(), ops).spec));
 });

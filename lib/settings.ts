@@ -44,6 +44,8 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { DEFAULT_API, defaultBaseUrl, normalizeApi } from './model.ts';
 import type { ModelApi } from './model.ts';
+import { isFileAccessMode } from './file-access.ts';
+import type { FileAccessMode } from './file-access.ts';
 
 const FILE_NAME = 'settings.json';
 
@@ -75,6 +77,11 @@ export interface SettingsRecord {
   // Where saved exports go. Empty means the user's Downloads folder, resolved
   // at use time so a settings file copied to another machine still works.
   exportDir: string;
+  // Whether the agent may read local files ('read') and also write text files
+  // ('readwrite'). Off by default, for the reasons in lib/file-access.ts.
+  chatFileAccess: FileAccessMode;
+  // The user's additions to the built-in file blocklist: path prefixes or name patterns.
+  fileBlocklist: string[];
 }
 
 /** A patch as written by the settings panel: any subset of the known keys. */
@@ -90,6 +97,8 @@ export interface SettingsPatch {
   fetchBlocklist?: string[];
   chatCanSave?: boolean;
   exportDir?: string;
+  chatFileAccess?: FileAccessMode;
+  fileBlocklist?: string[];
 }
 
 /** Outbound credentials. Never handed to a response handler. */
@@ -114,6 +123,8 @@ export interface PublicSettings {
   exportDir: string;
   /** where a save actually lands: `exportDir`, or the default when it is empty */
   exportDirResolved: string;
+  chatFileAccess: FileAccessMode;
+  fileBlocklist: string[];
   hasKey: boolean;
   keyHint: string | null;
 }
@@ -138,6 +149,8 @@ export function defaults(): SettingsRecord {
     fetchBlocklist: [],
     chatCanSave: true,
     exportDir: '',
+    chatFileAccess: 'off',
+    fileBlocklist: [],
   };
 }
 
@@ -309,6 +322,9 @@ export class Settings {
       chatCanSave: Boolean(s.chatCanSave),
       exportDir: String(s.exportDir || ''),
       exportDirResolved: resolveExportDir(s),
+      // An unknown value (a hand-edited file) reads as off, never as more access.
+      chatFileAccess: isFileAccessMode(s.chatFileAccess) ? s.chatFileAccess : 'off',
+      fileBlocklist: Array.isArray(s.fileBlocklist) ? s.fileBlocklist.map(String) : [],
       hasKey: Boolean(key),
       keyHint: key ? mask(key) : null,
     };

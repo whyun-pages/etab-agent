@@ -20,16 +20,20 @@ const os = require('node:os');
 const path = require('node:path');
 
 const { createServer } = require('../lib/server');
+const { loadPi } = require('../lib/pi');
 
 const tmpdir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'sess-api-'));
 
 // pi-ai is ESM-only, so it is reached with import() even from this CommonJS
-// file. One faux provider per file; each server start replaces its script.
+// file. One faux provider per file; each server start replaces its script. It
+// is registered in the app's own stream table (lib/pi.ts), the way a protocol is.
 let pi = null;
 async function loadFaux() {
   if (!pi) {
-    const ai = await import('@mariozechner/pi-ai');
-    pi = { ai, faux: ai.registerFauxProvider() };
+    const ai = await import('@earendil-works/pi-ai');
+    const faux = ai.fauxProvider();
+    (await loadPi()).apis.set(faux.api, faux.provider);
+    pi = { ai, faux };
   }
   return pi;
 }
@@ -48,7 +52,9 @@ async function step(ai, s, context) {
 }
 
 /** What the model was shown on the FIRST call of a turn: system prompt and user message. */
-const promptOf = (context) => [context.systemPrompt, ...context.messages.map((m) => (typeof m.content === 'string' ? m.content : ''))].join('\n');
+// pi 1.x carries the system prompt as a system message in the transcript.
+const conversation = (context) => context.messages.filter((m) => m.role !== 'system');
+const promptOf = (ai, context) => [ai.getCurrentSystemPrompt(context.messages), ...conversation(context).map((m) => (typeof m.content === 'string' ? m.content : ''))].join('\n');
 
 /**
  * Start a server whose model is scripted.
@@ -62,7 +68,7 @@ async function startServer(t, { configured = true, replies = [], chatCanEdit = t
   const dataDir = tmpdir();
   const { ai, faux } = await loadFaux();
   faux.setResponses(replies.flat().map((s) => async (context) => {
-    if (seen && context.messages.length === 1) seen.push(promptOf(context));
+    if (seen && conversation(context).length === 1) seen.push(promptOf(ai, context));
     return step(ai, s, context);
   }));
 
@@ -493,7 +499,7 @@ function concurrentScript({ held, heldCall, other, otherCall }) {
   let entered;
   const inFlight = new Promise((r) => { entered = r; });
   const route = (context) => {
-    const user = context.messages[0].content;
+    const user = conversation(context)[0].content;
     const after = context.messages.some((m) => m.role === 'toolResult');
     if (user.endsWith(held)) {
       if (after) return '改好了。';
@@ -864,3 +870,61 @@ test('a column width saved while a turn is in flight survives the turn landing',
   assert.strictEqual(sheet.columns[0].width, 40, 'the width survived');
   assert.strictEqual(sheet.rows[0][1], 1, 'and the turn landed');
 });
+
+// ── local files ──────────────────────────────────────────────────────
+
+test('a turn reads a local file, queries it, and the file stays as an attachment', async (t) => {
+  const dir = tmpdir();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const file = path.join(dir, '订单.csv');
+  fs.writeFileSync(file, '订单,状态\nA1,已签收\nA2,派送中\nA3,已签收\n');
+  const results = [];
+  const { base } = await startServer(t, {
+    extra: { chatFileAccess: 'read', fileBlocklist: [] },
+    replies: [[
+      { tool: 'import_file', args: { path: file } },
+      { tool: 'query_table', args: { attachment: '订单.csv', groupBy: ['状态'] } },
+      (context) => {
+        results.push(...context.messages.filter((m) => m.role === 'toolResult'));
+        return '已签收 2 单，派送中 1 单。';
+      },
+    ]],
+  });
+  const { json: { session } } = await post(base, '/api/sessions', {});
+  const r = await post(base, `/api/sessions/${session.id}/turn`, { message: `${file} 统计订单状态` });
+  assert.strictEqual(r.json.ok, true);
+  assert.strictEqual(results[0].isError, false);
+  assert.match(results[1].content[0].text, /已签收\t2\n派送中\t1/);
+  const att = await get(base, `/api/sessions/${session.id}/attachments`);
+  assert.deepStrictEqual(att.json.attachments.map((a) => a.name), [file]);
+});
+
+test('write and edit land after the turn, and only with readwrite access', async (t) => {
+  const dir = tmpdir();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const target = path.join(dir, '报告.md');
+  let onDiskDuringTurn = null;
+  const { base } = await startServer(t, {
+    extra: { chatFileAccess: 'readwrite', fileBlocklist: [] },
+    replies: [[
+      { tool: 'write', args: { path: target, content: '# 汇总\n共 3 单' } },
+      { tool: 'edit', args: { path: target, edits: [{ oldText: '3', newText: '4' }] } },
+      () => { onDiskDuringTurn = fs.existsSync(target); return '写好了。'; },
+    ]],
+  });
+  const { json: { session } } = await post(base, '/api/sessions', {});
+  const r = await post(base, `/api/sessions/${session.id}/turn`, { message: `把汇总写到 ${target}` });
+  assert.strictEqual(onDiskDuringTurn, false, 'nothing is written while the turn runs');
+  assert.strictEqual(fs.readFileSync(target, 'utf8'), '# 汇总\n共 4 单');
+  assert.match(r.json.reply, /已保存：.*报告\.md/);
+});
+
+test('with file access off no file tool is offered, and the note says how to turn it on', async (t) => {
+  const seen = [];
+  const { base } = await startServer(t, { seen, replies: ['好'] });
+  const { json: { session } } = await post(base, '/api/sessions', {});
+  await post(base, `/api/sessions/${session.id}/turn`, { message: 'D:\tmp\box3.zip 统计订单状态' });
+  assert.doesNotMatch(seen[0], /import_file|\bgrep\b|\bedit\b|powershell|bash/);
+  assert.match(seen[0], /允许读写本机文件/);
+});
+

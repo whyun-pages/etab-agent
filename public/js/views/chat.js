@@ -235,6 +235,13 @@ function composerBox(state, handlers) {
   clip.addEventListener('click', handlers.onPickFiles);
   row.append(clip);
 
+  // Beside the paperclip: pick a whole folder. Its readable files go through
+  // the same upload as picked ones; see handleFolder in app.js.
+  const folder = el('button', { class: 'iconbtn composer__clip', type: 'button', title: '添加文件夹（只读取其中支持的文件）', html: icon('folder') });
+  folder.disabled = clip.disabled;
+  folder.addEventListener('click', handlers.onPickFolder);
+  row.append(folder);
+
   const ta = prepareComposer(state.activeId, {
     placeholder: PLACEHOLDER,
     onInput: handlers.onDraft,

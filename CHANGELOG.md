@@ -7,6 +7,25 @@
 
 ### 新增
 
+- **统计和批量编辑工具**：`query_table` 对工作表或附件的全部行做精确的筛选、计数、求和、平均、
+  分组（可按表达式分组，如 `MONTH([下单日期])`），`saveAs` 把结果做成新工作表；`delete_rows` 支持
+  `where` 按条件删；新增 `update_rows`（按条件改成固定值）、`compute_column`（按表达式算一列，
+  如 `[单价]*[数量]`）、`lookup_columns`（按关键列跨表带入，类似 VLOOKUP）。条件和表达式在
+  服务端重放时按存盘的表重新求值。表达式是自带的小语言（[lib/table-query.ts](lib/table-query.ts)），
+  不经过 `eval`，没有取当前时间的函数。
+- **附件全文**：消息里的附件仍只带预览，模型用 `read_attachment` 分页读取全部行或文本、整张导入。
+  之前 910 行的表只能看到 5 行，模型会让用户把数据粘贴过来。
+- **添加文件夹**：输入框回形针右侧的文件夹按钮，选中后上传其中支持的文件（跳过隐藏文件），
+  超过 20 个分批上传。
+- **zip 附件自动展开**：每个支持的文件成为一个附件，名字带压缩包内路径；不支持的文件报告跳过个数。
+  解压有上限（2000 个条目、解压后 200 MB），没有 UTF-8 标记的中文文件名按 GBK 解码。
+- **读写本机文件**（设置「允许读写本机文件」，默认关闭；可选只读或读写）：工具用 pi 的
+  `read`、`ls`、`find`、`grep`，读写模式另有 `write`、`edit`（只能写文本类文件，本轮结束后写入）和
+  执行命令（Windows 上 `powershell`，其他系统 `bash`），源码移植自 pi-coding-agent（MIT，
+  [lib/pi-tools/](lib/pi-tools/)）。`import_file` 把文件、文件夹或 zip 读成会话附件供 `query_table` 统计。
+  读写模式下 `save_file` 可指定文件夹。黑名单模式：密钥、浏览器数据、系统目录和本程序数据目录
+  始终禁止，用户可追加路径或文件名模式；执行命令不受黑名单限制。只对本机发起的请求生效，
+  设置也只能在本机修改。
 - 对话可以**保存文件**：说「保存成 csv」「导出 json」，模型调用 `save_file`，文件写进设置里的
   导出目录（默认下载文件夹）。保存在本轮修改真正落盘之后执行；等待确认的修改在确认后保存，
   被拦下或冲突的修改不保存。同名文件不覆盖，自动编号。设置项「允许对话保存文件」默认开。
@@ -34,8 +53,8 @@
 
 ### 变更
 
-- 对话轮改用 [pi-agent](https://github.com/badlogic/pi-mono)（`@mariozechner/pi-agent-core` +
-  `@mariozechner/pi-ai`）。模型不再每轮输出整份表格，而是调用工具增量修改：`create_workbook`、
+- 对话轮改用 [pi-agent](https://github.com/earendil-works/pi)（`@earendil-works/pi-agent-core` +
+  `@earendil-works/pi-ai` 1.x）。模型不再每轮输出整份表格，而是调用工具增量修改：`create_workbook`、
   `update_cells`、`add_rows`、`delete_rows`、`add_columns`、`remove_columns`、`update_columns`、
   `sort_rows`、`set_totals`、`add_sheet`、`remove_sheet`、`rename`，另有 `read_rows`（读取未列出的行）
   和 `ask_user`（信息不够时反问）。行按编号、列按列名定位；工具参数写错时报错交回模型改正。
@@ -48,6 +67,9 @@
   快照覆盖，先完成那轮的修改不会丢；行号已对不上时该轮不落盘并在回复里说明。
 - 只返回整段 JSON、不支持流式输出的接口会明确报错（以前能读这种响应；pi-ai 只读事件流）。
 - 运行时不再零依赖：新增 pi-agent 两个包。打包改用 esbuild，exe 体积基本不变（约 92 MB）。
+- HTTP 层改用 Koa（`koa`、`@koa/router`、`@koa/bodyparser`、`@koa/multer`）：原来 `lib/server.ts`
+  里一个 700 行的请求处理函数拆成 `lib/routes/` 下按领域划分的路由，手写的 multipart 解析由 multer
+  取代。接口路径和返回格式不变；请求体不是合法 JSON 时改为返回 400（以前是 500）。
 
 - 默认数据目录从 `TabAgent` 改名为 `ETabAgent`（如 Windows 上的 `%APPDATA%\ETabAgent\`）。
   旧目录不会自动迁移：升级后需重新填写模型设置，历史会话留在旧目录中，可手动拷贝或删除。

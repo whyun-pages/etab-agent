@@ -15,7 +15,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { createServer, AppState, parseMultipart, safeFilename } = require('../lib/server');
+const { createServer, AppState, safeFilename } = require('../lib/server');
 
 // --------------------------------------------------------------- harness
 /** Start a server on an ephemeral port with a scratch data directory. */
@@ -150,7 +150,7 @@ test('static serving refuses anything outside its root', async (t) => {
   ]) {
     const res = await request(base, 'GET', evil);
     assert.strictEqual(res.status, 404, `${evil} must not be served`);
-    assert.doesNotMatch(res.buffer.toString('utf8'), /createHandler/, `${evil} leaked source`);
+    assert.doesNotMatch(res.buffer.toString('utf8'), /createServer/, `${evil} leaked source`);
   }
 
   // A normal asset still works after the rejections.
@@ -158,33 +158,6 @@ test('static serving refuses anything outside its root', async (t) => {
 });
 
 // ------------------------------------------------------- unit-level bits
-
-test('parseMultipart splits a file part from a text field', () => {
-  const { body, headers } = multipart([
-    { name: 'note', data: '你好' },
-    { name: 'file', filename: 'a.xlsx', data: Buffer.from([0x50, 0x4b, 3, 4]), contentType: 'application/zip' },
-  ]);
-  const parts = parseMultipart(body, headers['Content-Type']);
-  assert.strictEqual(parts.length, 2);
-  const field = parts.find((p) => p.name === 'note');
-  assert.strictEqual(field.filename, null);
-  assert.strictEqual(field.data.toString('utf8'), '你好');
-  const file = parts.find((p) => p.name === 'file');
-  assert.strictEqual(file.filename, 'a.xlsx');
-  assert.deepStrictEqual([...file.data], [0x50, 0x4b, 3, 4]);
-});
-
-test('parseMultipart preserves binary bytes containing the boundary-length CRLF', () => {
-  // A payload with embedded CRLFCRLF must not be mistaken for a header end.
-  const payload = Buffer.concat([Buffer.from('X\r\n\r\nY'), Buffer.alloc(64, 0x00)]);
-  const { body, headers } = multipart([{ name: 'file', filename: 'b.bin', data: payload }]);
-  const parts = parseMultipart(body, headers['Content-Type']);
-  assert.deepStrictEqual(parts[0].data, payload);
-});
-
-test('parseMultipart rejects a request with no boundary', () => {
-  assert.throws(() => parseMultipart(Buffer.from('x'), 'multipart/form-data'), /boundary/);
-});
 
 test('safeFilename strips directories and reserved names', () => {
   assert.strictEqual(safeFilename('C:\\Users\\me\\..\\..\\etc\\passwd'), 'passwd');
@@ -317,6 +290,24 @@ async function uploadOne(base, att, filename, data) {
   const mp = multipart([{ name: 'files', filename, data }]);
   return JSON.parse((await request(base, 'POST', att, mp)).buffer.toString('utf8')).attachments[0];
 }
+
+test('an upload keeps a file byte for byte, beside a text field, under its UTF-8 name', async (t) => {
+  // Multipart framing is the parser's job now (multer), so this checks it from
+  // the outside: a payload with an embedded CRLFCRLF and NULs, which a naive
+  // parser takes for a header end, must come back exactly as sent.
+  const { base, opened } = await startOpenServer(t);
+  const att = await sessionAttachments(base);
+  const payload = Buffer.concat([Buffer.from('a,b\r\n\r\n1,2\r\n'), Buffer.alloc(64, 0x00)]);
+  const mp = multipart([
+    { name: 'note', data: '你好' },
+    { name: 'files', filename: '原始 数据.txt', data: payload, contentType: 'text/plain' },
+  ]);
+  const up = JSON.parse((await request(base, 'POST', att, mp)).buffer.toString('utf8'));
+  assert.strictEqual(up.attachments.length, 1, 'the text field is not an attachment');
+  assert.strictEqual(up.attachments[0].name, '原始 数据.txt');
+  assert.strictEqual((await request(base, 'POST', `${att}/${up.attachments[0].id}/open`)).status, 200);
+  assert.deepStrictEqual(fs.readFileSync(opened[0]), payload);
+});
 
 test('an attachment opens as a copy under its own name, reused on a second click', async (t) => {
   const { base, opened } = await startOpenServer(t);

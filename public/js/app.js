@@ -201,18 +201,30 @@ function confirmRemoveSession(session) {
 
 /** The hidden file input the paperclip clicks; created once, reused. */
 let fileInput = null;
+/** The hidden directory input the folder button clicks; created once, reused. */
+let folderInput = null;
+
+/** What the file picker offers, and what a picked folder is filtered down to. */
+const ATTACH_EXT = ['.csv', '.tsv', '.txt', '.json', '.md', '.xlsx', '.xls', '.png', '.jpg', '.jpeg', '.webp', '.gif', '.docx', '.pdf', '.zip'];
 
 /**
- * Wire the paperclip to a file picker.
+ * The server takes at most this many files per request (`MAX_FILES` in
+ * lib/server.ts). A folder easily holds more, so uploads go in batches of it.
+ */
+const ATTACH_BATCH = 20;
+
+/**
+ * Wire the paperclip to a file picker, and the folder button to a directory
+ * picker.
  *
- * The input is created lazily on the document rather than living in the chat
+ * The inputs are created lazily on the document rather than living in the chat
  * view: the view is rebuilt on every repaint, and a picker whose `<input>` is
  * swapped mid-flow loses the selection the user just made.
  */
 function bindFileInput() {
   fileInput = el('input', {
     type: 'file', id: 'file-input', multiple: true,
-    accept: '.csv,.tsv,.txt,.json,.md,.xlsx,.xls,.png,.jpg,.jpeg,.webp,.gif,.docx,.pdf',
+    accept: ATTACH_EXT.join(','),
   });
   fileInput.style.display = 'none';
   fileInput.addEventListener('change', () => {
@@ -221,6 +233,43 @@ function bindFileInput() {
     fileInput.value = '';
   });
   document.body.append(fileInput);
+
+  // `webkitdirectory` is a property, not an attribute `el` knows about; every
+  // browser this app runs in (Edge/Chromium) supports it. `accept` is ignored
+  // for directories, which is why folderFiles filters by extension itself.
+  folderInput = el('input', { type: 'file', id: 'folder-input', multiple: true });
+  folderInput.webkitdirectory = true;
+  folderInput.style.display = 'none';
+  folderInput.addEventListener('change', () => {
+    if (folderInput.files && folderInput.files.length) handleFolder(folderInput.files);
+    folderInput.value = '';
+  });
+  document.body.append(folderInput);
+}
+
+/**
+ * The files of a picked folder worth uploading: the readable types, minus
+ * anything hidden (`.git/`, `.DS_Store`) — the picker hands back the whole tree,
+ * and uploading a repository's object store as attachments helps nobody.
+ */
+function folderFiles(files) {
+  return [...files].filter((f) => {
+    const rel = f.webkitRelativePath || f.name;
+    if (rel.split('/').some((seg) => seg.startsWith('.'))) return false;
+    const dot = f.name.lastIndexOf('.');
+    return dot > 0 && ATTACH_EXT.includes(f.name.slice(dot).toLowerCase());
+  });
+}
+
+function handleFolder(files) {
+  const all = [...files];
+  const list = folderFiles(all);
+  const root = (all[0]?.webkitRelativePath || '').split('/')[0] || '文件夹';
+  if (!list.length) {
+    toast({ tone: 'warn', title: `${root} 里没有能读的文件`, body: `支持：${ATTACH_EXT.join(' ')}`, ms: 6000 });
+    return;
+  }
+  handleFiles(list);
 }
 
 /**
@@ -250,6 +299,14 @@ function pickFiles() {
   if (fileInput) fileInput.click();
 }
 
+function pickFolder() {
+  if (!state.activeId) {
+    toast({ tone: 'warn', title: '先新建一个会话', body: '附件会跟着这次对话走。', ms: 4000 });
+    return;
+  }
+  if (folderInput) folderInput.click();
+}
+
 /**
  * Upload dropped or picked files and mirror the server's view of them.
  *
@@ -271,12 +328,27 @@ async function handleFiles(files) {
   setBusy('attach', true);
   set({ attaching: true, status: `正在读取 ${list.length} 个文件…` });
   try {
-    const res = await api.attach(id, list);
-    if (res.modelNotes && res.modelNotes.length) {
-      toast({ tone: 'warn', title: '模型读取失败', body: res.modelNotes.map((n) => n.error).join('；'), ms: 8000 });
+    // In batches, in order: one request per batch keeps each under the server's
+    // per-request cap, and sequential keeps the chips in the order picked.
+    const modelNotes = [];
+    const archiveNotes = [];
+    const results = [];
+    for (let i = 0; i < list.length; i += ATTACH_BATCH) {
+      const res = await api.attach(id, list.slice(i, i + ATTACH_BATCH));
+      modelNotes.push(...(res.modelNotes || []));
+      archiveNotes.push(...(res.archiveNotes || []));
+      results.push(...(res.attachments || []));
+    }
+    if (modelNotes.length) {
+      toast({ tone: 'warn', title: '模型读取失败', body: modelNotes.map((n) => n.error).join('；'), ms: 8000 });
+    }
+    // A zip expands into its readable members; say what was left out, so a
+    // missing file is not a mystery.
+    if (archiveNotes.length) {
+      toast({ tone: 'info', title: '压缩包已展开', body: archiveNotes.map((n) => `${n.name}：跳过 ${n.skipped} 个不支持的文件`).join('\n'), ms: 6000 });
     }
     await refreshAttachments(id);
-    const bad = (res.attachments || []).filter((a) => a.kind === 'error');
+    const bad = results.filter((a) => a.kind === 'error');
     set({ status: bad.length ? `${bad.length} 个文件读不了` : `已添加 ${list.length} 个文件` });
     if (bad.length) toast({ tone: 'err', title: '有一部文件读不了', body: bad.map((a) => `${a.name}：${a.error || '不支持'}`).join('\n'), ms: 8000 });
   } catch (err) {
@@ -652,7 +724,7 @@ async function saveSettings(draft) {
   try {
     const patch = {};
     for (const k of ['api', 'baseUrl', 'model', 'useForAttachments', 'chatCanEdit', 'chatConfirmEdits',
-      'chatCanSave', 'exportDir', 'chatCanFetch', 'fetchBlocklist']) {
+      'chatCanSave', 'exportDir', 'chatCanFetch', 'fetchBlocklist', 'chatFileAccess', 'fileBlocklist']) {
       if (k in draft) patch[k] = draft[k];
     }
     if (draft.apiKey) patch.apiKey = draft.apiKey;
@@ -901,6 +973,7 @@ const handlers = {
   onIdea: (text) => { useIdea(text); },
   onStartSession: () => { startSession(); },
   onPickFiles: pickFiles,
+  onPickFolder: pickFolder,
   onPasteFiles: pasteFiles,
   onRemoveAttachment: removeAttachment,
   onOpenAttachment: openAttachment,

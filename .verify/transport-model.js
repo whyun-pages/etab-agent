@@ -22,15 +22,22 @@
  * the same thing the envelope meant.
  */
 
+const path = require('node:path');
+// The same module the server under test loads, so the faux provider lands in
+// the stream table that server reads (lib/pi.ts).
+const { loadPi } = require(path.join(__dirname, '..', 'lib', 'pi.js'));
+
 let pi = null;
 
 /** @param {(args: {messages: Array<{role: string, content: string}>}) => Promise<string>} transport */
 async function modelFromTransport(transport) {
-  if (!pi) pi = await import('@mariozechner/pi-ai');
-  const faux = pi.registerFauxProvider();
+  if (!pi) pi = await import('@earendil-works/pi-ai');
+  const faux = pi.fauxProvider();
+  (await loadPi()).apis.set(faux.api, faux.provider);
   const pending = new Map();
   const respond = async (context) => {
-    const user = context.messages[0];
+    // pi 1.x carries the system prompt as a system message in the transcript.
+    const user = context.messages.find((m) => m.role === 'user');
     const key = typeof user.content === 'string' ? user.content : JSON.stringify(user.content);
     const afterTool = context.messages.some((m) => m.role === 'toolResult');
     if (afterTool && pending.has(key)) {
@@ -40,7 +47,7 @@ async function modelFromTransport(transport) {
     }
     const raw = await transport({
       messages: [
-        { role: 'system', content: context.systemPrompt || '' },
+        { role: 'system', content: pi.getCurrentSystemPrompt(context.messages) },
         { role: 'user', content: key },
       ],
     });

@@ -9,7 +9,7 @@ allowBuilds:
   # esbuild ships its binary as a per-platform optional dependency; its install
   # script only re-verifies that binary, so it is not needed.
   esbuild: false
-  # Pulled in by @mariozechner/pi-ai. Neither install script is needed at
+  # Pulled in by @earendil-works/pi-ai. Neither install script is needed at
   # runtime: @google/genai's is an `echo` no-op, and protobufjs's only prints a
   # version-scheme warning.
   '@google/genai': false

@@ -151,7 +151,7 @@ silently went from atomic to racy.
   guarded `require('node:sea')` in `lib/assets.ts`, which must stay lazy so its
   `try/catch` still works.
 - **ESM-only dependencies load through `import()`, in one place.** pi-agent
-  (`@mariozechner/pi-ai`, `@mariozechner/pi-agent-core`) ships ESM with only an
+  (`@earendil-works/pi-ai`, `@earendil-works/pi-agent-core`) ships ESM with only an
   `import` condition, so a CommonJS `require` of it cannot resolve. `lib/pi.ts`
   loads it with a dynamic `import()` — kept verbatim in the emit because the
   module setting is `nodenext`; `module: commonjs` would rewrite it into a

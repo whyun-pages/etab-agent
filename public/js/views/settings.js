@@ -357,5 +357,48 @@ function chatTab(root, state) {
   }));
   form.appendChild(blockWrap);
 
+  // ── local files ────────────────────────────────────────────────────
+  // A select, not a toggle: reading and writing are different risks, and
+  // "read only" is the setting most people want. Read-write also hands the
+  // model a shell (lib/pi-tools/shell.ts), which the blocklist cannot narrow;
+  // the option says so in its own words, not only in the hint.
+  const fileWrap = el('label', { class: 'settings__field' });
+  fileWrap.appendChild(el('span', { class: 'settings__label', text: '允许读写本机文件' }));
+  fileWrap.appendChild(el('span', {
+    class: 'settings__hint',
+    text: '开启后，在对话里给出本地路径（文件、文件夹或 zip）就能直接读取和统计。只对在本机打开的页面生效。'
+      + '注意：文件内容可能诱导模型去读别的文件，含敏感数据的位置请加到下面的禁止列表。'
+      + '「读写」还允许模型在本机执行命令，命令不受禁止列表限制，能做到你这个账户能做的任何事。',
+  }));
+  const fileSelect = el('select', { class: 'settings__input' });
+  const fileMode = draft.chatFileAccess ?? s.chatFileAccess ?? 'off';
+  for (const [value, text] of [['off', '关闭'], ['read', '只读'], ['readwrite', '读写，并允许执行命令']]) {
+    const opt = el('option', { value, text });
+    opt.selected = value === fileMode;
+    fileSelect.appendChild(opt);
+  }
+  fileWrap.appendChild(fileSelect);
+  form.appendChild(fileWrap);
+
+  const fileBlockWrap = el('label', { class: 'settings__field' });
+  fileBlockWrap.appendChild(el('span', { class: 'settings__label', text: '禁止访问的路径' }));
+  fileBlockWrap.appendChild(el('span', {
+    class: 'settings__hint',
+    // The built-in list is named so nobody adds ~/.ssh "to be safe" and then
+    // wonders whether removing it here would unblock it.
+    text: '每行一个：文件夹路径（如 D:\\财务、~/私人）会连同里面的内容一起禁止；不带路径的名字（如 *.bak、合同）按文件名或文件夹名匹配。'
+      + '密钥、浏览器数据、系统目录和本程序的数据目录始终禁止，不用填。',
+  }));
+  const fileBlockInput = el('textarea', { class: 'settings__input', rows: '4', spellcheck: 'false', placeholder: 'D:\\财务\n*.bak' });
+  fileBlockInput.value = draft.fileBlocklist ?? (s.fileBlocklist || []).join('\n');
+  fileBlockInput.addEventListener('input', () => { draft.fileBlocklist = fileBlockInput.value; });
+  fileBlockWrap.appendChild(fileBlockInput);
+  fileBlockWrap.hidden = fileMode === 'off';
+  form.appendChild(fileBlockWrap);
+  fileSelect.addEventListener('change', () => {
+    draft.chatFileAccess = fileSelect.value;
+    fileBlockWrap.hidden = fileSelect.value === 'off';
+  });
+
   root.appendChild(form);
 }

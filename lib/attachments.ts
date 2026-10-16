@@ -29,7 +29,7 @@ import { isCfb, readCfb, readXls } from './xls.ts';
  * `readZip`/`readWorkbook` are destructured through below.
  */
 interface XlsxModule {
-  readZip(buf: Buffer): Map<string, import('./zip.ts').ZipEntry>;
+  readZip(buf: Buffer, limits?: import('./zip.ts').ReadZipLimits): Map<string, import('./zip.ts').ZipEntry>;
   readWorkbook(buf: Buffer): import('./xlsx.ts').Workbook;
 }
 
@@ -38,6 +38,54 @@ const { readZip, readWorkbook }: XlsxModule = xlsx;
 export const TEXT_EXT = new Set(['.txt', '.md', '.markdown', '.log', '.ini', '.conf', '.yml', '.yaml', '.sql', '.sh', '.ps1', '.js', '.ts', '.py']);
 export const TABLE_EXT = new Set(['.xlsx', '.xlsm', '.xls', '.csv', '.tsv']);
 export const IMAGE_EXT = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.tif', '.tiff']);
+/**
+ * Everything `readAttachment` reads into something useful. Used to choose the
+ * members of an archive or a folder worth reading: the rest (executables,
+ * fonts, `.DS_Store`) would each become an "unknown" chip and a line of noise
+ * in the model's context.
+ */
+export const READABLE_EXT = new Set([
+  ...TEXT_EXT, ...TABLE_EXT, ...IMAGE_EXT,
+  '.json', '.jsonl', '.ndjson', '.docx', '.html', '.htm', '.xml', '.m3u', '.m3u8', '.pdf',
+]);
+
+/** Archive limits: generous for real work, small next to the process's memory. */
+export const ARCHIVE_MAX_ENTRIES = 2000;
+export const ARCHIVE_MAX_BYTES = 200 * 1024 * 1024;
+/** Members actually read out of one archive; the rest are listed as skipped. */
+export const ARCHIVE_MAX_READ = 100;
+
+/** A file inside an archive, named by its path there. */
+export interface ArchiveMember {
+  path: string;
+  data: Buffer;
+}
+
+/** Whether a path is hidden or archiver litter: `.git/…`, `__MACOSX/…`, `Thumbs.db`. */
+export function isHiddenPath(p: string): boolean {
+  return p.split(/[\\/]/).some((seg) => seg.startsWith('.') || seg === '__MACOSX' || /^(thumbs\.db|desktop\.ini)$/i.test(seg));
+}
+
+/**
+ * The readable members of a ZIP archive, in archive order.
+ *
+ * Bounded (see `ReadZipLimits`): a bomb or an archive of a whole disk throws
+ * rather than taking the process with it. Nested archives are listed as
+ * skipped, not opened — one level is what a person means by "this zip", and
+ * recursion is how a bomb gets its multiplier.
+ */
+export function expandZip(buffer: Buffer): { members: ArchiveMember[]; skipped: string[] } {
+  const zip = readZip(buffer, { maxEntries: ARCHIVE_MAX_ENTRIES, maxBytes: ARCHIVE_MAX_BYTES });
+  const members: ArchiveMember[] = [];
+  const skipped: string[] = [];
+  for (const [p, entry] of zip) {
+    if (isHiddenPath(p)) continue;
+    const ext = path.extname(p).toLowerCase();
+    if (!READABLE_EXT.has(ext) || members.length >= ARCHIVE_MAX_READ) { skipped.push(p); continue; }
+    members.push({ path: p, data: entry.data });
+  }
+  return { members, skipped };
+}
 
 /**
  * The common shape every reader returns.
@@ -146,14 +194,21 @@ const IMAGE_MAGIC: RawImageSignature[] = [
 export function sniffKind(buffer: Buffer, filename = ''): string {
   const ext = path.extname(filename).toLowerCase();
   if (buffer.length >= 4 && buffer[0] === 0x50 && buffer[1] === 0x4b) {
-    // ZIP container: could be xlsx, docx, pptx, or a plain zip.
+    // ZIP container: could be xlsx, docx, pptx, or a plain zip. Read with the
+    // archive limits: this runs on every upload, and an unbounded read here is
+    // where a zip bomb would go off. Over the limit is its own kind, so the
+    // extension fallback below cannot hand the same bytes to an unbounded
+    // reader (`.xlsx` → readWorkbook).
     try {
-      const zip = readZip(buffer);
+      const zip = readZip(buffer, { maxEntries: ARCHIVE_MAX_ENTRIES, maxBytes: ARCHIVE_MAX_BYTES });
       if (zip.has('xl/workbook.xml')) return 'xlsx';
       if (zip.has('word/document.xml')) return 'docx';
       if (zip.has('ppt/presentation.xml')) return 'pptx';
       return 'zip';
-    } catch { /* fall through to extension */ }
+    } catch (err) {
+      if (/压缩包/.test(String((err as Error).message))) return 'oversize';
+      /* otherwise fall through to extension */
+    }
   }
   if (isCfb(buffer)) {
     // OLE2 compound file: legacy .xls, .doc and .ppt all share this container.
@@ -483,6 +538,10 @@ export async function readAttachment(buffer: Buffer, filename: string, opts: Rea
     }
   };
 
+  if (kind === 'oversize') {
+    return { ...unknownAttachment(buffer, filename, meta), note: `${filename} 解压后超过 ${ARCHIVE_MAX_BYTES / 1024 / 1024}MB 或文件数超过 ${ARCHIVE_MAX_ENTRIES} 个，没有读取。` };
+  }
+
   // ---- spreadsheets
   // Checked on the sniffed kind first: an .xls renamed to .xlsx (common when a
   // system "upgrades" an export by extension only) must not reach readWorkbook.
@@ -620,6 +679,58 @@ export async function readAttachment(buffer: Buffer, filename: string, opts: Rea
   }
 
   return unknownAttachment(buffer, filename, meta);
+}
+
+/** One file as `ingestFile` read it: parsed, or the reason it could not be. */
+export interface Ingested {
+  /** what the user and the model see: `box3.zip/订单/5月.xlsx` for an archive member */
+  name: string;
+  /** the bare file name, for writing a copy to open */
+  filename: string;
+  data: Buffer;
+  att?: Attachment;
+  error?: string;
+}
+
+/**
+ * Read one file as attachments: itself, or — for a plain ZIP — each readable
+ * member, named by its path inside the archive.
+ *
+ * A .docx or .xlsx is a ZIP too; `sniffKind` tells them apart, so only an
+ * archive that is nothing else is opened. Members are read WITHOUT the model
+ * extractors: an archive can hold a hundred images, and a hundred vision calls
+ * for one upload is not something to do unasked. The deterministic reading is
+ * what every member gets.
+ */
+export async function ingestFile(data: Buffer, name: string, opts: ReadAttachmentOptions = {}): Promise<{ items: Ingested[]; skipped: string[] }> {
+  const base = path.basename(name.replace(/\\/g, '/'));
+  if (sniffKind(data, name) !== 'zip') {
+    try {
+      return { items: [{ name, filename: base, data, att: await readAttachment(data, name, opts) }], skipped: [] };
+    } catch (err) {
+      return { items: [{ name, filename: base, data, error: String((err as Error).message || err) }], skipped: [] };
+    }
+  }
+  let expanded: ReturnType<typeof expandZip>;
+  try {
+    expanded = expandZip(data);
+  } catch (err) {
+    return { items: [{ name, filename: base, data, error: `解压失败：${(err as Error).message}` }], skipped: [] };
+  }
+  const items: Ingested[] = [];
+  for (const m of expanded.members) {
+    const memberName = `${name}/${m.path}`;
+    const filename = path.basename(m.path);
+    try {
+      items.push({ name: memberName, filename, data: m.data, att: await readAttachment(m.data, memberName) });
+    } catch (err) {
+      items.push({ name: memberName, filename, data: m.data, error: String((err as Error).message || err) });
+    }
+  }
+  if (!items.length) {
+    items.push({ name, filename: base, data, error: `压缩包里没有能读的文件${expanded.skipped.length ? `（跳过了 ${expanded.skipped.length} 个不支持的文件）` : ''}` });
+  }
+  return { items, skipped: expanded.skipped };
 }
 
 /** A workbook is a set of tables, one per sheet; .xlsx and .xls share this. */
