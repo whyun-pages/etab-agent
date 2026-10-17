@@ -259,8 +259,12 @@ export class Settings {
   /** Persist. Only known keys are written, so a stray property cannot sneak in. */
   save(next: SettingsPatch): Promise<SettingsRecord> {
     return this.#run(async () => {
-      // Read the CURRENT file inside the slot, not the cache: another process
-      // (or an earlier queued save) may have changed it since we last loaded.
+      // Merge onto the cache when there is one: inside this process it is the
+      // record, kept current by every save (an earlier queued save included —
+      // the queue is what makes that true). Re-reading the file here would not
+      // buy more: only one instance runs, and a hand edit made while it runs is
+      // not seen by load() either; picking it up in save alone would make the
+      // two disagree. Such an edit is overwritten by the next save.
       const current = this.cache || (await this.#loadFile());
       const merged = { ...current, ...next };
       // Collected as an open record first, then narrowed: writing through a
