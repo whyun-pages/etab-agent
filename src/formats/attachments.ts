@@ -530,13 +530,7 @@ export function docxText(buffer: Buffer): DocxText | null {
   const paraRe = /<w:p\b[^>]*>([\s\S]*?)<\/w:p>|<w:p\b[^>]*\/>/g;
   let m;
   while ((m = paraRe.exec(xml))) {
-    const inner = m[1] || '';
-    let text = '';
-    const tRe = /<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g;
-    let t;
-    while ((t = tRe.exec(inner))) text += decodeEntities(t[1]);
-    // Tab and break elements map to whitespace.
-    if (/<w:tab\b/.test(inner)) text = text.replace(/\t/g, '\t');
+    const text = runText(m[1] || '');
     if (text.trim()) paragraphs.push(text);
     else if (paragraphs.length && paragraphs[paragraphs.length - 1] !== '') paragraphs.push('');
   }
@@ -553,19 +547,33 @@ export function docxText(buffer: Buffer): DocxText | null {
       const cells: string[] = [];
       const tcRe = /<w:tc\b[^>]*>([\s\S]*?)<\/w:tc>/g;
       let tc;
-      while ((tc = tcRe.exec(tr[1]))) {
-        let text = '';
-        const tRe = /<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g;
-        let t;
-        while ((t = tRe.exec(tc[1]))) text += decodeEntities(t[1]);
-        cells.push(text.trim());
-      }
+      while ((tc = tcRe.exec(tr[1]))) cells.push(runText(tc[1]).trim());
       if (cells.length) rows.push(cells);
     }
     if (rows.length) tables.push(rows);
   }
 
   return { text: paragraphs.join('\n').replace(/\n{3,}/g, '\n\n'), tables };
+}
+
+/**
+ * The text of a run of WordprocessingML, in document order: <w:t> as text,
+ * <w:tab/> as a tab, <w:br/> and <w:cr/> as a line break.
+ *
+ * Only the <w:t> elements were read before, and the "tab and break elements
+ * map to whitespace" step was a replace of \t by \t — so 姓名<w:tab/>张三
+ * came out as 姓名张三, and a line break inside a paragraph vanished.
+ * (`<w:t\b` does not match <w:tab>, <w:tbl> or <w:tc>: the next character is
+ * a letter, so there is no word boundary.)
+ */
+function runText(xml: string): string {
+  let out = '';
+  for (const m of xml.matchAll(/<w:t\b[^>]*>([\s\S]*?)<\/w:t>|<w:(tab|br|cr)\b[^>]*\/?>/g)) {
+    if (m[2] === 'tab') out += '\t';
+    else if (m[2]) out += '\n';
+    else out += decodeEntities(m[1]);
+  }
+  return out;
 }
 
 function decodeEntities(s: string): string {

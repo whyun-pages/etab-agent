@@ -13,6 +13,7 @@ import {
   coerce,
   columnType,
   markupToText,
+  docxText,
   sniffKind,
   sheetToMatrix,
   gridSize,
@@ -449,4 +450,24 @@ test('zip names: GBK without the UTF-8 flag decodes as Chinese', () => {
     }
   }
   assert.deepStrictEqual([...readZip(zip).keys()], ['订单.txt']);
+});
+
+test('docx tabs and line breaks become whitespace, in order', async () => {
+  // Only <w:t> was read, so 姓名<w:tab/>张三 came out as 姓名张三 and a soft
+  // line break inside a paragraph disappeared.
+  const doc =
+    '<?xml version="1.0"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>' +
+    '<w:p><w:r><w:t>姓名</w:t><w:tab/><w:t>张三</w:t></w:r></w:p>' +
+    '<w:p><w:r><w:t>第一行</w:t><w:br/><w:t>第二行</w:t></w:r></w:p>' +
+    '<w:tbl><w:tr><w:tc><w:p><w:r><w:t>地址</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>甲</w:t><w:br/><w:t>乙</w:t></w:r></w:p></w:tc></w:tr></w:tbl>' +
+    '</w:body></w:document>';
+  const text = docxText(
+    writeZip([
+      { name: '[Content_Types].xml', data: '<Types/>' },
+      { name: 'word/document.xml', data: doc },
+    ]),
+  );
+  assert.match(text.text, /^姓名\t张三$/m);
+  assert.match(text.text, /^第一行\n第二行$/m);
+  assert.deepStrictEqual(text.tables[0][0], ['地址', '甲\n乙']);
 });
