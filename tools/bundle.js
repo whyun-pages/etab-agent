@@ -65,4 +65,16 @@ async function bundle({ entry, outfile, banner = '' }) {
   };
 }
 
-module.exports = { bundle };
+/**
+ * Packages left external that a packaged executable cannot load, and why that
+ * is fine. Each is required inside a try/catch by the package that wants it,
+ * and esbuild leaves exactly those requires external. build-exe.js refuses any
+ * other external; verify-bundle.js checks and reports the same list.
+ */
+const OPTIONAL_EXTERNALS = {
+  bufferutil: 'ws: optional native speed-up for masking frames',
+  'utf-8-validate': 'ws: optional native UTF-8 validator',
+  'supports-color': 'debug: optional terminal colour detection',
+};
+
+module.exports = { bundle, OPTIONAL_EXTERNALS };

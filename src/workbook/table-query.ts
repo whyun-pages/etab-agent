@@ -31,6 +31,7 @@
  */
 
 import type { CellValue } from './workbook.ts';
+import { isoDay } from './coerce.ts';
 
 /** A refusal the model can act on: a bad column, operator or expression. */
 export class QueryError extends Error {
@@ -109,7 +110,7 @@ export const EMPTY_LABEL = '（空）';
 /** A cell as text: dates as YYYY-MM-DD, the form the model reads and writes. */
 export function cellText(v: unknown): string {
   if (v === null || v === undefined) return '';
-  if (v instanceof Date) return Number.isNaN(v.getTime()) ? '' : v.toISOString().slice(0, 10);
+  if (v instanceof Date) return Number.isNaN(v.getTime()) ? '' : isoDay(v);
   return String(v);
 }
 
@@ -160,8 +161,12 @@ function toDate(v: unknown): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-/** Fixed locale: same input, same order, on every machine. */
-const COLLATOR = new Intl.Collator('zh-CN', { numeric: true });
+/**
+ * How text sorts here: Chinese order, numbers in text by value ("第2行" before
+ * "第10行"). A fixed locale, so the same input sorts the same on every machine.
+ * Shared by query results, sort_rows and folder listings.
+ */
+export const COLLATOR = new Intl.Collator('zh-CN', { numeric: true });
 
 /**
  * Compare two values the way a person would: as numbers when both are, as

@@ -214,6 +214,20 @@ export const STYLE = {
  * Custom number formats, indexed from 164 (the first id Excel leaves free for
  * user formats; 0–163 are reserved for the built-in table).
  */
+/**
+ * The format code behind each custom number format: what styles.xml writes,
+ * and what the preview shows a column of that type in. One table, so the
+ * preview cannot drift from the file.
+ */
+export const FORMAT_CODES = {
+  number: '#,##0.00',
+  date: 'yyyy-mm-dd',
+  currency: '¥#,##0.00',
+  percent: '0.00%',
+  integer: '#,##0',
+  total: '#,##0.00',
+} as const;
+
 export const NUM_FMT = {
   number: 164,
   date: 165,
@@ -235,12 +249,12 @@ const FILL_HEADER = 2;
 export function buildStylesXml(): string {
   const numFmts =
     `<numFmts count="6">` +
-    `<numFmt numFmtId="${NUM_FMT.number}" formatCode="#,##0.00"/>` +
-    `<numFmt numFmtId="${NUM_FMT.date}" formatCode="yyyy-mm-dd"/>` +
-    `<numFmt numFmtId="${NUM_FMT.currency}" formatCode="¥#,##0.00"/>` +
-    `<numFmt numFmtId="${NUM_FMT.percent}" formatCode="0.00%"/>` +
-    `<numFmt numFmtId="${NUM_FMT.integer}" formatCode="#,##0"/>` +
-    `<numFmt numFmtId="${NUM_FMT.total}" formatCode="#,##0.00"/>` +
+    `<numFmt numFmtId="${NUM_FMT.number}" formatCode="${FORMAT_CODES.number}"/>` +
+    `<numFmt numFmtId="${NUM_FMT.date}" formatCode="${FORMAT_CODES.date}"/>` +
+    `<numFmt numFmtId="${NUM_FMT.currency}" formatCode="${FORMAT_CODES.currency}"/>` +
+    `<numFmt numFmtId="${NUM_FMT.percent}" formatCode="${FORMAT_CODES.percent}"/>` +
+    `<numFmt numFmtId="${NUM_FMT.integer}" formatCode="${FORMAT_CODES.integer}"/>` +
+    `<numFmt numFmtId="${NUM_FMT.total}" formatCode="${FORMAT_CODES.total}"/>` +
     `</numFmts>`;
 
   // Ordered to match STYLE: index 0..10.

@@ -23,6 +23,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { columnTotal, totalsLabelColumn, writeSpec } from './workbook.ts';
 import type { CellValue, SheetSpec, WorkbookSpec } from './workbook.ts';
+import { isoDay } from './coerce.ts';
 
 export const EXPORT_FORMATS = ['xlsx', 'csv', 'json'] as const;
 export type ExportFormat = (typeof EXPORT_FORMATS)[number];
@@ -81,7 +82,7 @@ export function cleanBaseName(raw: unknown, fallback = '工作簿'): string {
 /** A cell as text, the way it is shown to the model and written to CSV. */
 function plain(v: CellValue | undefined): string | number | boolean | null {
   if (v === null || v === undefined || v === '') return null;
-  if (v instanceof Date) return v.toISOString().slice(0, 10);
+  if (v instanceof Date) return isoDay(v);
   return v;
 }
 

@@ -8,6 +8,7 @@
 import { tsvCell } from '../../workbook/table-query.ts';
 import type { QueryTable } from '../../workbook/table-query.ts';
 import type { Attachment, AttachmentTable } from '../types.ts';
+import { isoDay } from '../../workbook/workbook.ts';
 
 /** Rows per `read_attachment` page; the same cap as `read_rows`. */
 const ATTACH_PAGE_ROWS = 200;
@@ -198,5 +199,5 @@ export function columnTypeOf(values: unknown[]): string {
 
 /** A cell for an op's arguments: dates as text, which is how the op log stores them. */
 export function plainCell(v: unknown): unknown {
-  return v instanceof Date ? v.toISOString().slice(0, 10) : (v ?? null);
+  return v instanceof Date ? isoDay(v) : (v ?? null);
 }

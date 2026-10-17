@@ -45,6 +45,7 @@ import { TABLE_EXT, TEXT_EXT } from '../../ingest/kinds.ts';
 import { TYPES } from '../../workbook/workbook.ts';
 import { tsvCell } from '../../workbook/table-query.ts';
 import type { CellValue } from '../../workbook/workbook.ts';
+import { isoDay } from '../../workbook/workbook.ts';
 
 export const FETCH_TIMEOUT_MS = 20_000;
 export const MAX_FETCH_BYTES = 5 * 1024 * 1024;
@@ -479,6 +480,6 @@ export function tableForImport(
   if (att.kind !== 'table' || !t || !t.header.length) return null;
   const known = TYPES as readonly string[];
   const columns = t.columns.map((c) => ({ header: c.label, type: known.includes(c.type) ? c.type : 'text' }));
-  const rows = t.rows.map((r) => r.map((v) => (v instanceof Date ? v.toISOString().slice(0, 10) : v)));
+  const rows = t.rows.map((r) => r.map((v) => (v instanceof Date ? isoDay(v) : v)));
   return { columns, rows };
 }

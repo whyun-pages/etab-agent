@@ -64,6 +64,11 @@ export function columnWidth(raw: unknown): number | null {
 /** Excel's day 0. 1899-12-30 because Excel believes 1900 was a leap year. */
 const SERIAL_EPOCH = Date.UTC(1899, 11, 30);
 
+/** A date as YYYY-MM-DD, its UTC calendar day — how a date is shown to the model and written to text. */
+export function isoDay(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
 /**
  * A Date to an Excel serial number.
  * @returns days since 1899-12-30, with the time as a fraction

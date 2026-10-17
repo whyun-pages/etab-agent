@@ -9,6 +9,7 @@ import { specStats } from '../workbook/workbook.ts';
 import { INTENT } from './types.ts';
 import type { HistoryMessage, ChangeLine, AgentMessage, AgentMessagesArgs } from './types.ts';
 import { SYSTEM } from './prompt.ts';
+import { isoDay } from '../workbook/workbook.ts';
 
 /** Rows sent to the model. Enough to see the shape, not enough to blow the budget. */
 export const DEFAULT_ROW_BUDGET = 200;
@@ -78,7 +79,7 @@ export function specSummary(
     const rows = s.rows || [];
     const shown = rows.slice(0, budget);
     shown.forEach((r, i) => {
-      lines.push(`  ${i + 1}. ` + JSON.stringify(r.map((v) => (v instanceof Date ? v.toISOString().slice(0, 10) : v))));
+      lines.push(`  ${i + 1}. ` + JSON.stringify(r.map((v) => (v instanceof Date ? isoDay(v) : v))));
     });
     if (rows.length > shown.length) {
       lines.push(`  …（第 ${shown.length + 1}–${rows.length} 行没有列出来；需要时用 read_rows 读取，不要凭空编造）`);

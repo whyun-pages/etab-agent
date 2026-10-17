@@ -19,6 +19,7 @@
 
 import { columnTotal, dateToSerial, totalsLabelColumn } from './workbook.ts';
 import * as xlsx from '../formats/xlsx.ts';
+import { FORMAT_CODES } from '../formats/xlsx-writer.ts';
 
 /**
  * The spec types, named locally.
@@ -229,15 +230,11 @@ export function specPreview(spec: WorkbookSpec | null | undefined): PreviewGrid 
 export function numFmtForType(type: ColumnType | null | undefined): string | null {
   switch (type) {
     case 'currency':
-      return '¥#,##0.00';
     case 'percent':
-      return '0.00%';
     case 'integer':
-      return '#,##0';
     case 'number':
-      return '#,##0.00';
     case 'date':
-      return 'yyyy-mm-dd';
+      return FORMAT_CODES[type];
     default:
       return null;
   }

@@ -23,23 +23,12 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
-const { bundle } = require('./bundle');
+const { bundle, OPTIONAL_EXTERNALS: OPTIONAL } = require('./bundle');
 
 const ROOT = path.join(__dirname, '..');
 const BUILT = path.join(ROOT, '.build', 'js');
 // Which entry to bundle. The desktop entry is what ships.
 const ENTRY_NAME = process.argv[2] || 'desktop.js';
-
-/**
- * Packages left external that a packaged executable cannot load, and why that
- * is fine. Each is required inside a try/catch by the package that wants it,
- * and esbuild leaves exactly those requires external.
- */
-const OPTIONAL = {
-  bufferutil: 'ws: optional native speed-up for masking frames',
-  'utf-8-validate': 'ws: optional native UTF-8 validator',
-  'supports-color': 'debug: optional terminal colour detection',
-};
 
 let failures = 0;
 function check(label, ok, detail) {

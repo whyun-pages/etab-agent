@@ -73,6 +73,7 @@ import type {
   ReadOperations,
   WriteOperations,
 } from './pi-tools/fs-tools.ts';
+import { COLLATOR } from '../../workbook/table-query.ts';
 
 export const FILE_ACCESS_MODES = ['off', 'read', 'readwrite'] as const;
 export type FileAccessMode = (typeof FILE_ACCESS_MODES)[number];
@@ -369,9 +370,6 @@ export async function checkPath(
   }
   return real;
 }
-
-/** Fixed locale: the same folder always reads in the same order. */
-const COLLATOR = new Intl.Collator('zh-CN', { numeric: true });
 
 // ------------------------------------------------------------------ import
 

@@ -33,8 +33,9 @@
 
 import { MAX_ROWS, normalizeSpec, validateSpec, TYPES } from './workbook.ts';
 import type { CellValue, ColumnType, SpecNote, WorkbookSpec } from './workbook.ts';
-import { QueryError, selectRows, computeRows, describeFailures, cellText, isBlank } from './table-query.ts';
+import { QueryError, selectRows, computeRows, describeFailures, cellText, isBlank, COLLATOR } from './table-query.ts';
 import type { QueryTable, Selection } from './table-query.ts';
+import { isoDay } from './coerce.ts';
 
 /** An operation as the agent records it: the tool's name and its arguments. */
 export interface SpecOp {
@@ -591,9 +592,6 @@ function lookupColumns(spec: WorkbookSpec | null, args: Record<string, unknown>,
   );
 }
 
-/** Collation for sorting text the way a Chinese reader expects. Fixed locale: same input, same order. */
-const COLLATOR = new Intl.Collator('zh-CN', { numeric: true });
-
 function sortKey(v: CellValue | unknown): number | string | null {
   if (v === null || v === undefined || v === '') return null;
   if (v instanceof Date) return v.getTime();
@@ -740,9 +738,7 @@ export function readRows(spec: WorkbookSpec | null, args: Record<string, unknown
     `工作表「${sheet.name}」第 ${from}–${to} 行（共 ${total} 行）。列：${sheet.columns.map((c) => c.header).join('、')}`,
   ];
   for (let i = from - 1; i < to; i++) {
-    lines.push(
-      `${i + 1}. ${JSON.stringify(sheet.rows[i].map((v) => (v instanceof Date ? v.toISOString().slice(0, 10) : v)))}`,
-    );
+    lines.push(`${i + 1}. ${JSON.stringify(sheet.rows[i].map((v) => (v instanceof Date ? isoDay(v) : v)))}`);
   }
   return lines.join('\n');
 }
