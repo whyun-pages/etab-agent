@@ -21,13 +21,14 @@
  */
 
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const http = require('node:http');
 const { spawn, execFile } = require('node:child_process');
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-const TRASH_ROOT = path.join(process.env.USERPROFILE || 'C:\\Users\\cola-', '.Trash');
+const TRASH_ROOT = path.join(os.homedir(), '.Trash');
 
 const EDGE_CANDIDATES = [
   'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
@@ -159,28 +160,38 @@ class CDP {
 
 // ── pids ────────────────────────────────────────────────────────────
 
-function findBrowserProcesses() {
+/**
+ * The Edge processes launched on `profile`, found by their command line.
+ *
+ * Only these. An earlier version listed every msedge.exe and killed the lot,
+ * which closed the user's own browser along with the probe's. Edge's child
+ * processes inherit `--user-data-dir`, so matching on it finds the whole
+ * instance and nothing else. The path reaches PowerShell through the
+ * environment, not the command, so no character in it needs quoting.
+ */
+function findProfileProcesses(profile) {
+  const script =
+    'Get-CimInstance Win32_Process -Filter "Name=\'msedge.exe\'" | ' +
+    'Where-Object { $_.CommandLine -and $_.CommandLine.Contains($env:TAB_AGENT_EDGE_PROFILE) } | ' +
+    'ForEach-Object { $_.ProcessId }';
   return new Promise((resolve) => {
     execFile(
-      'tasklist',
-      ['/FI', 'IMAGENAME eq msedge.exe', '/FO', 'CSV', '/NH'],
-      { windowsHide: true },
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-Command', script],
+      { windowsHide: true, env: { ...process.env, TAB_AGENT_EDGE_PROFILE: profile } },
       (err, stdout) => {
         if (err || !stdout) return resolve([]);
-        const pids = String(stdout)
-          .split(/\r?\n/)
-          .map((line) => (line.match(/^"[^"]+","(\d+)"/) || [])[1])
-          .filter(Boolean)
-          .map(Number);
-        resolve(pids);
+        resolve(String(stdout).split(/\r?\n/).map(Number).filter(Boolean));
       },
     );
   });
 }
 
-/** Kill every Edge process. Guarded: an empty pid list means "do nothing". */
-async function killBrowsers() {
-  const pids = await findBrowserProcesses();
+/** Kill the Edge instance running on `profile`. No profile, no kill. */
+async function killProfileBrowsers(profile) {
+  if (!profile) return 0;
+  // The same string Edge was launched with: that is what its command line holds.
+  const pids = await findProfileProcesses(profile);
   if (!pids.length) return 0;
   await new Promise((resolve) => {
     execFile('taskkill', ['/F', ...pids.flatMap((p) => ['/PID', String(p)]), '/T'], { windowsHide: true }, () =>
@@ -346,7 +357,7 @@ async function closePage(page, { trashProfile = false } = {}) {
   } catch {
     /* ignore */
   }
-  await killBrowsers();
+  await killProfileBrowsers(page.profile);
   try {
     if (page.proc) page.proc.kill();
   } catch {
@@ -356,19 +367,11 @@ async function closePage(page, { trashProfile = false } = {}) {
   if (trashProfile && page.profile) moveToTrash(page.profile, 'tab-agent-cdp');
 }
 
-/** Discard every Edge process. For a probe's final teardown. */
-async function closeAllBrowsers() {
-  const n = await killBrowsers();
-  await sleep(400);
-  return n;
-}
-
 module.exports = {
   findEdge,
   openPage,
   closePage,
-  closeAllBrowsers,
-  killBrowsers,
+  killProfileBrowsers,
   moveToTrash,
   sleep,
   CDP,
