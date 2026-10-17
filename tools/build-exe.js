@@ -62,6 +62,13 @@ function publicAssets() {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       const abs = path.join(dir, entry.name);
       const key = prefix ? `${prefix}/${entry.name}` : entry.name;
+      // `__`-prefixed files are scratch that a probe served from public/ for a
+      // moment (see .verify/browser/probe-sheet-render.js). An interrupted
+      // run could leave one, and it would ship inside the exe.
+      if (entry.name.startsWith('__')) {
+        console.log(`    skipping scratch file public/${key}`);
+        continue;
+      }
       if (entry.isDirectory()) walk(abs, key);
       else if (entry.isFile()) out.push({ key, abs });
     }

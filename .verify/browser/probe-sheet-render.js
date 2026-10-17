@@ -106,6 +106,11 @@ async function main() {
   const servedHarness = path.join(ROOT, 'public', '__sheet-render.html');
   fs.writeFileSync(harnessPath, harness, 'utf8');
   fs.writeFileSync(servedHarness, harness, 'utf8');
+  // Removed on ANY exit — a throw, process.exit, Ctrl+C. Left behind, the
+  // harness is a file in public/, and the exe build embeds public/ whole.
+  // (tools/build-exe.js also skips __-prefixed files, as a second net.)
+  process.on('exit', () => fs.rmSync(servedHarness, { force: true }));
+  process.once('SIGINT', () => process.exit(130));
 
   const profile = path.join(OUT, 'sheet-render-profile');
   const cdpPort = 9601;
@@ -173,7 +178,6 @@ async function main() {
   } catch {
     /* ignore */
   }
-  fs.rmSync(servedHarness, { force: true });
 
   console.log(`\nSHEET RENDER: ${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
