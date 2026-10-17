@@ -208,6 +208,13 @@ export interface RunTurnArgs {
    */
   attachments?: Attachment[];
   /**
+   * The calendar day of the turn (YYYY-MM-DD), stamped on every edit it
+   * records so a relative date (今天, 明天) lands the same day on replay. The
+   * route reads the clock once and passes it in; without it, relative dates
+   * are not dates.
+   */
+  today?: string;
+  /**
    * Local file access: off; read (pi's read, ls, find, grep, plus
    * import_file); or readwrite (also write, edit, the shell tool, and
    * save_file into a chosen folder). See src/agent/file-access.ts.
@@ -810,6 +817,7 @@ interface TurnState {
   writes: FileWrite[];
   /** files read from disk, which become the session's attachments */
   loaded: Ingested[];
+  today: string | undefined;
 }
 
 /** What a turn's tool set is allowed to do. */
@@ -1019,7 +1027,8 @@ function buildTools(ai: Pi['ai'], state: TurnState, caps: Capabilities): AgentTo
   ];
 
   /** Record a successful edit; shared by the edit tools and an import. */
-  const record = (op: SpecOp): string => {
+  const record = (raw: SpecOp): string => {
+    const op: SpecOp = state.today ? { ...raw, today: state.today } : raw;
     // Throws SpecOpError on a bad address or an unusable result; pi-agent
     // turns that into an error tool result, which the model reads.
     const r = applyOp(state.draft, op);
@@ -1642,6 +1651,7 @@ export async function runTurn({
   fileOptions = {},
   idleTimeoutMs = TURN_IDLE_TIMEOUT_MS,
   streamIdleTimeoutMs = TURN_STREAM_IDLE_TIMEOUT_MS,
+  today,
 }: RunTurnArgs): Promise<TurnResult> {
   if (!(await settings.isConfigured())) {
     throw new LlmError('尚未配置模型', { code: 'not-configured' });
@@ -1662,6 +1672,7 @@ export async function runTurn({
     exports: [],
     writes: [],
     loaded: [],
+    today,
   };
   const [system, user] = agentMessages({ history, message, spec, rowBudget, changes });
 

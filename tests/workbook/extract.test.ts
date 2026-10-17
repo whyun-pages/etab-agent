@@ -109,15 +109,21 @@ test('rejects impossible calendar dates', () => {
   assert.strictEqual(parseDate('2026-00-10'), null);
 });
 
-test('relative dates resolve against today', () => {
-  const today = new Date();
-  const fmt = (d) => d.toISOString().slice(0, 10);
-  assert.strictEqual(
-    fmt(parseDate('今天')),
-    fmt(new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()))),
-  );
-  const tomorrow = parseDate('明天');
-  assert.ok(tomorrow > new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate())));
+test('relative dates resolve against the today they are given', () => {
+  const fmt = (d) => (d ? d.toISOString().slice(0, 10) : null);
+  assert.strictEqual(fmt(parseDate('今天', '2026-02-28')), '2026-02-28');
+  assert.strictEqual(fmt(parseDate('明天', '2026-02-28')), '2026-03-01');
+  assert.strictEqual(fmt(parseDate('前天', '2026-01-01')), '2025-12-30');
+  // A month and day with no year takes today's year.
+  assert.strictEqual(fmt(parseDate('三月五日', '2026-10-17')), '2026-03-05');
+});
+
+test('without a today, a relative date is not a date — nothing reads the clock', () => {
+  // The clock made the same input parse differently tomorrow, so a replayed
+  // edit could land a different day than the turn showed.
+  assert.strictEqual(parseDate('今天'), null);
+  assert.strictEqual(parseDate('三月五日'), null);
+  assert.strictEqual(parseDate('2026年三月五日').toISOString().slice(0, 10), '2026-03-05');
 });
 
 test('dateNear binds a date to its label', () => {

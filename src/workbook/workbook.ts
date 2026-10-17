@@ -350,7 +350,7 @@ export interface CoerceResult {
  * Nothing is ever silently turned into a plausible-looking wrong number: a
  * currency cell holding "四十几万吧" is reported, not stored as 40.
  */
-export function coerce(raw: unknown, type: ColumnType): CoerceResult {
+export function coerce(raw: unknown, type: ColumnType, today?: string): CoerceResult {
   if (isBlank(raw)) return { value: null, note: null };
 
   switch (type) {
@@ -394,7 +394,7 @@ export function coerce(raw: unknown, type: ColumnType): CoerceResult {
       // time a session is reloaded from disk.
       const iso = isoToDate(raw);
       if (iso) return { value: iso, note: null };
-      const d = parseDate(String(raw));
+      const d = parseDate(String(raw), today);
       if (!d) return { value: null, note: `「${String(raw).slice(0, 24)}」不是日期，已留空` };
       return { value: d, note: null };
     }
@@ -433,7 +433,12 @@ function isoToDate(raw: unknown): Date | null {
   if (typeof raw !== 'string') return null;
   const s = raw.trim();
   if (!/^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?)?$/.test(s)) return null;
-  const d = new Date(s.includes('T') || s.includes(' ') ? s.replace(' ', 'T') : `${s}T00:00:00.000Z`);
+  // A time with no zone is UTC, like a bare date and like every date here.
+  // `new Date` reads it as LOCAL time, so 10:00 became 02:00Z in Shanghai and
+  // the serial in the file depended on the machine.
+  let iso = s.includes('T') || s.includes(' ') ? s.replace(' ', 'T') : `${s}T00:00:00.000`;
+  if (!/(Z|[+-]\d{2}:?\d{2})$/.test(iso)) iso += 'Z';
+  const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
@@ -507,8 +512,13 @@ export interface RawTotals {
  * Never throws on bad input: a model reply that is missing half its fields
  * should produce a usable small workbook, not an exception the UI has to
  * explain. Problems are returned in `notes` so they can be shown.
+ *
+ * `today` (YYYY-MM-DD) is what a relative date in a date column — 今天,
+ * 明天, a month and day with no year — is resolved against. Without it such a
+ * value is not a date: nothing here reads the clock, so the same input always
+ * normalises to the same spec.
  */
-export function normalizeSpec(raw: unknown): NormalizeResult {
+export function normalizeSpec(raw: unknown, { today }: { today?: string } = {}): NormalizeResult {
   const notes: SpecNote[] = [];
   const src = (raw && typeof raw === 'object' ? raw : {}) as RawSpec;
 
@@ -545,7 +555,7 @@ export function normalizeSpec(raw: unknown): NormalizeResult {
     }
     sheetNames.add(name.toLowerCase());
 
-    const sheet = normalizeSheet(s, name, notes, i);
+    const sheet = normalizeSheet(s, name, notes, i, today);
     spec.sheets.push(sheet);
   }
 
@@ -553,7 +563,13 @@ export function normalizeSpec(raw: unknown): NormalizeResult {
 }
 
 /** One sheet: columns first (rows are keyed off them), then the data. */
-function normalizeSheet(s: RawSheet, name: string, notes: SpecNote[], sheetIndex: number): SheetSpec {
+function normalizeSheet(
+  s: RawSheet,
+  name: string,
+  notes: SpecNote[],
+  sheetIndex: number,
+  today: string | undefined,
+): SheetSpec {
   const where = `工作表「${name}」`;
 
   // ── columns ───────────────────────────────────────────────────────
@@ -615,7 +631,7 @@ function normalizeSheet(s: RawSheet, name: string, notes: SpecNote[], sheetIndex
 
     const out: CellValue[] = [];
     for (let c = 0; c < columns.length; c++) {
-      const { value, note } = coerce(row[c], columns[c].type);
+      const { value, note } = coerce(row[c], columns[c].type, today);
       if (note) {
         const k = `${columns[c].header}`;
         if (!failed.has(k)) failed.set(k, { header: k, reason: note, count: 0 });

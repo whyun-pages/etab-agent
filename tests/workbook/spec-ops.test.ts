@@ -508,3 +508,32 @@ test('condition ops are replay-stable: same spec and ops, same bytes', () => {
   ];
   assert.strictEqual(JSON.stringify(applyOps(orders(), ops).spec), JSON.stringify(applyOps(orders(), ops).spec));
 });
+
+// ── relative dates ──────────────────────────────────────────────────
+
+test('an op carries its own today, so a replay lands the same day', () => {
+  const create = (today) => ({
+    op: 'create_workbook',
+    args: {
+      title: 't',
+      sheets: [{ name: 'S', columns: [{ header: '签约日', type: 'date' }], rows: [['今天'], ['明天']] }],
+    },
+    ...(today ? { today } : {}),
+  });
+  const day = (spec, r) => spec.sheets[0].rows[r][0]?.toISOString().slice(0, 10) ?? null;
+
+  const stamped = applyOp(null, create('2026-02-28')).spec;
+  assert.deepStrictEqual([day(stamped, 0), day(stamped, 1)], ['2026-02-28', '2026-03-01']);
+  // The same op replayed later — say, a held change applied tomorrow — reads
+  // its recorded day, not the clock.
+  const replay = applyOps(null, [create('2026-02-28')]).spec;
+  assert.deepStrictEqual(replay, stamped);
+
+  // No day recorded: not a date, and said so.
+  const r = applyOp(null, create(null));
+  assert.strictEqual(day(r.spec, 0), null);
+  assert.ok(
+    r.notes.some((n) => /不是日期/.test(n.message)),
+    JSON.stringify(r.notes),
+  );
+});

@@ -40,6 +40,19 @@ import type { QueryTable, Selection } from './table-query.ts';
 export interface SpecOp {
   op: string;
   args: Record<string, unknown>;
+  /**
+   * The calendar day the operation was made on (YYYY-MM-DD), against which a
+   * relative date in its values — 今天, 明天, 三月五日 — is resolved. Recorded
+   * with the op, not read from the clock when it is applied: a replay on a
+   * newer table, or a held change applied hours later, must land the same
+   * dates the turn showed. Absent, such a value is not a date.
+   */
+  today?: string;
+}
+
+/** What an operation may consult besides the spec and its arguments. */
+export interface OpContext {
+  today?: string;
 }
 
 /** What one operation produced. */
@@ -117,8 +130,8 @@ function toRaw(spec: WorkbookSpec): RawSpecOut {
 }
 
 /** Normalise an edited raw spec, refusing one that would not be writable. */
-function finish(raw: unknown, summary: string): OpResult {
-  const { spec, notes } = normalizeSpec(raw);
+function finish(ctx: OpContext, raw: unknown, summary: string): OpResult {
+  const { spec, notes } = normalizeSpec(raw, { today: ctx.today });
   const verdict = validateSpec(spec);
   if (!verdict.ok) throw new SpecOpError(verdict.blocking.join('；') || '修改后的工作簿不可用');
   return { spec, notes, summary };
@@ -209,16 +222,16 @@ function rowCells(sheet: RawSheetOut, row: unknown): unknown[] {
 // ------------------------------------------------------------ operations
 
 /** Create or wholesale rebuild. The only operation that may discard everything. */
-function createWorkbook(_spec: WorkbookSpec | null, args: Record<string, unknown>): OpResult {
+function createWorkbook(_spec: WorkbookSpec | null, args: Record<string, unknown>, ctx: OpContext): OpResult {
   const sheets = list(args.sheets);
   if (!sheets.length) throw new SpecOpError('create_workbook 至少要有一个工作表。');
-  const result = finish({ title: args.title, sheets }, '');
+  const result = finish(ctx, { title: args.title, sheets }, '');
   const rows = result.spec.sheets.reduce((n, s) => n + s.rows.length, 0);
   result.summary = `已建立工作簿「${result.spec.title}」：${result.spec.sheets.length} 个工作表，共 ${rows} 行`;
   return result;
 }
 
-function addColumns(spec: WorkbookSpec | null, args: Record<string, unknown>): OpResult {
+function addColumns(spec: WorkbookSpec | null, args: Record<string, unknown>, ctx: OpContext): OpResult {
   const raw = toRaw(requireSpec(spec));
   const sheet = findSheet(raw, args.sheet);
   const cols = list(args.columns);
@@ -241,10 +254,10 @@ function addColumns(spec: WorkbookSpec | null, args: Record<string, unknown>): O
     });
     added.push(header);
   }
-  return finish(raw, `已在「${sheet.name}」新增列：${added.join('、')}`);
+  return finish(ctx, raw, `已在「${sheet.name}」新增列：${added.join('、')}`);
 }
 
-function removeColumns(spec: WorkbookSpec | null, args: Record<string, unknown>): OpResult {
+function removeColumns(spec: WorkbookSpec | null, args: Record<string, unknown>, ctx: OpContext): OpResult {
   const raw = toRaw(requireSpec(spec));
   const sheet = findSheet(raw, args.sheet);
   const headers = list(args.headers).map(str);
@@ -267,10 +280,10 @@ function removeColumns(spec: WorkbookSpec | null, args: Record<string, unknown>)
       note = '（被合计的列都已删除，合计行一并去掉）';
     }
   }
-  return finish(raw, `已从「${sheet.name}」删除列：${headers.join('、')}${note}`);
+  return finish(ctx, raw, `已从「${sheet.name}」删除列：${headers.join('、')}${note}`);
 }
 
-function updateColumns(spec: WorkbookSpec | null, args: Record<string, unknown>): OpResult {
+function updateColumns(spec: WorkbookSpec | null, args: Record<string, unknown>, ctx: OpContext): OpResult {
   const raw = toRaw(requireSpec(spec));
   const sheet = findSheet(raw, args.sheet);
   const changes = list(args.changes);
@@ -306,7 +319,7 @@ function updateColumns(spec: WorkbookSpec | null, args: Record<string, unknown>)
     ]);
     done.push('调整了列顺序');
   }
-  return finish(raw, done.length ? `「${sheet.name}」：${done.join('；')}` : `「${sheet.name}」的列没有变化`);
+  return finish(ctx, raw, done.length ? `「${sheet.name}」：${done.join('；')}` : `「${sheet.name}」的列没有变化`);
 }
 
 /**
@@ -317,7 +330,7 @@ function updateColumns(spec: WorkbookSpec | null, args: Record<string, unknown>)
  * survives a turn replayed on top of it — `toRaw` carries widths through.
  * Clamped by normalisation like any declared width (4..80).
  */
-function setColumnWidths(spec: WorkbookSpec | null, args: Record<string, unknown>): OpResult {
+function setColumnWidths(spec: WorkbookSpec | null, args: Record<string, unknown>, ctx: OpContext): OpResult {
   const raw = toRaw(requireSpec(spec));
   const sheet = findSheet(raw, args.sheet);
   const widths = list(args.widths);
@@ -333,10 +346,10 @@ function setColumnWidths(spec: WorkbookSpec | null, args: Record<string, unknown
     col.width = n;
     done.push(col.header);
   }
-  return finish(raw, `已调整「${sheet.name}」的列宽：${done.join('、')}`);
+  return finish(ctx, raw, `已调整「${sheet.name}」的列宽：${done.join('、')}`);
 }
 
-function addRows(spec: WorkbookSpec | null, args: Record<string, unknown>): OpResult {
+function addRows(spec: WorkbookSpec | null, args: Record<string, unknown>, ctx: OpContext): OpResult {
   const raw = toRaw(requireSpec(spec));
   const sheet = findSheet(raw, args.sheet);
   const rows = list(args.rows).map((r) => rowCells(sheet, r));
@@ -344,10 +357,10 @@ function addRows(spec: WorkbookSpec | null, args: Record<string, unknown>): OpRe
   const at = args.before === undefined || args.before === null ? sheet.rows.length : rowIndex(sheet, args.before);
   sheet.rows.splice(at, 0, ...rows);
   const where = at === sheet.rows.length - rows.length ? '末尾' : `第 ${at + 1} 行处`;
-  return finish(raw, `已在「${sheet.name}」${where}新增 ${rows.length} 行，现共 ${sheet.rows.length} 行`);
+  return finish(ctx, raw, `已在「${sheet.name}」${where}新增 ${rows.length} 行，现共 ${sheet.rows.length} 行`);
 }
 
-function updateCells(spec: WorkbookSpec | null, args: Record<string, unknown>): OpResult {
+function updateCells(spec: WorkbookSpec | null, args: Record<string, unknown>, ctx: OpContext): OpResult {
   const raw = toRaw(requireSpec(spec));
   const sheet = findSheet(raw, args.sheet);
   const cells = list(args.cells);
@@ -360,7 +373,7 @@ function updateCells(spec: WorkbookSpec | null, args: Record<string, unknown>): 
     while (row.length <= c) row.push(null);
     row[c] = src.value === undefined ? null : src.value;
   }
-  return finish(raw, `已修改「${sheet.name}」${cells.length} 个单元格`);
+  return finish(ctx, raw, `已修改「${sheet.name}」${cells.length} 个单元格`);
 }
 
 // ------------------------------------------------------- by condition
@@ -410,7 +423,7 @@ function describeWhere(args: Record<string, unknown>): string {
   return conds.join(str(args.match).toLowerCase() === 'any' ? '或' : '且');
 }
 
-function deleteRows(spec: WorkbookSpec | null, args: Record<string, unknown>): OpResult {
+function deleteRows(spec: WorkbookSpec | null, args: Record<string, unknown>, ctx: OpContext): OpResult {
   const raw = toRaw(requireSpec(spec));
   const sheet = findSheet(raw, args.sheet);
   const nums = list(args.rows);
@@ -424,7 +437,7 @@ function deleteRows(spec: WorkbookSpec | null, args: Record<string, unknown>): O
     : [...new Set(nums.map((n) => rowIndex(sheet, n)))].sort((a, b) => b - a);
   for (const i of indices) sheet.rows.splice(i, 1);
   const why = where.length ? `符合${describeWhere(args)}的 ` : '';
-  return finish(raw, `已从「${sheet.name}」删除${why}${indices.length} 行，剩 ${sheet.rows.length} 行`);
+  return finish(ctx, raw, `已从「${sheet.name}」删除${why}${indices.length} 行，剩 ${sheet.rows.length} 行`);
 }
 
 /**
@@ -432,7 +445,7 @@ function deleteRows(spec: WorkbookSpec | null, args: Record<string, unknown>): O
  * row, when there is no condition. "把所有派送中的改成已签收" is one call, not
  * one `update_cells` entry per row.
  */
-function updateRows(spec: WorkbookSpec | null, args: Record<string, unknown>): OpResult {
+function updateRows(spec: WorkbookSpec | null, args: Record<string, unknown>, ctx: OpContext): OpResult {
   const raw = toRaw(requireSpec(spec));
   const sheet = findSheet(raw, args.sheet);
   const set = (args.set && typeof args.set === 'object' && !Array.isArray(args.set) ? args.set : {}) as Record<
@@ -451,6 +464,7 @@ function updateRows(spec: WorkbookSpec | null, args: Record<string, unknown>): O
   }
   const where = list(args.where).length ? `符合${describeWhere(args)}的` : '全部';
   return finish(
+    ctx,
     raw,
     `已把「${sheet.name}」${where} ${indices.length} 行的 ${cols.map(({ c }) => `「${sheet.columns[c].header}」`).join('、')} 改为指定值`,
   );
@@ -472,7 +486,7 @@ function inferType(values: unknown[]): ColumnType {
  * overwritten (on the selected rows), a new one is added. The expression is
  * what is recorded, so the replay recomputes from the stored values.
  */
-function computeColumn(spec: WorkbookSpec | null, args: Record<string, unknown>): OpResult {
+function computeColumn(spec: WorkbookSpec | null, args: Record<string, unknown>, ctx: OpContext): OpResult {
   const raw = toRaw(requireSpec(spec));
   const sheet = findSheet(raw, args.sheet);
   const header = str(args.column);
@@ -503,6 +517,7 @@ function computeColumn(spec: WorkbookSpec | null, args: Record<string, unknown>)
   }
   const where = list(args.where).length ? `符合${describeWhere(args)}的 ${indices.length} 行` : `${indices.length} 行`;
   return finish(
+    ctx,
     raw,
     `已${created ? '新增' : '重新计算'}「${sheet.name}」的列「${header}」 = ${expression}（${where}）${describeFailures(failed)}`,
   );
@@ -514,7 +529,7 @@ function computeColumn(spec: WorkbookSpec | null, args: Record<string, unknown>)
  * `key`. A row with no match gets blanks, and the summary counts them — a
  * lookup that silently misses half the keys is the classic spreadsheet bug.
  */
-function lookupColumns(spec: WorkbookSpec | null, args: Record<string, unknown>): OpResult {
+function lookupColumns(spec: WorkbookSpec | null, args: Record<string, unknown>, ctx: OpContext): OpResult {
   const raw = toRaw(requireSpec(spec));
   const sheet = findSheet(raw, args.sheet);
   const src = findSheet(raw, args.fromSheet);
@@ -561,6 +576,7 @@ function lookupColumns(spec: WorkbookSpec | null, args: Record<string, unknown>)
   }
   const miss = missed ? `；${missed} 行在「${src.name}」里找不到对应的「${src.columns[srcKey].header}」，已留空` : '';
   return finish(
+    ctx,
     raw,
     `已按「${sheet.columns[key].header}」从「${src.name}」带入列：${cols.map((x) => x.header).join('、')}${miss}`,
   );
@@ -577,7 +593,7 @@ function sortKey(v: CellValue | unknown): number | string | null {
   return String(v);
 }
 
-function sortRows(spec: WorkbookSpec | null, args: Record<string, unknown>): OpResult {
+function sortRows(spec: WorkbookSpec | null, args: Record<string, unknown>, ctx: OpContext): OpResult {
   const raw = toRaw(requireSpec(spec));
   const sheet = findSheet(raw, args.sheet);
   const c = findColumn(sheet, args.by);
@@ -594,20 +610,20 @@ function sortRows(spec: WorkbookSpec | null, args: Record<string, unknown>): OpR
     return d || a.i - b.i;
   });
   sheet.rows = keyed.map((x) => x.row);
-  return finish(raw, `已按「${sheet.columns[c].header}」${desc ? '降序' : '升序'}排列「${sheet.name}」`);
+  return finish(ctx, raw, `已按「${sheet.columns[c].header}」${desc ? '降序' : '升序'}排列「${sheet.name}」`);
 }
 
-function setTotals(spec: WorkbookSpec | null, args: Record<string, unknown>): OpResult {
+function setTotals(spec: WorkbookSpec | null, args: Record<string, unknown>, ctx: OpContext): OpResult {
   const raw = toRaw(requireSpec(spec));
   const sheet = findSheet(raw, args.sheet);
   if (args.enabled === false) {
     sheet.totals = false;
-    return finish(raw, `已去掉「${sheet.name}」的合计行`);
+    return finish(ctx, raw, `已去掉「${sheet.name}」的合计行`);
   }
   const headers = list(args.sumColumns).map(str).filter(Boolean);
   const keys = headers.map((h) => sheet.columns[findColumn(sheet, h)].key);
   sheet.totals = { enabled: true, label: str(args.label) || '合计', sumColumns: keys };
-  const result = finish(raw, '');
+  const result = finish(ctx, raw, '');
   const t = result.spec.sheets.find((s) => s.name === sheet.name)!.totals;
   const summed = t.sumColumns.map((i) => result.spec.sheets.find((s) => s.name === sheet.name)!.columns[i].header);
   result.summary = t.enabled
@@ -616,25 +632,25 @@ function setTotals(spec: WorkbookSpec | null, args: Record<string, unknown>): Op
   return result;
 }
 
-function addSheet(spec: WorkbookSpec | null, args: Record<string, unknown>): OpResult {
+function addSheet(spec: WorkbookSpec | null, args: Record<string, unknown>, ctx: OpContext): OpResult {
   const raw: RawSpecOut = spec && spec.sheets.length ? toRaw(spec) : { title: str(args.title) || '工作簿', sheets: [] };
   const name = str(args.name);
   if (!name) throw new SpecOpError('add_sheet 必须给出工作表名 name。');
   if (raw.sheets.some((s) => s.name.toLowerCase() === name.toLowerCase()))
     throw new SpecOpError(`工作表「${name}」已经存在。`);
   const sheet = { name, columns: list(args.columns), rows: list(args.rows), totals: args.totals ?? false };
-  return finish({ ...raw, sheets: [...raw.sheets, sheet] }, `已新增工作表「${name}」`);
+  return finish(ctx, { ...raw, sheets: [...raw.sheets, sheet] }, `已新增工作表「${name}」`);
 }
 
-function removeSheet(spec: WorkbookSpec | null, args: Record<string, unknown>): OpResult {
+function removeSheet(spec: WorkbookSpec | null, args: Record<string, unknown>, ctx: OpContext): OpResult {
   const raw = toRaw(requireSpec(spec));
   const sheet = findSheet(raw, args.sheet);
   if (raw.sheets.length === 1) throw new SpecOpError('这是唯一的工作表，不能删除。要重做整个表请用 create_workbook。');
   raw.sheets = raw.sheets.filter((s) => s !== sheet);
-  return finish(raw, `已删除工作表「${sheet.name}」（${sheet.rows.length} 行）`);
+  return finish(ctx, raw, `已删除工作表「${sheet.name}」（${sheet.rows.length} 行）`);
 }
 
-function rename(spec: WorkbookSpec | null, args: Record<string, unknown>): OpResult {
+function rename(spec: WorkbookSpec | null, args: Record<string, unknown>, ctx: OpContext): OpResult {
   const raw = toRaw(requireSpec(spec));
   const done: string[] = [];
   if (str(args.title)) {
@@ -651,11 +667,14 @@ function rename(spec: WorkbookSpec | null, args: Record<string, unknown>): OpRes
     sheet.name = newName;
   }
   if (!done.length) throw new SpecOpError('rename 需要 title，或 sheet 加 newName。');
-  return finish(raw, done.join('；'));
+  return finish(ctx, raw, done.join('；'));
 }
 
 /** Every operation, by the tool name the model calls it with. */
-export const OPS: Record<string, (spec: WorkbookSpec | null, args: Record<string, unknown>) => OpResult> = {
+export const OPS: Record<
+  string,
+  (spec: WorkbookSpec | null, args: Record<string, unknown>, ctx: OpContext) => OpResult
+> = {
   create_workbook: createWorkbook,
   add_columns: addColumns,
   remove_columns: removeColumns,
@@ -678,7 +697,7 @@ export const OPS: Record<string, (spec: WorkbookSpec | null, args: Record<string
 export function applyOp(spec: WorkbookSpec | null, op: SpecOp): OpResult {
   const fn = Object.hasOwn(OPS, op.op) ? OPS[op.op] : undefined;
   if (!fn) throw new SpecOpError(`未知的操作「${op.op}」`);
-  return fn(spec, op.args || {});
+  return fn(spec, op.args || {}, { today: op.today });
 }
 
 /**

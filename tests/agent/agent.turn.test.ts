@@ -383,3 +383,21 @@ test('runTurn: silence before a reply starts gets only the short window', async 
     (err) => err.code === 'aborted' && /没有任何输出/.test(err.message),
   );
 });
+
+test('runTurn: the turn stamps its today on every edit it records', async () => {
+  const res = await turnWith(
+    [
+      {
+        tool: 'create_workbook',
+        args: {
+          title: '合同',
+          sheets: [{ name: 'S', columns: [{ header: '签约日', type: 'date' }], rows: [['今天']] }],
+        },
+      },
+      '好了。',
+    ],
+    { message: '今天签的合同记一下', today: '2026-02-28' },
+  );
+  assert.strictEqual(res.ops[0].today, '2026-02-28');
+  assert.strictEqual(res.spec.sheets[0].rows[0][0].toISOString().slice(0, 10), '2026-02-28');
+});

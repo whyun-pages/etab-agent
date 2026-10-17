@@ -10,6 +10,8 @@
 
 import test from 'node:test';
 import assert from 'node:assert';
+import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { recomputeCachedValues } from '../../src/workbook/formula.ts';
 import { readZip, readWorkbook } from '../../src/formats/xlsx.ts';
 
@@ -870,4 +872,23 @@ test('toSheet: an automatic width fits the cells as displayed, not just the head
   assert.strictEqual(widths[2], 10, 'never under the default');
   assert.strictEqual(widths[3], 40, 'capped');
   assert.strictEqual(widths[4], 7, 'a declared width is kept as is');
+});
+
+test('a date-time with no zone is UTC, whatever the machine', () => {
+  // `new Date('2026-03-01T10:00')` reads the time as LOCAL: 02:00Z in
+  // Shanghai, 10:00Z in UTC, so the serial in the file depended on where it
+  // was written. Each zone needs its own process to take effect.
+  const code = `
+    const { normalizeSpec } = require('./src/workbook/workbook.ts');
+    const { spec } = normalizeSpec({ title: 't', sheets: [{ name: 'S',
+      columns: [{ header: 'd', type: 'date' }], rows: [['2026-03-01 10:00']] }] });
+    console.log(spec.sheets[0].rows[0][0].toISOString());
+  `;
+  const run = (tz) =>
+    execFileSync(process.execPath, ['--import', 'tsx', '-e', code], {
+      cwd: path.join(__dirname, '..', '..'),
+      env: { ...process.env, TZ: tz },
+      encoding: 'utf8',
+    }).trim();
+  assert.deepStrictEqual(['UTC', 'Asia/Shanghai'].map(run), ['2026-03-01T10:00:00.000Z', '2026-03-01T10:00:00.000Z']);
 });

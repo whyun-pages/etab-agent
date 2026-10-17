@@ -230,7 +230,7 @@ export function numberNear(
 export const DATE_RE = /(\d{4})\s*[-/.年]\s*(\d{1,2})\s*(?:[-/.月]\s*(\d{1,2})\s*日?)?/g;
 
 /** Parse a date, tolerating 2026年3月1日 / 2026-03-01 / 2026/03/01 / 20260301. */
-export function parseDate(token: string): Date | null {
+export function parseDate(token: string, today?: string): Date | null {
   const s = normalizeText(token).trim();
   let m;
   DATE_RE.lastIndex = 0;
@@ -252,19 +252,26 @@ export function parseDate(token: string): Date | null {
     const mo = parseChineseNumber(cn[1]);
     const d = parseChineseNumber(cn[2]);
     const yMatch = /(\d{4})\s*年/.exec(s);
-    const y = yMatch ? Number(yMatch[1]) : new Date().getUTCFullYear();
-    if (mo && d) return new Date(Date.UTC(y, mo - 1, d));
+    const y = yMatch ? Number(yMatch[1]) : base(today)?.getUTCFullYear();
+    if (mo && d && y !== undefined) return new Date(Date.UTC(y, mo - 1, d));
   }
-  // Relative dates are resolved against the supplied "today".
+  // Relative dates are resolved against the supplied `today`, and without
+  // one they are not dates: reading the clock here made the same spec
+  // normalise differently tomorrow, and a replay land a different day.
   const rel = /(今天|今日|昨天|明日|明天|后天|前天)/.exec(s);
-  if (rel) {
-    const today = new Date();
-    const base = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+  const start = base(today);
+  if (rel && start) {
     const deltas: Record<string, number> = { 今天: 0, 今日: 0, 昨天: -1, 前天: -2, 明天: 1, 明日: 1, 后天: 2 };
-    base.setUTCDate(base.getUTCDate() + deltas[rel[1]]);
-    return base;
+    start.setUTCDate(start.getUTCDate() + deltas[rel[1]]);
+    return start;
   }
   return null;
+}
+
+/** `today` (YYYY-MM-DD) as a UTC midnight, or undefined when absent or malformed. */
+function base(today: string | undefined): Date | undefined {
+  const m = today ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(today) : null;
+  return m ? new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))) : undefined;
 }
 
 /** A date found next to a label, with the text that produced it. */

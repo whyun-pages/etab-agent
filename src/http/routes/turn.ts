@@ -102,6 +102,8 @@ export function turnRoutes(router: Router, { state }: RouteDeps): void {
         fileAccess,
         fileOptions,
         model: state.agentModel,
+        // The one clock read: 今天 is the user's day, on this machine's clock.
+        today: localDay(new Date()),
       });
     } catch (err) {
       // A provider failure is not recorded: the user's own message is kept so
@@ -445,6 +447,16 @@ async function writeOutputs(
     }
   }
   return { paths, errors };
+}
+
+/**
+ * `d`'s calendar day on this machine, as YYYY-MM-DD. Local, not UTC: the
+ * spec layer used to resolve 今天 from the UTC date, which in Shanghai before
+ * 08:00 is still yesterday.
+ */
+function localDay(d: Date): string {
+  const p2 = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`;
 }
 
 // ------------------------------------------------------------- attachments
