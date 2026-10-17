@@ -10,6 +10,7 @@
 import test from 'node:test';
 import assert from 'node:assert';
 import http from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { listenLocal } from '../helpers/listen.ts';
 import { INTENT } from '../../src/agent/agent.ts';
 import { applyOps } from '../../src/workbook/spec-ops.ts';
@@ -19,7 +20,7 @@ import { turnWith, specWith, rows10 } from '../helpers/agent-turn.ts';
 
 // ── saving and fetching ─────────────────────────────────────────────
 
-function csvServer(body) {
+function csvServer(body: string): Promise<{ url: string; close: () => Promise<void> }> {
   return new Promise((resolve) => {
     const server = http.createServer((req, res) => {
       res.setHeader('connection', 'close');
@@ -28,8 +29,8 @@ function csvServer(body) {
     });
     listenLocal(server).then(() =>
       resolve({
-        url: `http://127.0.0.1:${server.address().port}/cities.csv`,
-        close: () => new Promise((r) => server.close(r)),
+        url: `http://127.0.0.1:${(server.address() as AddressInfo).port}/cities.csv`,
+        close: () => new Promise((r) => server.close(() => r())),
       }),
     );
   });
@@ -141,8 +142,8 @@ test('runTurn: fetch_url with importAs records an edit whose replay needs no net
   assert.strictEqual(res.intent, INTENT.ACTION);
   assert.strictEqual(res.ops[0].op, 'create_workbook');
   // All 400 rows, though the model was only shown 300.
-  assert.strictEqual(res.spec.sheets[0].rows.length, 400);
-  assert.strictEqual(res.spec.sheets[0].columns[1].type, 'integer');
+  assert.strictEqual(res.spec!.sheets[0].rows.length, 400);
+  assert.strictEqual(res.spec!.sheets[0].columns[1].type, 'integer');
   // The server is closed: the replay works from the recorded arguments alone.
   const replayed = applyOps(null, res.ops).spec;
   assert.deepStrictEqual(replayed, res.spec);
@@ -159,7 +160,7 @@ test('runTurn: fetch_url adds a sheet when there is already a table', async () =
     });
     assert.strictEqual(res.ops[0].op, 'add_sheet');
     assert.deepStrictEqual(
-      res.spec.sheets.map((s) => s.name),
+      res.spec!.sheets.map((s) => s.name),
       ['明细', '城市'],
     );
   } finally {
@@ -375,7 +376,7 @@ test('runTurn: read_attachment importAs imports every row, and replays without t
   });
   assert.strictEqual(res.intent, INTENT.ACTION);
   assert.strictEqual(res.ops[0].op, 'create_workbook');
-  assert.strictEqual(res.spec.sheets[0].rows.length, 910);
+  assert.strictEqual(res.spec!.sheets[0].rows.length, 910);
   assert.deepStrictEqual(applyOps(null, res.ops).spec, res.spec);
 });
 
@@ -411,7 +412,7 @@ test('runTurn: query_table lists matching workbook rows by number, and saveAs ma
   assert.match(first, /^1\t甲\t100$/m);
   assert.match(first, /^3\t甲\t50$/m);
   assert.strictEqual(res.intent, INTENT.ACTION);
-  const sheet = res.spec.sheets.find((s) => s.name === '汇总');
+  const sheet = res.spec!.sheets.find((s) => s.name === '汇总')!;
   assert.deepStrictEqual(sheet.rows, [
     ['乙', 200],
     ['甲', 150],
@@ -436,8 +437,8 @@ test('runTurn: delete_rows with where removes the matching rows, and the guard s
   );
   // Four of ten rows is a material loss; it lands because the message asks for it.
   assert.strictEqual(res.intent, INTENT.ACTION);
-  assert.strictEqual(res.spec.sheets[0].rows.length, 6);
-  assert.ok(res.spec.sheets[0].rows.every((r) => r[1] >= 500));
+  assert.strictEqual(res.spec!.sheets[0].rows.length, 6);
+  assert.ok(res.spec!.sheets[0].rows.every((r) => (r[1] as number) >= 500));
 });
 
 test('runTurn: a tab or line break inside a cell does not shift the columns the model reads', async () => {

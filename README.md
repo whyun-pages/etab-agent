@@ -318,7 +318,7 @@ git push origin v0.1.0
 ## 验证
 
 ```powershell
-pnpm typecheck                   # tsc --noEmit
+pnpm typecheck                   # tsc：先 src/，再 tests/（tests/tsconfig.json）
 pnpm lint                        # Biome：格式与 lint，只检查不改（pnpm format 会直接改好）
 pnpm test                        # 静态导入检查 + 核心测试（tsx 直接跑 src/，不用先编译）
 pnpm bundle                      # 合并器：外部依赖只剩内置模块和已知可选包；探针包拷到没有
@@ -332,7 +332,9 @@ pnpm verify:live                 # 先重新打包 exe，再跑真机探针子�
 `src/` 只放 TypeScript 源，**没有 `.js` 双胞胎**。运行树是 `.build/js/`，由
 `tsc`（`pnpm build:js`）生成。测试是 `.ts`，`import` 的就是 `src/` 里的源文件，
 经 tsx 运行——编辑器里能跳转、有类型提示，改完源码不用编译就能重跑。
-`tests/tsconfig.json` 只给编辑器和手动 `tsc -p tests` 用，不是严格模式，也不卡 `pnpm test`。
+`tests/tsconfig.json` 让 `pnpm typecheck` 连测试一起查：严格模式，只关了 `noImplicitAny`
+和 `useUnknownInCatchVariables`（理由写在文件里）。tsx 跑测试时不查类型，所以类型错误不会卡 `pnpm test`，
+卡的是 CI 的 Type-check 一步。
 
 代价是测试不再经过编译产物。只有产物会出的问题（`.ts` → `.js` 的说明符改写、
 `src/agent/pi.ts` 里保留的动态 `import()`、产物里缺模块）由 `pnpm bundle` 兜住：

@@ -14,6 +14,7 @@ import test from 'node:test';
 import assert from 'node:assert';
 import { runTurn, proseReply, INTENT, MAX_STEPS } from '../../src/agent/agent.ts';
 import { loadPi } from '../../src/agent/pi.ts';
+import type { Credentials } from '../../src/agent/llm.ts';
 
 import { fakeSettings, loadFaux, step, turnWith, SPEC_3_ROWS, specWith, rows10 } from '../helpers/agent-turn.ts';
 
@@ -97,7 +98,7 @@ test('runTurn: create_workbook produces a normalised spec', async () => {
   assert.strictEqual(res.intent, INTENT.ACTION);
   assert.strictEqual(res.reply, '已经建好了。');
   // Normalisation ran: 一百二十五万 became a number rather than text.
-  assert.deepStrictEqual(res.spec.sheets[0].rows[0], ['甲', 1250000]);
+  assert.deepStrictEqual(res.spec!.sheets[0].rows[0], ['甲', 1250000]);
   assert.deepStrictEqual(
     res.ops.map((o) => o.op),
     ['create_workbook'],
@@ -113,7 +114,7 @@ test('runTurn: update_cells changes one cell and keeps every other row', async (
     { message: '把乙的金额改成40万', spec: specWith(SPEC_3_ROWS.sheets[0].rows) },
   );
   assert.strictEqual(res.intent, INTENT.ACTION);
-  assert.deepStrictEqual(res.spec.sheets[0].rows, [
+  assert.deepStrictEqual(res.spec!.sheets[0].rows, [
     ['甲', 100],
     ['乙', 400000],
     ['丙', 300],
@@ -131,7 +132,7 @@ test('runTurn: a refused tool call goes back to the model, which corrects it', a
     { message: '把丙的金额改成1', spec: specWith(SPEC_3_ROWS.sheets[0].rows) },
   );
   assert.strictEqual(res.intent, INTENT.ACTION);
-  assert.deepStrictEqual(res.spec.sheets[0].rows[2], ['丙', 1]);
+  assert.deepStrictEqual(res.spec!.sheets[0].rows[2], ['丙', 1]);
   // Only the call that worked is recorded for replay.
   assert.strictEqual(res.ops.length, 1);
   // The refusal reached the model as a tool result it could read.
@@ -186,7 +187,7 @@ test('runTurn: a model that never stops calling tools is cut off at the step cap
 test("runTurn: a provider error fails the turn with the provider's words", async () => {
   await assert.rejects(
     () => turnWith([{ error: '401 Incorrect API key provided' }], { message: '你好' }),
-    (err) => err.status === 401 && /模型服务返回 401：Incorrect API key/.test(err.message),
+    (err: any) => err.status === 401 && /模型服务返回 401：Incorrect API key/.test(err.message),
   );
 });
 
@@ -208,7 +209,8 @@ test('runTurn: throws when there is no model configured', async () => {
   await assert.rejects(
     () =>
       runTurn({
-        settings: { isConfigured: () => false, secrets: () => ({}) },
+        // secrets() is never reached: the turn stops at isConfigured().
+        settings: { isConfigured: async () => false, secrets: async () => ({}) as Credentials },
         message: '做一个表',
       }),
     /尚未配置模型/,
@@ -249,7 +251,7 @@ test('runTurn: history reaches the model as one user message, not a transcript',
 
 test('runTurn: tool calls in a reply cut off at the token cap are not run', async () => {
   const { ai, faux } = await loadFaux();
-  const contexts = [];
+  const contexts: any[] = [];
   const cut = {
     title: '频道',
     sheets: [
@@ -299,7 +301,7 @@ test('runTurn: tool calls in a reply cut off at the token cap are not run', asyn
   assert.match(refusal.content[0].text, /add_rows/);
   // Only the complete call landed: no padded half-row from the cut-off one.
   assert.strictEqual(res.ops.length, 1);
-  assert.deepStrictEqual(res.spec.sheets[0].rows, [
+  assert.deepStrictEqual(res.spec!.sheets[0].rows, [
     ['甲', 'rtp://1'],
     ['乙', 'rtp://2'],
   ]);
@@ -317,7 +319,7 @@ async function silentModel({ before = 0, during = 0 }) {
   const { ai, faux } = await loadFaux();
   const api = `silent-${before}-${during}-${Math.random().toString(36).slice(2)}`;
   const wait = (ms, signal) =>
-    new Promise((resolve) => {
+    new Promise<void>((resolve) => {
       if (!ms) return resolve();
       const t = setTimeout(resolve, ms);
       signal?.addEventListener(
@@ -334,7 +336,7 @@ async function silentModel({ before = 0, during = 0 }) {
     const base = { ...ai.fauxAssistantMessage('好'), api: model.api, provider: model.provider, model: model.id };
     const partial = { ...base, content: [] };
     const aborted = () => {
-      const msg = { ...partial, stopReason: 'aborted', errorMessage: 'aborted' };
+      const msg = { ...partial, stopReason: 'aborted' as const, errorMessage: 'aborted' };
       out.push({ type: 'error', reason: 'aborted', error: msg });
       out.end(msg);
     };
@@ -372,7 +374,7 @@ test('runTurn: the longer window still ends a reply that stays silent', async ()
   const model = await silentModel({ during: 1000 });
   await assert.rejects(
     () => runTurn({ settings: fakeSettings(), model, message: '你好', idleTimeoutMs: 100, streamIdleTimeoutMs: 250 }),
-    (err) => err.code === 'aborted' && /没有任何输出/.test(err.message),
+    (err: any) => err.code === 'aborted' && /没有任何输出/.test(err.message),
   );
 });
 
@@ -380,7 +382,7 @@ test('runTurn: silence before a reply starts gets only the short window', async 
   const model = await silentModel({ before: 400 });
   await assert.rejects(
     () => runTurn({ settings: fakeSettings(), model, message: '你好', idleTimeoutMs: 100, streamIdleTimeoutMs: 5000 }),
-    (err) => err.code === 'aborted' && /没有任何输出/.test(err.message),
+    (err: any) => err.code === 'aborted' && /没有任何输出/.test(err.message),
   );
 });
 
@@ -399,5 +401,5 @@ test('runTurn: the turn stamps its today on every edit it records', async () => 
     { message: '今天签的合同记一下', today: '2026-02-28' },
   );
   assert.strictEqual(res.ops[0].today, '2026-02-28');
-  assert.strictEqual(res.spec.sheets[0].rows[0][0].toISOString().slice(0, 10), '2026-02-28');
+  assert.strictEqual((res.spec!.sheets[0].rows[0][0] as Date).toISOString().slice(0, 10), '2026-02-28');
 });

@@ -28,7 +28,7 @@ const CRC_TABLE = (() => {
   }
   return t;
 })();
-function crc32(buf) {
+function crc32(buf: Buffer) {
   let c = -1;
   for (let i = 0; i < buf.length; i++) c = CRC_TABLE[(c ^ buf[i]) & 0xff] ^ (c >>> 8);
   return (c ^ -1) >>> 0;
@@ -38,9 +38,9 @@ function crc32(buf) {
  * Build a ZIP using streaming style: local sizes = 0, bit 3 set, data descriptor.
  * @param {Array<{name:string, data:string|Buffer, zip64?:boolean, store?:boolean}>} files
  */
-function buildStreamingZip(files) {
-  const chunks = [];
-  const central = [];
+function buildStreamingZip(files: { name: string; data: string | Buffer; zip64?: boolean; store?: boolean }[]) {
+  const chunks: Buffer[] = [];
+  const central: Buffer[] = [];
   let offset = 0;
 
   for (const f of files) {

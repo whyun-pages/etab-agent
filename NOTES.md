@@ -901,9 +901,13 @@ operation 只能来自**解析成功的对象**，没解析成功的回复没有
     现在测试 `import` 的就是 `../src/**/*.ts`，经 tsx 运行。
     - **放弃的东西：测试不再经过编译产物。** 只有产物会坏的地方（`.ts` 说明符改写、
       `pi.ts` 的动态 `import()`、产物里缺模块）交给 `pnpm bundle`，CI 和发布都在测试后跑它。
-    - **测试的类型检查没有接进门禁。** 严格模式下 1041 个错误，宽松模式下 460 个，
-      主要是隐式 any 和 `res.json()` 的 `unknown`。补类型是单独的一件事；
-      `tests/tsconfig.json` 目前只服务编辑器。
+    - **测试的类型检查后来接进了门禁**（`pnpm typecheck` = `tsc --noEmit && tsc -p tests`，CI 的
+      Type-check 一步）。起初没接：严格模式下上千个错误。不能用宽松模式凑数——测试会把 `src/`
+      拉进同一个程序，关掉 `strictNullChecks` 后 `null` 从所有类型里消失，`src/` 自己就报错。
+      最后是严格模式只关 `noImplicitAny`（fixture 回调的参数注解不增加信息）和
+      `useUnknownInCatchVariables`；大部分错误靠给共享 helper 补类型消掉（`post`/`get` 的
+      响应体显式为 `any`，settingsStub 在构造处转一次 `Settings`），其余是
+      断言之后的 `!` 和空数组的元素类型。故意传坏输入的地方用 `@ts-expect-error` 写明理由。
     - **`.verify/` 按用途分目录**（node / external / browser / model / exe / shots / support），
       一次性的调试探针删掉（结论都在这份笔记里）。脚本保持 JS，要用源码的在开头 `require('tsx/cjs')`。
     - **不需要桌面的检查并进 `tests/`，让 CI 每次都跑。** 两处并发（session-store 的 append、

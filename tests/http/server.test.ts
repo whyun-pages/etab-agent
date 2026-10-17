@@ -14,36 +14,44 @@ import http from 'node:http';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import type { TestContext } from 'node:test';
 
 import { createServer, AppState, safeFilename } from '../../src/http/server.ts';
 
 // --------------------------------------------------------------- harness
 /** Start a server on an ephemeral port with a scratch data directory. */
-function startServer(t) {
+async function startServer(t: TestContext) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tab-agent-test-'));
   const server = createServer({
     state: new AppState({ dataDir: dir }),
-    staticDir: null,
+    staticDir: undefined,
   });
-  return new Promise((resolve) => {
-    listenLocal(server).then(() => {
-      const base = `http://127.0.0.1:${server.address().port}`;
-      t.after(() => new Promise((done) => server.close(done)));
-      t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
-      resolve({ server, base, dir });
-    });
-  });
+  const port = await listenLocal(server);
+  t.after(() => new Promise<void>((done) => server.close(() => done())));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  return { server, base: `http://127.0.0.1:${port}`, dir };
+}
+
+interface Reply {
+  status: number;
+  headers: http.IncomingHttpHeaders;
+  buffer: Buffer;
 }
 
 /** Minimal request helper. */
-function request(base, method, urlPath, { body, headers } = {}) {
+function request(
+  base: string,
+  method: string,
+  urlPath: string,
+  { body, headers }: { body?: Buffer; headers?: http.OutgoingHttpHeaders } = {},
+): Promise<Reply> {
   return new Promise((resolve, reject) => {
     const req = http.request(base + urlPath, { method, headers }, (res) => {
-      const chunks = [];
+      const chunks: Buffer[] = [];
       res.on('data', (c) => chunks.push(c));
       res.on('end', () =>
         resolve({
-          status: res.statusCode,
+          status: res.statusCode!,
           headers: res.headers,
           buffer: Buffer.concat(chunks),
         }),
@@ -55,12 +63,14 @@ function request(base, method, urlPath, { body, headers } = {}) {
   });
 }
 
-const getJson = async (base, p) => JSON.parse((await request(base, 'GET', p)).buffer.toString('utf8'));
+// `any`: the app's own response bodies, of which each test reads a field or two.
+const getJson = async (base: string, p: string): Promise<any> =>
+  JSON.parse((await request(base, 'GET', p)).buffer.toString('utf8'));
 
 /** Build a multipart body the way a browser would. */
-function multipart(fields) {
+function multipart(fields: { name: string; filename?: string; data?: string | Buffer; contentType?: string }[]) {
   const boundary = '----TabAgentTest' + Math.random().toString(16).slice(2);
-  const parts = [];
+  const parts: Buffer[] = [];
   for (const f of fields) {
     let head = `--${boundary}\r\nContent-Disposition: form-data; name="${f.name}"`;
     if (f.filename) head += `; filename="${f.filename}"`;
@@ -90,16 +100,16 @@ function multipart(fields) {
 const PUBLIC_DIR = path.join(__dirname, '..', '..', 'public');
 
 /** Start a server that also serves public/. */
-async function startUiServer(t) {
+async function startUiServer(t: TestContext) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tab-agent-ui-'));
   const server = createServer({
     state: new AppState({ dataDir: dir }),
     staticDir: PUBLIC_DIR,
   });
-  await new Promise((r) => listenLocal(server).then(r));
-  t.after(() => new Promise((done) => server.close(done)));
+  const port = await listenLocal(server);
+  t.after(() => new Promise<void>((done) => server.close(() => done())));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
-  return `http://127.0.0.1:${server.address().port}`;
+  return `http://127.0.0.1:${port}`;
 }
 
 test('the UI page and its stylesheet are served', async (t) => {
@@ -107,30 +117,30 @@ test('the UI page and its stylesheet are served', async (t) => {
 
   const page = await request(base, 'GET', '/');
   assert.strictEqual(page.status, 200);
-  assert.match(page.headers['content-type'], /text\/html/);
+  assert.match(page.headers['content-type']!, /text\/html/);
   const html = page.buffer.toString('utf8');
   assert.match(html, /<script type="module" src="\/js\/app\.js">/);
   assert.match(html, /\/css\/app\.css/);
 
   const css = await request(base, 'GET', '/css/app.css');
   assert.strictEqual(css.status, 200);
-  assert.match(css.headers['content-type'], /text\/css/);
+  assert.match(css.headers['content-type']!, /text\/css/);
   assert.ok(css.buffer.length > 1000, 'the stylesheet should not be a stub');
 });
 
 test('every module the UI imports resolves over HTTP', async (t) => {
   const base = await startUiServer(t);
 
-  const seen = new Set();
+  const seen = new Set<string>();
   const queue = ['/js/app.js'];
   while (queue.length) {
-    const mod = queue.shift();
+    const mod = queue.shift()!;
     if (seen.has(mod)) continue;
     seen.add(mod);
 
     const res = await request(base, 'GET', mod);
     assert.strictEqual(res.status, 200, `${mod} should be served, got ${res.status}`);
-    assert.match(res.headers['content-type'], /javascript/, `${mod} needs a JS content type`);
+    assert.match(res.headers['content-type']!, /javascript/, `${mod} needs a JS content type`);
 
     const src = res.buffer.toString('utf8');
     assert.ok(src.length > 0, `${mod} is empty`);
@@ -219,7 +229,7 @@ test('the removed template routes are gone, not merely unreachable', async (t) =
 // ------------------------------------------------------------- attachments
 
 /** Create a session and return its attachments path. */
-async function sessionAttachments(base) {
+async function sessionAttachments(base: string) {
   const r = await request(base, 'POST', '/api/sessions', {
     body: Buffer.from('{}'),
     headers: { 'Content-Type': 'application/json' },
@@ -289,9 +299,9 @@ test('deleting a session drops its attachments; an unknown session is a 404', as
 });
 
 /** A server whose "open with the default program" records the path instead. */
-async function startOpenServer(t) {
+async function startOpenServer(t: TestContext) {
   const started = await startServer(t);
-  const opened = [];
+  const opened: string[] = [];
   started.server.state.openFile = async (file) => {
     opened.push(file);
   };
@@ -299,7 +309,7 @@ async function startOpenServer(t) {
   return { ...started, opened };
 }
 
-async function uploadOne(base, att, filename, data) {
+async function uploadOne(base: string, att: string, filename: string, data: string | Buffer): Promise<any> {
   const mp = multipart([{ name: 'files', filename, data }]);
   return JSON.parse((await request(base, 'POST', att, mp)).buffer.toString('utf8')).attachments[0];
 }
@@ -359,7 +369,7 @@ test('opening refuses another site and a rebinding host', async (t) => {
   const { base, opened } = await startOpenServer(t);
   const att = await sessionAttachments(base);
   const up = await uploadOne(base, att, 'a.csv', 'a\n1\n');
-  const open = (headers) => request(base, 'POST', `${att}/${up.id}/open`, { headers });
+  const open = (headers: http.OutgoingHttpHeaders) => request(base, 'POST', `${att}/${up.id}/open`, { headers });
   const port = new URL(base).port;
 
   // Any web page can fire a form POST at 127.0.0.1; its Origin gives it away.
@@ -410,7 +420,7 @@ test('an oversized attachment body is refused rather than buffered', async (t) =
   const mp = multipart([{ name: 'files', filename: 'big.csv', data: oversized }]);
   // The server drops the connection mid-upload, so a socket error here is the
   // expected outcome; buffering 33MB first would be the bug.
-  let status = null;
+  let status: number | null = null;
   try {
     status = (await request(base, 'POST', att, mp)).status;
   } catch (err) {

@@ -12,6 +12,8 @@ import test from 'node:test';
 import assert from 'node:assert';
 import { agentMessages, specSummary, describeChange, changesSummary } from '../../src/agent/agent.ts';
 import { normalizeSpec } from '../../src/workbook/workbook.ts';
+import type { WorkbookSpec } from '../../src/workbook/workbook.ts';
+import type { HistoryMessage } from '../../src/agent/types.ts';
 
 import { SPEC_3_ROWS, specWith } from '../helpers/agent-turn.ts';
 
@@ -39,7 +41,7 @@ test('agentMessages: history is reference material, not a conversation', () => {
 
 test('agentMessages: history keeps as many recent rounds as the budget allows', () => {
   // The old rule kept the last 4 messages no matter how short they were.
-  const history = [];
+  const history: HistoryMessage[] = [];
   for (let i = 0; i < 10; i++) {
     history.push({ role: 'user', content: `问题${i}` });
     history.push({ role: 'assistant', content: `回答${i}` });
@@ -217,7 +219,7 @@ test('agentMessages: rows beyond the budget are announced, not hidden', () => {
 
 test('specSummary: an empty spec has nothing to say', () => {
   assert.strictEqual(specSummary(null), '');
-  assert.strictEqual(specSummary({ sheets: [] }), '');
+  assert.strictEqual(specSummary({ sheets: [] } as unknown as WorkbookSpec), '');
 });
 
 test('specSummary: dates are rendered, not serialised as numbers', () => {

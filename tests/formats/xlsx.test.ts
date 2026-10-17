@@ -16,7 +16,7 @@ test('cell address helpers round-trip', () => {
   assert.strictEqual(colName(27), 'AA');
   assert.strictEqual(colName(55), 'BC');
   for (const col of [1, 26, 27, 55, 702, 703]) {
-    assert.strictEqual(parseRef(colName(col) + 7).col, col);
+    assert.strictEqual(parseRef(colName(col) + 7)!.col, col);
   }
   assert.strictEqual(cellRef(28, 3), 'AB3');
   assert.strictEqual(parseRef('not-a-ref'), null);
@@ -27,10 +27,10 @@ test('reads a streaming-style zip with data descriptors and zip64 extra', () => 
   const zip = readZip(fixtureA());
   assert.ok(zip.has('xl/workbook.xml'));
   assert.ok(zip.has('xl/worksheets/sheet1.xml'));
-  const wt = zip.get('[Content_Types].xml').data.toString('utf8');
+  const wt = zip.get('[Content_Types].xml')!.data.toString('utf8');
   assert.match(wt, /spreadsheetml\.sheet\.main/);
   // Stored (method 0) entry must survive too.
-  assert.ok(zip.get('xl/worksheets/sheet2.xml').data.length > 0);
+  assert.ok(zip.get('xl/worksheets/sheet2.xml')!.data.length > 0);
 });
 
 // ------------------------------------------------------------------ workbook
@@ -56,14 +56,14 @@ test('flattens rich-text runs in the shared string table', () => {
 test('resolves inline string runs into a single value', () => {
   const wb = readWorkbook(fixtureA());
   const sheet = wb.sheets[0];
-  const d3 = sheet.cells.find((c) => c.ref === 'D3');
+  const d3 = sheet.cells!.find((c) => c.ref === 'D3')!;
   assert.strictEqual(d3.value, '部分完成');
 });
 
 test('reads numbers, booleans, errors, formulas and cached values', () => {
   const wb = readWorkbook(fixtureA());
   const sheet = wb.sheets[0];
-  const at = (ref) => sheet.cells.find((c) => c.ref === ref);
+  const at = (ref: string) => sheet.cells!.find((c) => c.ref === ref)!;
 
   assert.strictEqual(at('B2').value, 125000.5);
   assert.strictEqual(at('B2').type, 'n');
@@ -87,14 +87,14 @@ test('infers implicit row and column positions when r= is omitted', () => {
   const wb = readWorkbook(fixtureB());
   const sheet = wb.sheets[0];
   // <row> with no r= is row 1; cells with no r= take the next column.
-  const refs = sheet.cells.map((c) => c.ref).sort();
+  const refs = sheet.cells!.map((c) => c.ref).sort();
   assert.deepStrictEqual(refs, ['A1', 'B1', 'C1']);
-  assert.strictEqual(sheet.cells.find((c) => c.ref === 'C1').value, 7);
+  assert.strictEqual(sheet.cells!.find((c) => c.ref === 'C1')!.value, 7);
 });
 
 test('survives an out-of-range shared string index', () => {
   const wb = readWorkbook(fixtureB());
-  const a1 = wb.sheets[0].cells.find((c) => c.ref === 'A1');
+  const a1 = wb.sheets[0].cells!.find((c) => c.ref === 'A1')!;
   assert.strictEqual(a1.value, '');
 });
 
@@ -102,7 +102,7 @@ test('handles absolute relationship targets and a missing styles part', () => {
   const wb = readWorkbook(fixtureB());
   assert.strictEqual(wb.sheets[0].path, 'xl/worksheets/sheet1.xml');
   assert.deepStrictEqual(wb.styles.cellXfs, []);
-  assert.strictEqual(numFmtCodeFor({ cellXfs: [], numFmts: {} }, 0), 'General');
+  assert.strictEqual(numFmtCodeFor({ cellXfs: [], numFmts: {}, fonts: [], fills: [], borders: [] }, 0), 'General');
 });
 
 test('captures layout metadata: merges, cols, dimensions, max extent', () => {
@@ -112,7 +112,7 @@ test('captures layout metadata: merges, cols, dimensions, max extent', () => {
   assert.strictEqual(sheet.dimensions, 'A1:E6');
   assert.strictEqual(sheet.maxCol, 5);
   assert.strictEqual(sheet.maxRow, 6);
-  const hidden = sheet.cols.find((c) => c.min === 4);
+  const hidden = sheet.cols!.find((c) => c.min === 4)!;
   assert.strictEqual(hidden.hidden, true);
   assert.strictEqual(hidden.width, 30);
 });
@@ -142,5 +142,5 @@ test('reads a hidden sheet body independently of the main sheet', () => {
   const wb = readWorkbook(fixtureA());
   const s2 = wb.sheets[1];
   assert.strictEqual(s2.maxRow, 2);
-  assert.strictEqual(s2.cells.find((c) => c.ref === 'B2').value, 0.13);
+  assert.strictEqual(s2.cells!.find((c) => c.ref === 'B2')!.value, 0.13);
 });

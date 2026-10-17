@@ -11,6 +11,7 @@ import test from 'node:test';
 import assert from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
+import type { Settings } from '../../src/store/settings.ts';
 
 import { conversation, startServer, settingsStub, post, get, ACTION, ANSWER } from '../helpers/session-server.ts';
 
@@ -59,7 +60,11 @@ test('a turn decides with the settings it read at the start, even if they change
   // turn obey two different settings. The first read is the turn's.
   const stub = settingsStub({ chatConfirmEdits: true });
   let reads = 0;
-  const settings = { ...stub, load: () => ({ ...stub.load(), chatConfirmEdits: reads++ === 0 }) };
+  // Spread, the stub is a plain object again; the seam takes the class.
+  const settings = {
+    ...stub,
+    load: () => ({ ...stub.load(), chatConfirmEdits: reads++ === 0 }),
+  } as unknown as Settings;
   const { base } = await startServer(t, { replies: [ACTION], settings });
   const { json: created } = await post(base, '/api/sessions', {});
   const turn = await post(base, `/api/sessions/${created.session.id}/turn`, { message: '做一个销售台账' });
@@ -200,7 +205,7 @@ test('a provider failure keeps the transcript usable for a retry', async (t) => 
 // ── attachments ─────────────────────────────────────────────────────
 
 /** Upload one file to a session the way the browser's paperclip does. */
-async function upload(base, id, filename, text) {
+async function upload(base: string, id: string, filename: string, text: string): Promise<any> {
   const fd = new FormData();
   fd.append('files', new Blob([text], { type: 'text/csv' }), filename);
   const res = await fetch(`${base}/api/sessions/${encodeURIComponent(id)}/attachments`, { method: 'POST', body: fd });
@@ -211,7 +216,7 @@ test('attachment content reaches the model but is not stored as what the user sa
   // It used to be folded into the message by the client, so the server saved
   // it: the block showed in the chat bubble, was saved again on every turn the
   // file stayed attached, and was replayed in history after that.
-  const seen = [];
+  const seen: string[] = [];
   const { base } = await startServer(t, { replies: [ANSWER, ANSWER], seen });
   const { json: created } = await post(base, '/api/sessions', {});
   const id = created.session.id;

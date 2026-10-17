@@ -94,7 +94,7 @@ test('readPath: a folder reads its readable files, recursing; a zip is opened', 
   assert.ok(r.skipped.some((p) => p.endsWith('tool.exe')));
   assert.ok(!r.skipped.some((p) => p.endsWith('.pem')), 'a blocked file is not even listed as skipped');
   const one = await readPath(path.join(s.docs, '订单', '5月.csv'), s.opts);
-  assert.strictEqual(one.items[0].att.table.rows.length, 2);
+  assert.strictEqual(one.items[0].att!.table!.rows.length, 2);
 });
 
 test('performWrite: text only; creates folders, replaces whole, leaves no temp file', async (t) => {

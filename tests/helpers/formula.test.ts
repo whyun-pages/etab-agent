@@ -4,10 +4,18 @@ import assert from 'node:assert';
 import { evaluateFormula, recomputeCachedValues, splitArgs } from './formula.ts';
 import { parseRef } from '../../src/formats/xlsx.ts';
 
+interface Cell {
+  ref: string;
+  col: number;
+  row: number;
+  value: unknown;
+  formula?: string;
+}
+
 /** Build a grid list from a compact spec: {B4: 100, B5: 50}. */
-function cellsFrom(spec) {
+function cellsFrom(spec: Record<string, unknown>): Cell[] {
   return Object.entries(spec).map(([ref, value]) => {
-    const { col, row } = parseRef(ref);
+    const { col, row } = parseRef(ref)!;
     return { ref, col, row, value };
   });
 }
@@ -61,7 +69,7 @@ test('recomputeCachedValues: fixes a stale total', () => {
   const cells = cellsFrom({ B4: 100, B5: 50, B6: 25 });
   cells.push({ ref: 'B7', col: 2, row: 7, value: 150, formula: 'SUM(B4:B6)' });
   const { cells: out, recomputed } = recomputeCachedValues(cells);
-  const b7 = out.find((c) => c.ref === 'B7');
+  const b7 = out.find((c) => c.ref === 'B7')!;
   assert.strictEqual(b7.value, 175);
   assert.strictEqual(b7.formula, 'SUM(B4:B6)');
   assert.deepStrictEqual(recomputed, [{ ref: 'B7', from: 150, to: 175 }]);
@@ -79,7 +87,7 @@ test('recomputeCachedValues: keeps the old cache when the formula is out of scop
   const cells = cellsFrom({ B4: 100 });
   cells.push({ ref: 'B5', col: 2, row: 5, value: 999, formula: 'IF(B4>0,B4,0)' });
   const { cells: out, unresolved, recomputed } = recomputeCachedValues(cells);
-  assert.strictEqual(out.find((c) => c.ref === 'B5').value, 999);
+  assert.strictEqual(out.find((c) => c.ref === 'B5')!.value, 999);
   assert.deepStrictEqual(unresolved, ['B5']);
   assert.strictEqual(recomputed.length, 0);
 });
@@ -91,7 +99,7 @@ test('recomputeCachedValues: refuses a range containing a formula cell', () => {
   cells.push({ ref: 'B5', col: 2, row: 5, value: 999, formula: 'B4*2' });
   cells.push({ ref: 'B6', col: 2, row: 6, value: 1009, formula: 'SUM(B4:B5)' });
   const { cells: out, unresolved, recomputed } = recomputeCachedValues(cells);
-  assert.strictEqual(out.find((c) => c.ref === 'B6').value, 1009, 'old cache kept, not a wrong total');
+  assert.strictEqual(out.find((c) => c.ref === 'B6')!.value, 1009, 'old cache kept, not a wrong total');
   assert.ok(unresolved.includes('B6'));
   assert.strictEqual(recomputed.length, 0);
 });
@@ -102,7 +110,7 @@ test('recomputeCachedValues: a formula outside the range does not block it', () 
   cells.push({ ref: 'B9', col: 2, row: 9, value: 0, formula: 'B4*2' });
   cells.push({ ref: 'B7', col: 2, row: 7, value: 0, formula: 'SUM(B4:B6)' });
   const { cells: out } = recomputeCachedValues(cells);
-  assert.strictEqual(out.find((c) => c.ref === 'B7').value, 175);
+  assert.strictEqual(out.find((c) => c.ref === 'B7')!.value, 175);
 });
 
 test('splitArgs: respects nesting and drops empties', () => {

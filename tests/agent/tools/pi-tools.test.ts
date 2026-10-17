@@ -19,6 +19,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { fileOperations } from '../../../src/agent/tools/file-access.ts';
+import type { FileWrite } from '../../../src/agent/tools/file-access.ts';
 import * as tools from '../../../src/agent/tools/pi-tools/fs-tools.ts';
 import * as shell from '../../../src/agent/tools/pi-tools/shell.ts';
 import { loadPi } from '../../../src/agent/pi.ts';
@@ -45,7 +46,7 @@ function scratch(t) {
 /** The tools for one turn over the scratch tree, sharing one list of writes. */
 async function turnTools(s) {
   const { ai } = await loadPi();
-  const writes = [];
+  const writes: FileWrite[] = [];
   const ops = fileOperations(s.opts, writes);
   const cwd = s.home;
   const run = async (tool, args) => {
@@ -186,8 +187,8 @@ test('the shell tool runs a command and reports a failing exit code', async () =
       : shell.createBashTool(ai.Type, os.tmpdir());
   const ok = await tool.execute('t', { command: 'echo 你好' });
   assert.strictEqual(ok.isError, undefined);
-  assert.strictEqual(ok.content[0].text.trim(), '你好');
+  assert.strictEqual((ok.content[0] as { text: string }).text.trim(), '你好');
   const bad = await tool.execute('t', { command: 'exit 3' });
   assert.strictEqual(bad.isError, true);
-  assert.match(bad.content[0].text, /Command exited with code 3/);
+  assert.match((bad.content[0] as { text: string }).text, /Command exited with code 3/);
 });

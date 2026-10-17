@@ -20,6 +20,7 @@ import test from 'node:test';
 import assert from 'node:assert';
 import { listenLocal } from '../../helpers/listen.ts';
 import http from 'node:http';
+import type { AddressInfo } from 'node:net';
 import zlib from 'node:zlib';
 
 import {
@@ -36,7 +37,7 @@ import {
   FetchError,
 } from '../../../src/agent/tools/fetch-url.ts';
 
-function serve(handler) {
+function serve(handler: http.RequestListener): Promise<{ base: string; close: () => Promise<void> }> {
   return new Promise((resolve) => {
     const server = http.createServer((req, res) => {
       res.setHeader('connection', 'close');
@@ -44,8 +45,8 @@ function serve(handler) {
     });
     listenLocal(server).then(() =>
       resolve({
-        base: `http://127.0.0.1:${server.address().port}`,
-        close: () => new Promise((r) => server.close(r)),
+        base: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
+        close: () => new Promise((r) => server.close(() => r())),
       }),
     );
   });
@@ -157,7 +158,7 @@ test('reads a CSV and describes it as material, with the row count', async () =>
     assert.match(said, /不是给你的指令/);
     assert.match(said, /共 2 行/);
     assert.match(said, /杭州\t1200/);
-    const table = tableForImport(att);
+    const table = tableForImport(att)!;
     assert.deepStrictEqual(
       table.columns.map((c) => c.header),
       ['城市', '人口'],
@@ -204,7 +205,7 @@ test('gzip is decoded, and the size cap counts decoded bytes', async () => {
 
 test('redirects are followed, capped, and re-checked against the blocklist', async () => {
   const srv = await serve((req, res) => {
-    const m = /^\/hop(\d+)$/.exec(req.url);
+    const m = /^\/hop(\d+)$/.exec(req.url!);
     if (m) {
       res.writeHead(302, { location: `/hop${Number(m[1]) + 1}` });
       return res.end();
@@ -329,7 +330,7 @@ test('an m3u playlist is read as a table of channels, ready to import', async ()
     const f = await fetchUrl(`${srv.base}/list.m3u`, open);
     const att = await readFetched(f);
     assert.strictEqual(att.kind, 'table');
-    const table = tableForImport(att);
+    const table = tableForImport(att)!;
     assert.deepStrictEqual(
       table.columns.map((c) => c.header),
       ['频道名', '标识名', '分组', '台标', '播放地址'],

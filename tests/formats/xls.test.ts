@@ -53,7 +53,7 @@ const EOF = rec(0x000a, Buffer.alloc(0));
  * A Workbook stream. `sheets` is [{ name, body: Buffer of cell records }];
  * `sst` is either an array of strings or a ready-made SST(+CONTINUE) buffer.
  */
-function biff({ sheets, sst = [] }) {
+function biff({ sheets, sst = [] }: { sheets: { name: string; body: Buffer }[]; sst?: string[] | Buffer }) {
   const sstRec = Buffer.isBuffer(sst)
     ? sst
     : rec(0x00fc, Buffer.concat([u32(sst.length), u32(sst.length), ...sst.map((s) => ustr(s))]));
@@ -94,7 +94,8 @@ function cfb(stream, streamName = 'Workbook') {
   const fat = new Array(SS / 4).fill(FREESECT);
   fat[0] = 0xfffffffd; // the FAT's own sector
   fat[1] = ENDOFCHAIN; // directory
-  const sectors = [null, null];
+  // [0] and [1] are the FAT and the directory, filled in once the rest is laid out.
+  const sectors: Buffer[] = [Buffer.alloc(0), Buffer.alloc(0)];
   const chainOf = (buf) => {
     const first = sectors.length;
     const parts = pad(buf, SS);
@@ -190,7 +191,7 @@ test('a stream over the mini cutoff is read from regular sectors', () => {
   const stream = biff({ sheets: [{ name: 'S', body }] });
   assert.ok(stream.length > 4096);
   const buf = cfb(stream);
-  assert.strictEqual(readCfb(buf).get('Workbook').length, stream.length);
+  assert.strictEqual(readCfb(buf).get('Workbook')!.length, stream.length);
   const m = sheetToMatrix(readXls(buf).sheets[0]);
   assert.strictEqual(m.length, 500);
   assert.strictEqual(m[499][0], 499 * 1.5);
@@ -200,7 +201,15 @@ test('a stream over the mini cutoff is read from regular sectors', () => {
  * A compound-file header with 512-byte sectors and the given counts, followed
  * by `sectors` (each 512 bytes). Header DIFAT slots are all FREESECT.
  */
-function cfbHeader({ numFat, firstDifat, numDifat, firstDir = 0xfffffffe }, sectors = []) {
+function cfbHeader(
+  {
+    numFat,
+    firstDifat,
+    numDifat,
+    firstDir = 0xfffffffe,
+  }: { numFat: number; firstDifat: number; numDifat: number; firstDir?: number },
+  sectors: Buffer[] = [],
+) {
   const h = Buffer.alloc(512, 0);
   Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]).copy(h, 0);
   h.writeUInt16LE(9, 0x1e); // 512-byte sectors
@@ -245,7 +254,7 @@ test('MULRK, BOOLERR and formula cached results', () => {
   assert.deepStrictEqual(m[0], [1, 2, 3]);
   assert.strictEqual(m[1][0], true);
   // sheetToMatrix drops error objects to null; the error survives on the cell.
-  const errCell = readXls(cfb(biff({ sheets: [{ name: 'S', body }] }))).sheets[0].cells.find((c) => c.type === 'e');
+  const errCell = readXls(cfb(biff({ sheets: [{ name: 'S', body }] }))).sheets[0].cells!.find((c) => c.type === 'e')!;
   assert.deepStrictEqual(errCell.value, { error: '#DIV/0!' });
   assert.deepStrictEqual(m[2], [6, '合计', true]);
 });
@@ -272,7 +281,7 @@ test('cells after an embedded chart substream are kept', () => {
     EOF, // chart, nested
     rec(0x0203, Buffer.concat([cell(1, 0), f64(2)])),
   ]);
-  const cells = readXls(cfb(biff({ sheets: [{ name: 'S', body }] }))).sheets[0].cells;
+  const cells = readXls(cfb(biff({ sheets: [{ name: 'S', body }] }))).sheets[0].cells!;
   assert.ok(cells.some((c) => c.row === 2 && c.value === 2));
 });
 
@@ -328,9 +337,9 @@ test('encrypted and BIFF5 workbooks are reported, not misread', async () => {
   const filepass = Buffer.concat([bof(5), rec(0x002f, Buffer.alloc(6)), EOF]);
   const enc = await readAttachment(cfb(filepass), 'locked.xls');
   assert.strictEqual(enc.kind, 'unknown');
-  assert.match(enc.note, /加密/);
+  assert.match(enc.note!, /加密/);
 
   const biff5 = await readAttachment(cfb(Buffer.alloc(64), 'Book'), 'old.xls');
   assert.strictEqual(biff5.kind, 'unknown');
-  assert.match(biff5.note, /Excel 95/);
+  assert.match(biff5.note!, /Excel 95/);
 });

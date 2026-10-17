@@ -17,15 +17,17 @@ import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
 import net from 'node:net';
+import type { AddressInfo } from 'node:net';
+import type { TestContext } from 'node:test';
 import { spawn } from 'node:child_process';
 
 const ROOT = path.join(__dirname, '..', '..');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /** Start the entry and hand back a handle that can be probed, then stopped. */
-function launch(t, { env = {}, args = [] } = {}) {
+function launch(t: TestContext, { env = {}, args = [] }: { env?: NodeJS.ProcessEnv; args?: string[] } = {}) {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tab-agent-port-'));
-  const baseEnv = { ...process.env, TAB_AGENT_HOME: home };
+  const baseEnv: NodeJS.ProcessEnv = { ...process.env, TAB_AGENT_HOME: home };
   // Absent by default, so "no variable set" is a real case and not an accident
   // of the parent shell having one.
   delete baseEnv.TAB_AGENT_PORT;
@@ -99,12 +101,12 @@ function portLive(port) {
 }
 
 /** A port that is free right now, or null when `port` is given and taken. */
-function freePort(port = 0) {
+function freePort(port = 0): Promise<number | null> {
   return new Promise((resolve) => {
     const s = net.createServer();
     s.once('error', () => resolve(null));
     s.listen(port, '127.0.0.1', () => {
-      const p = s.address().port;
+      const p = (s.address() as AddressInfo).port;
       s.close(() => resolve(p));
     });
   });
@@ -143,7 +145,7 @@ test('an out-of-range TAB_AGENT_PORT is rejected', async (t) => {
 test('TAB_AGENT_PORT=0 means "any free port", not "unset"', async (t) => {
   const e = launch(t, { env: { TAB_AGENT_PORT: '0' } });
   assert.ok(await e.waitForUrl(), e.out + e.err);
-  assert.ok(e.boundPort() > 1024, `got ${e.boundPort()}`);
+  assert.ok(e.boundPort()! > 1024, `got ${e.boundPort()}`);
   assert.notStrictEqual(e.boundPort(), 3179);
 });
 

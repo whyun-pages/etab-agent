@@ -75,7 +75,7 @@ test('aggregate: where narrows the rows; nothing matched is still an answer', ()
 });
 
 test('selectRows: every condition op', () => {
-  const ids = (where, match) => selectRows(t, { where, match }).map((i) => t.rows[i][0]);
+  const ids = (where, match?) => selectRows(t, { where, match }).map((i) => t.rows[i][0]);
   assert.deepStrictEqual(ids([{ column: '金额', op: '>', value: 100 }]), ['A1', 'A2']);
   assert.deepStrictEqual(ids([{ column: '状态', op: 'empty' }]), ['A4']);
   assert.deepStrictEqual(

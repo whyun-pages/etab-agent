@@ -13,6 +13,9 @@ import path from 'node:path';
 import { listenLocal } from './listen.ts';
 import { createServer } from '../../src/http/server.ts';
 import { loadPi } from '../../src/agent/pi.ts';
+import type { TestContext } from 'node:test';
+import type { Settings } from '../../src/store/settings.ts';
+import type { FetchOptions } from '../../src/agent/tools/fetch-url.ts';
 
 export const tmpdir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'sess-api-'));
 
@@ -20,7 +23,7 @@ export const tmpdir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'sess-api-'));
 // file. One faux provider per test file (each runs in its own process); each
 // server start replaces its script. It is registered in the app's own stream
 // table (src/agent/pi.ts), the way a protocol is.
-let pi = null;
+let pi: { ai: typeof import('@earendil-works/pi-ai'); faux: any } | null = null;
 export async function loadFaux() {
   if (!pi) {
     const ai = await import('@earendil-works/pi-ai');
@@ -66,7 +69,7 @@ export const promptOf = (ai, context) =>
  * stub outright, for a test that needs settings to change under a turn.
  */
 export async function startServer(
-  t,
+  t: TestContext,
   {
     configured = true,
     replies = [],
@@ -76,8 +79,17 @@ export async function startServer(
     extra = {},
     fetchOptions,
     settings = null,
+  }: {
+    configured?: boolean;
+    replies?: unknown[];
+    chatCanEdit?: boolean;
+    chatConfirmEdits?: boolean;
+    seen?: string[] | null;
+    extra?: Record<string, unknown>;
+    fetchOptions?: FetchOptions;
+    settings?: Settings | null;
   } = {},
-) {
+): Promise<{ base: string; dataDir: string }> {
   const dataDir = tmpdir();
   const { ai, faux } = await loadFaux();
   faux.setResponses(
@@ -96,33 +108,56 @@ export async function startServer(
     fetchOptions,
   });
 
-  return new Promise((resolve) => {
-    listenLocal(server).then(() => {
-      const base = `http://127.0.0.1:${server.address().port}`;
-      t.after(() => new Promise((done) => server.close(done)));
-      resolve({ base, dataDir });
-    });
-  });
+  const port = await listenLocal(server);
+  t.after(() => new Promise<void>((done) => server.close(() => done())));
+  return { base: `http://127.0.0.1:${port}`, dataDir };
 }
 
-export function settingsStub({ configured = true, chatCanEdit = true, chatConfirmEdits = true, extra = {} } = {}) {
-  return {
+/**
+ * The parts of Settings the routes call, answering from fixed values.
+ *
+ * Cast to Settings once, here: the server's seam takes the class, and a stub
+ * that implemented all of it would be a second settings store to keep in step.
+ */
+export function settingsStub({
+  configured = true,
+  chatCanEdit = true,
+  chatConfirmEdits = true,
+  extra = {},
+}: {
+  configured?: boolean;
+  chatCanEdit?: boolean;
+  chatConfirmEdits?: boolean;
+  extra?: Record<string, unknown>;
+} = {}) {
+  const stub = {
     isConfigured: () => configured,
     load: () => ({ chatCanEdit, chatConfirmEdits, useForAttachments: true, ...extra }),
     publicSettings: () => ({ model: 'stub', hasKey: configured }),
     secrets: () => ({ api: 'openai-completions', baseUrl: 'http://stub/v1', apiKey: 'k', model: 'stub' }),
     save: () => ({}),
   };
+  return stub as unknown as Settings;
 }
 
-export const post = (base, p, body) =>
+/**
+ * A response from the app's own API. `json` is `any` on purpose: the bodies
+ * are the projections in src/http/projections.ts, and each test reads the
+ * two or three fields it asserts on.
+ */
+export interface ApiResponse {
+  status: number;
+  json: any;
+}
+
+export const post = (base: string, p: string, body?: unknown): Promise<ApiResponse> =>
   fetch(base + p, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
   }).then(async (r) => ({ status: r.status, json: await r.json().catch(() => null) }));
 
-export const get = (base, p) =>
+export const get = (base: string, p: string): Promise<ApiResponse> =>
   fetch(base + p).then(async (r) => ({ status: r.status, json: await r.json().catch(() => null) }));
 
 export const SPEC = {

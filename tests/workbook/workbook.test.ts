@@ -28,6 +28,14 @@ import {
   writeSpec,
   linkTarget,
 } from '../../src/workbook/workbook.ts';
+import type { WorkbookSpec } from '../../src/workbook/workbook.ts';
+
+/**
+ * A hand-written spec handed to validateSpec without going through
+ * normalizeSpec: missing fields, a null, a sheet with no columns. Telling
+ * those apart is what the validator is for, so the type is not the point.
+ */
+const raw = (spec: unknown) => spec as WorkbookSpec;
 
 // ── normalisation ───────────────────────────────────────────────────
 
@@ -266,7 +274,7 @@ test('coerce: a blank in one column does not stop the others', () => {
 
 test('coerce: a huge string is clamped rather than passed through', () => {
   const r = coerce('x'.repeat(50000), 'text');
-  assert.ok(r.value.length <= 20001, String(r.value.length));
+  assert.ok((r.value as string).length <= 20001, String((r.value as string).length));
 });
 
 // ── validation ──────────────────────────────────────────────────────
@@ -281,41 +289,45 @@ test('validateSpec: a normal spec passes', () => {
 });
 
 test('validateSpec: data without columns is blocked', () => {
-  const v = validateSpec({
-    title: 'T',
-    sheets: [{ name: 'S', columns: [], rows: [['a', 'b']] }],
-  });
+  const v = validateSpec(
+    raw({
+      title: 'T',
+      sheets: [{ name: 'S', columns: [], rows: [['a', 'b']] }],
+    }),
+  );
   assert.strictEqual(v.ok, false);
   assert.ok(/没有列定义/.test(v.blocking.join('')));
 });
 
 test('validateSpec: all-unnamed columns are blocked', () => {
-  const v = validateSpec({
-    title: 'T',
-    sheets: [
-      {
-        name: 'S',
-        columns: [
-          { key: 'a', header: '' },
-          { key: 'b', header: '' },
-        ],
-        rows: [['x', 'y']],
-      },
-    ],
-  });
+  const v = validateSpec(
+    raw({
+      title: 'T',
+      sheets: [
+        {
+          name: 'S',
+          columns: [
+            { key: 'a', header: '' },
+            { key: 'b', header: '' },
+          ],
+          rows: [['x', 'y']],
+        },
+      ],
+    }),
+  );
   assert.strictEqual(v.ok, false);
   assert.ok(/都没有名称/.test(v.blocking.join('')));
 });
 
 test('validateSpec: an empty workbook is a warning, not a block', () => {
-  const v = validateSpec({ title: 'T', sheets: [{ name: 'S', columns: [{ header: 'A' }], rows: [] }] });
+  const v = validateSpec(raw({ title: 'T', sheets: [{ name: 'S', columns: [{ header: 'A' }], rows: [] }] }));
   assert.strictEqual(v.ok, true);
   assert.ok(v.warnings.some((w) => /空的/.test(w)));
 });
 
 test('validateSpec: no sheets at all is blocked', () => {
-  assert.strictEqual(validateSpec({ sheets: [] }).ok, false);
-  assert.strictEqual(validateSpec(null).ok, false);
+  assert.strictEqual(validateSpec(raw({ sheets: [] })).ok, false);
+  assert.strictEqual(validateSpec(raw(null)).ok, false);
 });
 
 // ── sheet conversion ────────────────────────────────────────────────
@@ -334,7 +346,7 @@ test('toSheet: header occupies row 1 and data starts at row 2', () => {
     ],
   });
   const s = toSheet(spec.sheets[0]);
-  const at = (ref) => s.cells.find((c) => c.ref === ref);
+  const at = (ref: string) => s.cells.find((c) => c.ref === ref)!;
 
   assert.strictEqual(at('A1').value, '客户');
   assert.strictEqual(at('B1').value, '金额');
@@ -359,8 +371,8 @@ test('toSheet: a Date becomes an Excel serial', () => {
   });
   const s = toSheet(spec.sheets[0]);
   const cell = s.cells.find((c) => c.ref === 'A2');
-  assert.strictEqual(typeof cell.value, 'number');
-  assert.strictEqual(cell.value, dateToSerial(new Date(Date.UTC(2026, 2, 1))));
+  assert.strictEqual(typeof cell!.value, 'number');
+  assert.strictEqual(cell!.value, dateToSerial(new Date(Date.UTC(2026, 2, 1))));
 });
 
 test('toSheet: totals row carries a real SUM formula and a cached value', () => {
@@ -382,9 +394,9 @@ test('toSheet: totals row carries a real SUM formula and a cached value', () => 
   assert.strictEqual(s.totalRow, 4);
   const label = s.cells.find((c) => c.ref === 'A4');
   const sum = s.cells.find((c) => c.ref === 'B4');
-  assert.strictEqual(label.value, '合计');
-  assert.strictEqual(sum.formula, 'SUM(B2:B3)');
-  assert.strictEqual(sum.value, 350, 'the cached value must match the formula');
+  assert.strictEqual(label!.value, '合计');
+  assert.strictEqual(sum!.formula, 'SUM(B2:B3)');
+  assert.strictEqual(sum!.value, 350, 'the cached value must match the formula');
 });
 
 test('normalizeTotals: a percent column is NOT summed', () => {
@@ -591,10 +603,10 @@ test('toSheet: totals ignore non-numeric cells instead of producing NaN', () => 
   // the cached total diverge from what SUM() will compute.
   assert.strictEqual(spec.sheets[0].rows[1][1], null);
   const sum = s.cells.find((c) => c.formula);
-  assert.strictEqual(sum.value, 150);
+  assert.strictEqual(sum!.value, 150);
   // The range spans EVERY data row, blank one included: a range that skipped
   // it would stop covering the table as soon as the user filled it in.
-  assert.strictEqual(sum.formula, 'SUM(B2:B4)');
+  assert.strictEqual(sum!.formula, 'SUM(B2:B4)');
 });
 
 test('toSheet: totals are opt-in, so no 合计 row appears uninvited', () => {
@@ -794,7 +806,7 @@ test('toSheet: a url column carries links; text that is not a link stays plain',
   });
   assert.strictEqual(spec.sheets[0].columns[1].type, 'url');
   const { cells } = toSheet(spec.sheets[0]);
-  const at = (ref) => cells.find((c) => c.ref === ref);
+  const at = (ref: string) => cells.find((c) => c.ref === ref)!;
   assert.strictEqual(at('B2').link, 'https://i.imgur.com/a.png');
   assert.strictEqual(at('B2').styleIndex, 10);
   assert.strictEqual(at('B3').value, '暂无', 'kept as text');
@@ -825,7 +837,7 @@ test('writeSpec: url cells are real hyperlinks in the file', () => {
   });
   const buf = writeSpec(spec);
   const zip = readZip(buf);
-  const text = (name) => zip.get(name).data.toString('utf8');
+  const text = (name) => zip.get(name)!.data.toString('utf8');
 
   const sheet = text('xl/worksheets/sheet1.xml');
   assert.match(

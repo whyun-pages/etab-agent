@@ -107,7 +107,7 @@ test('the workbook endpoint returns real xlsx bytes', async (t) => {
 
   const r = await fetch(`${base}/api/sessions/${id}/workbook.xlsx`);
   assert.strictEqual(r.status, 200);
-  assert.match(r.headers.get('content-type'), /spreadsheetml/);
+  assert.match(r.headers.get('content-type')!, /spreadsheetml/);
   const bytes = Buffer.from(await r.arrayBuffer());
   assert.strictEqual(bytes[0], 0x50, 'PK zip magic');
   assert.strictEqual(bytes[1], 0x4b);
@@ -162,17 +162,16 @@ test('a session survives a server restart', async (t) => {
   };
 
   const first = createServer(opts);
-  await new Promise((done) => listenLocal(first).then(done));
-  const base1 = `http://127.0.0.1:${first.address().port}`;
+  const base1 = `http://127.0.0.1:${await listenLocal(first)}`;
   const { json: created } = await post(base1, '/api/sessions', {});
   const id = created.session.id;
   await post(base1, `/api/sessions/${id}/turn`, { message: '做一个销售台账' });
   await new Promise((done) => first.close(done));
 
   const second = createServer(opts);
-  await new Promise((done) => listenLocal(second).then(done));
+  const port2 = await listenLocal(second);
   t.after(() => new Promise((done) => second.close(done)));
-  const base2 = `http://127.0.0.1:${second.address().port}`;
+  const base2 = `http://127.0.0.1:${port2}`;
 
   const back = await get(base2, `/api/sessions/${id}`);
   assert.strictEqual(back.status, 200);
@@ -190,13 +189,13 @@ test('the workbook downloads as CSV and JSON too', async (t) => {
 
   const csv = await fetch(`${base}/api/sessions/${session.id}/workbook.csv`);
   assert.strictEqual(csv.status, 200);
-  assert.match(csv.headers.get('content-type'), /text\/csv/);
-  assert.match(csv.headers.get('content-disposition'), /%E9%94%80%E5%94%AE%E5%8F%B0%E8%B4%A6\.csv/);
+  assert.match(csv.headers.get('content-type')!, /text\/csv/);
+  assert.match(csv.headers.get('content-disposition')!, /%E9%94%80%E5%94%AE%E5%8F%B0%E8%B4%A6\.csv/);
   assert.match(await csv.text(), /客户名称,金额/);
 
   const json = await fetch(`${base}/api/sessions/${session.id}/workbook.json?sheet=${encodeURIComponent('明细')}`);
   assert.strictEqual(json.status, 200);
-  assert.strictEqual((await json.json()).sheets[0].rows[1]['客户名称'], '乙');
+  assert.strictEqual(((await json.json()) as any).sheets[0].rows[1]['客户名称'], '乙');
 
   const missing = await fetch(`${base}/api/sessions/${session.id}/workbook.csv?sheet=nope`);
   assert.strictEqual(missing.status, 404);

@@ -10,6 +10,15 @@ import { matrixToTable, detectHeaderRow, coerce, columnType } from '../../src/in
 import { markupToText, docxText } from '../../src/ingest/markup.ts';
 import { sniffKind } from '../../src/ingest/kinds.ts';
 import { sheetToMatrix, gridSize } from '../../src/ingest/grid.ts';
+import type { ParsedSheet } from '../../src/formats/xlsx.ts';
+
+/**
+ * A sheet as the grid functions read it: dimensions and cells by position and
+ * value. The parsed cell's other fields (ref, type, style) play no part, so
+ * they are left out of the fixtures.
+ */
+const sheetOf = (s: { maxRow: number; maxCol: number; cells: { row: number; col: number; value: unknown }[] }) =>
+  s as unknown as ParsedSheet;
 
 // ---------------------------------------------------------------------- CSV
 test('CSV parsing handles quoting, embedded delimiters and newlines', () => {
@@ -145,15 +154,15 @@ test('xlsx attachment is read into tables per sheet', async () => {
   assert.strictEqual(att.kind, 'table');
   assert.deepStrictEqual(att.meta.sheetNames, ['明细']);
   assert.deepStrictEqual(att.header, ['项目', '金额']);
-  assert.strictEqual(att.table.rows.length, 2);
-  assert.strictEqual(att.table.columns[1].type, 'currency');
+  assert.strictEqual(att.table!.rows.length, 2);
+  assert.strictEqual(att.table!.columns[1].type, 'currency');
 });
 
 test('csv attachment end-to-end', async () => {
   const att = await readAttachment(Buffer.from('名称,数量\n甲,3\n乙,5\n', 'utf8'), 'list.csv');
   assert.strictEqual(att.kind, 'table');
   assert.deepStrictEqual(att.header, ['名称', '数量']);
-  assert.deepStrictEqual(att.table.columns[1].values, [3, 5]);
+  assert.deepStrictEqual(att.table!.columns[1].values, [3, 5]);
   assert.strictEqual(att.meta.rowCount, 2);
 });
 
@@ -170,7 +179,7 @@ test('json array of objects becomes a table', async () => {
   const att = await readAttachment(Buffer.from(json, 'utf8'), 'rows.json');
   assert.strictEqual(att.kind, 'table');
   assert.deepStrictEqual(att.header, ['客户', '金额']);
-  assert.strictEqual(att.table.rows.length, 2);
+  assert.strictEqual(att.table!.rows.length, 2);
 });
 
 test('nested json payload is found by searching for the object array', async () => {
@@ -178,20 +187,20 @@ test('nested json payload is found by searching for the object array', async () 
   const att = await readAttachment(Buffer.from(json, 'utf8'), 'api.json');
   assert.strictEqual(att.kind, 'table');
   assert.deepStrictEqual(att.header, ['a']);
-  assert.deepStrictEqual(att.table.rows, [[1], [2]]);
+  assert.deepStrictEqual(att.table!.rows, [[1], [2]]);
 });
 
 test('jsonl is supported', async () => {
   const jsonl = '{"a":1}\n{"a":2}\n';
   const att = await readAttachment(Buffer.from(jsonl, 'utf8'), 'x.jsonl');
   assert.strictEqual(att.kind, 'table');
-  assert.deepStrictEqual(att.table.rows, [[1], [2]]);
+  assert.deepStrictEqual(att.table!.rows, [[1], [2]]);
 });
 
 test('invalid json falls back to text rather than throwing', async () => {
   const att = await readAttachment(Buffer.from('{not json at all', 'utf8'), 'broken.json');
   assert.strictEqual(att.kind, 'text');
-  assert.match(att.text, /not json/);
+  assert.match(att.text!, /not json/);
 });
 
 // -------------------------------------------------------------------- docx
@@ -203,14 +212,14 @@ test('docx text and embedded tables are extracted', async () => {
   ]);
   const att = await readAttachment(buf, 'note.docx');
   assert.strictEqual(att.kind, 'text');
-  assert.match(att.text, /报销说明/);
-  assert.match(att.text, /合计 1250 元/);
+  assert.match(att.text!, /报销说明/);
+  assert.match(att.text!, /合计 1250 元/);
   assert.strictEqual(att.meta.embeddedTables, 1);
-  assert.deepStrictEqual(att.table.header, ['项目', '金额']);
+  assert.deepStrictEqual(att.table!.header, ['项目', '金额']);
   // Table rows keep the document's raw text; the column is typed numerically.
-  assert.deepStrictEqual(att.table.rows, [['交通', '120']]);
-  assert.deepStrictEqual(att.table.columns[1].values, [120]);
-  assert.strictEqual(att.table.columns[1].type, 'currency');
+  assert.deepStrictEqual(att.table!.rows, [['交通', '120']]);
+  assert.deepStrictEqual(att.table!.columns[1].values, [120]);
+  assert.strictEqual(att.table!.columns[1].type, 'currency');
 });
 
 test('docx detection works from magic bytes even with a wrong extension', async () => {
@@ -222,7 +231,7 @@ test('docx detection works from magic bytes even with a wrong extension', async 
   ]);
   const att = await readAttachment(buf, 'mystery.bin');
   assert.strictEqual(att.kind, 'text');
-  assert.match(att.text, /内容/);
+  assert.match(att.text!, /内容/);
 });
 
 // ------------------------------------------------------------------ images
@@ -264,7 +273,7 @@ test('a failing image extractor is recorded, not fatal', async () => {
     },
   });
   assert.strictEqual(att.kind, 'image');
-  assert.match(att.extractError, /vision unavailable/);
+  assert.match(att.extractError!, /vision unavailable/);
 });
 
 // -------------------------------------------------------------------- misc
@@ -284,7 +293,7 @@ test('an unknown binary is reported without crashing', async () => {
 test('pdf is explicitly reported as unsupported', async () => {
   const att = await readAttachment(Buffer.from('%PDF-1.4\n%fake'), 'doc.pdf');
   assert.strictEqual(att.kind, 'unknown');
-  assert.match(att.note, /PDF/);
+  assert.match(att.note!, /PDF/);
 });
 
 test('html attachment is stripped to readable text', async () => {
@@ -292,24 +301,26 @@ test('html attachment is stripped to readable text', async () => {
     '<html><body><h1>标题</h1><p>第一段 &amp; 更多</p><script>var x=1;</script><table><tr><td>甲</td><td>乙</td></tr></table></body></html>';
   const att = await readAttachment(Buffer.from(html, 'utf8'), 'page.html');
   assert.strictEqual(att.kind, 'text');
-  assert.match(att.text, /标题/);
-  assert.match(att.text, /第一段 & 更多/);
-  assert.ok(!att.text.includes('var x'));
-  assert.match(att.text, /甲\t乙/);
+  assert.match(att.text!, /标题/);
+  assert.match(att.text!, /第一段 & 更多/);
+  assert.ok(!att.text!.includes('var x'));
+  assert.match(att.text!, /甲\t乙/);
 });
 
 test('sheetToMatrix lays cells onto a dense grid using cached values', () => {
-  const matrix = sheetToMatrix({
-    maxRow: 2,
-    maxCol: 3,
-    cells: [
-      { row: 1, col: 1, value: 'a' },
-      { row: 1, col: 3, value: 'c' },
-      { row: 2, col: 2, value: 5 },
-      { row: 2, col: 3, value: { formula: 'B2*2', cached: 10 } },
-      { row: 1, col: 2, value: { error: '#N/A' } },
-    ],
-  });
+  const matrix = sheetToMatrix(
+    sheetOf({
+      maxRow: 2,
+      maxCol: 3,
+      cells: [
+        { row: 1, col: 1, value: 'a' },
+        { row: 1, col: 3, value: 'c' },
+        { row: 2, col: 2, value: 5 },
+        { row: 2, col: 3, value: { formula: 'B2*2', cached: 10 } },
+        { row: 1, col: 2, value: { error: '#N/A' } },
+      ],
+    }),
+  );
   assert.deepStrictEqual(matrix, [
     ['a', null, 'c'],
     [null, 5, 10],
@@ -320,16 +331,18 @@ test('the grid spans the cells that hold values, not the declared dimension', ()
   // A column formatted to the bottom of the sheet declares row 1048576 with
   // nothing in it. The grid was sized from that: a million empty rows,
   // allocated before a value was read.
-  const size = gridSize({
-    maxRow: 1048576,
-    maxCol: 3,
-    cells: [
-      { row: 1, col: 1, value: '名称' },
-      { row: 2, col: 1, value: '甲' },
-      { row: 1048576, col: 3, value: null },
-      { row: 900000, col: 2, value: '' },
-    ],
-  });
+  const size = gridSize(
+    sheetOf({
+      maxRow: 1048576,
+      maxCol: 3,
+      cells: [
+        { row: 1, col: 1, value: '名称' },
+        { row: 2, col: 1, value: '甲' },
+        { row: 1048576, col: 3, value: null },
+        { row: 900000, col: 2, value: '' },
+      ],
+    }),
+  );
   assert.deepStrictEqual(size, { rows: 2, cols: 1, droppedRows: 0 });
 });
 
@@ -350,8 +363,8 @@ test('a tiny file cannot ask for a huge grid; what is cut is said', async () => 
   const att = await readAttachment(buf, 'bomb.xlsx');
   assert.ok(Date.now() - started < 2000, `took ${Date.now() - started} ms`);
   assert.strictEqual(att.kind, 'table');
-  assert.match(att.note, /读取上限/);
-  assert.match(att.note, /「S」末尾 \d+ 行/);
+  assert.match(att.note!, /读取上限/);
+  assert.match(att.note!, /「S」末尾 \d+ 行/);
 });
 
 test('markupToText keeps block structure', () => {
@@ -394,8 +407,8 @@ test('ingestFile: a zip becomes one attachment per readable member, named by its
     items.map((i) => i.filename),
     ['5月.csv', '说明.txt'],
   );
-  assert.strictEqual(items[0].att.kind, 'table');
-  assert.strictEqual(items[0].att.table.rows.length, 2);
+  assert.strictEqual(items[0].att!.kind, 'table');
+  assert.strictEqual(items[0].att!.table!.rows.length, 2);
   assert.deepStrictEqual(skipped, ['tool.exe']);
 });
 
@@ -408,7 +421,7 @@ test('ingestFile: an xlsx is a zip but stays one workbook', async () => {
   });
   const { items } = await ingestFile(buf, 'x.xlsx');
   assert.strictEqual(items.length, 1);
-  assert.strictEqual(items[0].att.kind, 'table');
+  assert.strictEqual(items[0].att!.kind, 'table');
 });
 
 test('zip limits: a bomb is refused, not inflated', async () => {
@@ -416,10 +429,10 @@ test('zip limits: a bomb is refused, not inflated', async () => {
   const bomb = writeZip([{ name: 'zeros.txt', data: Buffer.alloc(300 * 1024 * 1024) }], { level: 9 });
   assert.throws(() => readZip(bomb, { maxBytes: 1024 * 1024 }), /太大/);
   const { items } = await ingestFile(bomb, 'bomb.zip');
-  assert.match(items[0].error || items[0].att.note, /超过|太大/);
+  assert.match(items[0].error || items[0].att!.note!, /超过|太大/);
   // Renamed to .xlsx, it must not reach the unbounded workbook reader either.
   const att = await readAttachment(bomb, 'bomb.xlsx');
-  assert.match(att.note, /没有读取/);
+  assert.match(att.note!, /没有读取/);
 });
 
 test('zip names: GBK without the UTF-8 flag decodes as Chinese', () => {
@@ -458,9 +471,9 @@ test('docx tabs and line breaks become whitespace, in order', async () => {
       { name: 'word/document.xml', data: doc },
     ]),
   );
-  assert.match(text.text, /^姓名\t张三$/m);
-  assert.match(text.text, /^第一行\n第二行$/m);
-  assert.deepStrictEqual(text.tables[0][0], ['地址', '甲\n乙']);
+  assert.match(text!.text, /^姓名\t张三$/m);
+  assert.match(text!.text, /^第一行\n第二行$/m);
+  assert.deepStrictEqual(text!.tables[0][0], ['地址', '甲\n乙']);
 });
 
 test('a numeric reference past U+10FFFF is kept as text, not a reason to fail the file', async () => {
@@ -477,6 +490,6 @@ test('a numeric reference past U+10FFFF is kept as text, not a reason to fail th
     'bad-entity.docx',
   );
   assert.strictEqual(att.kind, 'text');
-  assert.match(att.text, /a&#99999999;b中/);
+  assert.match(att.text!, /a&#99999999;b中/);
   assert.strictEqual(unescapeXml('x&#x110000;y&#65;'), 'x&#x110000;yA');
 });

@@ -28,7 +28,7 @@
     "predesktop": "tsc",
     "desktop": "node .build/js/desktop.js",
     "desktop:dev": "tsx src/desktop.ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p tests",
     "lint": "biome check .",
     "format": "biome check --write .",
     "build:js": "tsc",

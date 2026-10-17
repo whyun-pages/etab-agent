@@ -138,9 +138,9 @@ test('a turn can fetch a CSV and import it as the table', async (t) => {
     res.setHeader('content-type', 'text/csv');
     res.end('城市,人口\n杭州,1200\n宁波,950\n');
   });
-  await new Promise((r) => listenLocal(src).then(r));
+  const port = await listenLocal(src);
   t.after(() => new Promise((r) => src.close(r)));
-  const url = `http://127.0.0.1:${src.address().port}/c.csv`;
+  const url = `http://127.0.0.1:${port}/c.csv`;
 
   const { base } = await startServer(t, {
     chatConfirmEdits: false,
@@ -161,7 +161,7 @@ test('a turn can fetch a CSV and import it as the table', async (t) => {
 });
 
 test('the server blocklist reaches the fetch tool', async (t) => {
-  const seenResults = [];
+  const seenResults: any[] = [];
   const { base } = await startServer(t, {
     extra: { chatCanFetch: true, fetchBlocklist: ['blocked.example'] },
     replies: [
@@ -190,7 +190,7 @@ test('a turn reads a local file, queries it, and the file stays as an attachment
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const file = path.join(dir, '订单.csv');
   fs.writeFileSync(file, '订单,状态\nA1,已签收\nA2,派送中\nA3,已签收\n');
-  const results = [];
+  const results: any[] = [];
   const { base } = await startServer(t, {
     extra: { chatFileAccess: 'read', fileBlocklist: [] },
     replies: [
@@ -222,7 +222,7 @@ test('write and edit land after the turn, and only with readwrite access', async
   const dir = tmpdir();
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const target = path.join(dir, '报告.md');
-  let onDiskDuringTurn = null;
+  let onDiskDuringTurn: boolean | null = null;
   const { base } = await startServer(t, {
     extra: { chatFileAccess: 'readwrite', fileBlocklist: [] },
     replies: [

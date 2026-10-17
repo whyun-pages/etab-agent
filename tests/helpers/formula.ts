@@ -68,7 +68,7 @@ export const AGGREGATES: Aggregates = {
 
 /** Split on top-level commas — commas inside nested parens do not split. */
 export function splitArgs(text: string): string[] {
-  const out = [];
+  const out: string[] = [];
   let depth = 0;
   let cur = '';
   for (const ch of text) {

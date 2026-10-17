@@ -18,25 +18,33 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
+import type { AddressInfo } from 'node:net';
+import type { TestContext } from 'node:test';
 
 import { createServer, AppState } from '../../src/http/server.ts';
 
 const PUBLIC_DIR = path.join(__dirname, '..', '..', 'public');
 
 /** Boot a server over a scratch dir; returns {base, dir, close}. */
-async function boot(t) {
+async function boot(t: TestContext) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tab-agent-model-'));
   const server = createServer({
     state: new AppState({ dataDir: dir }),
     staticDir: PUBLIC_DIR,
   });
-  await new Promise((r) => listenLocal(server).then(r));
-  t.after(() => new Promise((done) => server.close(done)));
+  const port = await listenLocal(server);
+  t.after(() => new Promise<void>((done) => server.close(() => done())));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
-  return { base: `http://127.0.0.1:${server.address().port}`, dir };
+  return { base: `http://127.0.0.1:${port}`, dir };
 }
 
-async function postJson(base, p, body) {
+/** `body` is `any`: the app's own responses, of which each test reads a field or two. */
+interface Reply {
+  status: number;
+  body: any;
+}
+
+async function postJson(base: string, p: string, body: unknown): Promise<Reply> {
   const res = await fetch(base + p, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -45,7 +53,7 @@ async function postJson(base, p, body) {
   return { status: res.status, body: await res.json() };
 }
 
-async function getJson(base, p) {
+async function getJson(base: string, p: string): Promise<Reply> {
   const res = await fetch(base + p);
   return { status: res.status, body: await res.json() };
 }
@@ -54,8 +62,11 @@ async function getJson(base, p) {
  * A local provider speaking the OpenAI streaming format. `script(res)` writes
  * each response; every request body is kept in `seen`. Returns its base URL.
  */
-function provider(t, script) {
-  const seen = [];
+function provider(
+  t: TestContext,
+  script: (res: http.ServerResponse) => void,
+): Promise<{ baseUrl: string; seen: any[] }> {
+  const seen: any[] = [];
   const server = http.createServer((req, res) => {
     let raw = '';
     req.on('data', (c) => {
@@ -72,17 +83,17 @@ function provider(t, script) {
         server.closeAllConnections();
         server.close();
       });
-      resolve({ baseUrl: `http://127.0.0.1:${server.address().port}/v1`, seen });
+      resolve({ baseUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}/v1`, seen });
     });
   });
 }
 
-const chunk = (d, finish = null) =>
+const chunk = (d: object, finish: string | null = null) =>
   `data: ${JSON.stringify({ id: 'c1', object: 'chat.completion.chunk', created: 0, model: 'm', choices: [{ index: 0, delta: d, finish_reason: finish }] })}\n\n`;
 
 /** A streamed reply: each item is one delta. */
-function streamed(...deltas) {
-  return (res) => {
+function streamed(...deltas: object[]) {
+  return (res: http.ServerResponse) => {
     // `connection: close`: each test starts a fresh provider and may be given
     // the port a previous one just released. A pooled keep-alive socket to the
     // old server would then take the new request and fail it — a flake that
@@ -212,8 +223,7 @@ test('/api/settings/test reports a provider failure verbatim', async (t) => {
 test('/api/settings/test reports an unreachable provider', async (t) => {
   const { base } = await boot(t);
   const probe = http.createServer();
-  await new Promise((r) => listenLocal(probe).then(r));
-  const port = probe.address().port;
+  const port = await listenLocal(probe);
   await new Promise((r) => probe.close(r));
   await postJson(base, '/api/settings', { apiKey: 'sk', baseUrl: `http://127.0.0.1:${port}/v1`, model: 'm' });
   const { body } = await postJson(base, '/api/settings/test', {});

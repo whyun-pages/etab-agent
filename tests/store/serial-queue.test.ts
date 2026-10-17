@@ -8,11 +8,11 @@ import assert from 'node:assert';
 
 import { SerialQueue } from '../../src/store/serial-queue.ts';
 
-const later = (ms, v) => new Promise((r) => setTimeout(() => r(v), ms));
+const later = (ms: number, v?: unknown) => new Promise((r) => setTimeout(() => r(v), ms));
 
 test('functions run one at a time, in the order they were queued', async () => {
   const q = new SerialQueue();
-  const log = [];
+  const log: string[] = [];
   const job = (name, ms) => async () => {
     log.push(`${name} start`);
     await later(ms);
@@ -37,7 +37,7 @@ test('a failure reaches its own caller and does not stop the queue', async () =>
 
 test('a synchronous function is queued too', async () => {
   const q = new SerialQueue();
-  const order = [];
+  const order: number[] = [];
   const slow = q.run(async () => {
     await later(10);
     order.push(1);

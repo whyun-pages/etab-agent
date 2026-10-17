@@ -324,13 +324,13 @@ class SessionStore {
 
   /** Sessions on disk, newest first, without their message bodies. */
   async #listFiles(): Promise<SessionSummary[]> {
-    let names = [];
+    let names: string[] = [];
     try {
       names = await fs.promises.readdir(this.dir);
     } catch {
       return [];
     }
-    const out = [];
+    const out: SessionSummary[] = [];
     for (const name of names) {
       if (!name.endsWith('.json')) continue;
       const id = name.slice(0, -5);

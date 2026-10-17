@@ -23,6 +23,19 @@ import { writeWorkbook, writeSimpleSheet } from '../../src/formats/xlsx-writer.t
 import { readWorkbook } from '../../src/formats/xlsx.ts';
 import { fixtureA } from '../helpers/fixtures.ts';
 
+/**
+ * One sheet as writeWorkbook takes it. The writer does not export the type,
+ * so it is named from the signature.
+ */
+type WriterSheet = Parameters<typeof writeWorkbook>[0]['sheets'][number];
+
+/**
+ * The template's columns, for writing back. The reader keeps a `<col>` whose
+ * min or max did not parse as null; the writer needs numbers, and every column
+ * in fixture A has both.
+ */
+const readCols = (sheet: { cols?: { min: number | null; max: number | null }[] }) => sheet.cols as WriterSheet['cols'];
+
 /** Load bytes into exceljs. */
 async function excel(buffer) {
   const wb = new ExcelJS.Workbook();
@@ -72,13 +85,14 @@ test('writing into a template keeps its values, styles, widths and merges', asyn
   const template = fixtureA();
   const tw = readWorkbook(template);
   const tSheet = tw.sheets[0];
-  const cells = tSheet.cells.map((c) => ({
+  const cells: NonNullable<WriterSheet['cells']> = tSheet.cells!.map((c) => ({
     ref: c.ref,
     col: c.col,
     row: c.row,
     value: c.value,
     styleIndex: c.styleIndex,
-    formula: c.formula,
+    // The reader says "no formula" with null, the writer with undefined.
+    formula: c.formula ?? undefined,
   }));
   // New rows reuse the template's number-format styles (2 = ¥#,##0.00, 3 = date, 4 = text).
   cells.push({ ref: 'A7', col: 1, row: 7, value: '新生成的公司', styleIndex: 0 });
@@ -90,7 +104,7 @@ test('writing into a template keeps its values, styles, widths and merges', asyn
     await excel(
       writeWorkbook({
         templateBuffer: template,
-        sheets: [{ name: tSheet.name, cells, cols: tSheet.cols, merges: tSheet.merges, freeze: { rows: 1 } }],
+        sheets: [{ name: tSheet.name, cells, cols: readCols(tSheet), merges: tSheet.merges, freeze: { rows: 1 } }],
         shared: tw.sharedStrings,
       }),
     )
@@ -109,16 +123,20 @@ test('writing into a template keeps its values, styles, widths and merges', asyn
   assert.ok(c7 instanceof Date, `C7 is ${typeof c7}`);
   assert.strictEqual(c7.toISOString().slice(0, 10), '2026-07-01');
   assert.strictEqual(ws.getCell('D7').value, '已完成');
-  assert.strictEqual(ws.getCell('C4').value.error, '#DIV/0!', 'the error cell did not survive');
+  assert.strictEqual(
+    (ws.getCell('C4').value as ExcelJS.CellErrorValue).error,
+    '#DIV/0!',
+    'the error cell did not survive',
+  );
 
   // Style inheritance is the whole point: exceljs must still see the formats.
   assert.strictEqual(ws.getCell('B7').numFmt, '¥#,##0.00', 'a new cell inherits the currency format');
   assert.strictEqual(ws.getCell('B2').numFmt, '¥#,##0.00', 'an original cell keeps it');
   assert.strictEqual(ws.getCell('C7').numFmt, 'yyyy"年"m"月"d"日"');
   assert.strictEqual(ws.getCell('A1').font && ws.getCell('A1').font.bold, true);
-  assert.strictEqual(ws.getCell('A1').fill.fgColor.argb, 'FF4472C4');
+  assert.strictEqual((ws.getCell('A1').fill as ExcelJS.FillPattern).fgColor!.argb, 'FF4472C4');
   assert.strictEqual(ws.getColumn(4).hidden, true);
-  assert.strictEqual(Math.round(ws.getColumn(1).width * 100) / 100, 22.71);
+  assert.strictEqual(Math.round(ws.getColumn(1).width! * 100) / 100, 22.71);
   assert.deepStrictEqual(ws.model.merges, ['A5:D5', 'E1:E1']);
 });
 
@@ -129,7 +147,7 @@ test('a file exceljs wrote reads correctly through our reader', async () => {
   sheet.addRow(['税率', 0.13]);
   sheet.addRow(['厂家', '某公司 & co']);
   const ms = readWorkbook(Buffer.from(await theirs.xlsx.writeBuffer())).sheets[0];
-  const at = (r) => ms.cells.find((c) => c.ref === r)?.value;
+  const at = (r) => ms.cells!.find((c) => c.ref === r)?.value;
   assert.strictEqual(ms.name, '我方');
   assert.strictEqual(at('A1'), '字段');
   assert.strictEqual(at('B2'), 0.13);
@@ -195,7 +213,7 @@ test('messy input still produces a readable file, with a working totals row', as
   assert.ok(sum.formula, 'the totals cell carries no formula');
   // exceljs reports SUM(B2:B4) as {formula, result}; the cached result is what
   // Excel shows before it recalculates.
-  assert.strictEqual(sum.value.result, 1250000);
+  assert.strictEqual((sum.value as ExcelJS.CellFormulaValue).result, 1250000);
 });
 
 test('a date is a date, not a string', async () => {
@@ -275,7 +293,7 @@ test('degenerate specs still produce a file exceljs can open', async () => {
     ['no sheets', { sheets: [] }],
     ['null', null],
     ['only rows', { sheets: [{ name: 'S', rows: [['a', 1]] }] }],
-  ]) {
+  ] as [string, unknown][]) {
     const wb = await excel(specBytes(raw));
     assert.ok(wb.worksheets.length >= 1, label);
   }

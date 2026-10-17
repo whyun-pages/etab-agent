@@ -6,6 +6,15 @@ import { readWorkbook, writeZip, readZip, escapeXml, unescapeXml, numFmtCodeFor 
 import { writeWorkbook, writeSimpleSheet, CellBuilder, formatNumber } from '../../src/formats/xlsx-writer.ts';
 import { normalizeSpec, writeSpec } from '../../src/workbook/workbook.ts';
 
+/**
+ * The template's columns, for writing back. The reader keeps a `<col>` whose
+ * min or max did not parse as null; the writer needs numbers, and every column
+ * in fixture A has both. (The writer does not export its column type, so it
+ * is named from the signature.)
+ */
+const readCols = (sheet: { cols?: { min: number | null; max: number | null }[] }) =>
+  sheet.cols as Parameters<typeof writeWorkbook>[0]['sheets'][number]['cols'];
+
 // ------------------------------------------------------------------- builder
 test('CellBuilder emits the right cell kind for each value type', () => {
   const shared = [];
@@ -61,8 +70,8 @@ test('round-trips a from-scratch workbook through the reader', () => {
   const wb = readWorkbook(buf);
   assert.strictEqual(wb.sheets.length, 1);
   assert.strictEqual(wb.sheets[0].name, '数据');
-  assert.strictEqual(wb.sheets[0].cells.find((c) => c.ref === 'A1').value, '名称');
-  assert.strictEqual(wb.sheets[0].cells.find((c) => c.ref === 'B3').value, 2.5);
+  assert.strictEqual(wb.sheets[0].cells!.find((c) => c.ref === 'A1')!.value, '名称');
+  assert.strictEqual(wb.sheets[0].cells!.find((c) => c.ref === 'B3')!.value, 2.5);
 });
 
 test('writes multiple sheets with correct indices and relationships', () => {
@@ -83,7 +92,7 @@ test('writes multiple sheets with correct indices and relationships', () => {
     ['visible', 'visible', 'hidden'],
   );
   assert.deepStrictEqual(
-    wb.sheets.map((s) => s.cells[0].value),
+    wb.sheets.map((s) => s.cells![0].value),
     ['x', 'y', 'z'],
   );
   // Sheet order must follow rId order, not part numbering.
@@ -101,7 +110,7 @@ test('writing into a template inherits styles and keeps indices valid', () => {
 
   // Copy the template's rows, then append generated rows using the template's
   // own style indices — the core of "generate into a template".
-  const cells = tSheet.cells.map((c) => ({
+  const cells = tSheet.cells!.map((c) => ({
     ref: c.ref,
     col: c.col,
     row: c.row,
@@ -115,14 +124,14 @@ test('writing into a template inherits styles and keeps indices valid', () => {
 
   const out = writeWorkbook({
     templateBuffer: template,
-    sheets: [{ name: tSheet.name, cells, cols: tSheet.cols, merges: tSheet.merges, freeze: { rows: 1 } }],
+    sheets: [{ name: tSheet.name, cells, cols: readCols(tSheet), merges: tSheet.merges, freeze: { rows: 1 } }],
     // Seeding with the template's table keeps row-1 string indices stable.
     shared: tw.sharedStrings,
   });
 
   const wb = readWorkbook(out);
   const sheet = wb.sheets[0];
-  const at = (ref) => sheet.cells.find((c) => c.ref === ref);
+  const at = (ref: string) => sheet.cells!.find((c) => c.ref === ref)!;
 
   // Original content survives.
   assert.strictEqual(at('A1').value, '客户名称');
@@ -148,7 +157,7 @@ test('writing into a template inherits styles and keeps indices valid', () => {
 
   // Hidden sheet and column metadata are preserved as well.
   assert.strictEqual(wb.sheets.length, 1);
-  assert.strictEqual(sheet.cols.find((c) => c.min === 4).hidden, true);
+  assert.strictEqual(sheet.cols!.find((c) => c.min === 4)!.hidden, true);
 });
 
 test('template output stays a valid package: every part is declared', () => {
@@ -162,19 +171,19 @@ test('template output stays a valid package: every part is declared', () => {
 
   // styles.xml must be present AND referenced, or formats silently drop.
   assert.ok(names.includes('xl/styles.xml'), 'styles part carried over');
-  const rels = zip.get('xl/_rels/workbook.xml.rels').data.toString('utf8');
+  const rels = zip.get('xl/_rels/workbook.xml.rels')!.data.toString('utf8');
   assert.match(rels, /Target="styles\.xml"/);
-  const ct = zip.get('[Content_Types].xml').data.toString('utf8');
+  const ct = zip.get('[Content_Types].xml')!.data.toString('utf8');
   assert.match(ct, /PartName="\/xl\/styles\.xml"/);
   assert.match(ct, /PartName="\/xl\/sharedStrings\.xml"/);
   assert.match(ct, /PartName="\/xl\/worksheets\/sheet1\.xml"/);
   // Root rels must point at the workbook.
-  assert.match(zip.get('_rels/.rels').data.toString('utf8'), /Target="xl\/workbook\.xml"/);
+  assert.match(zip.get('_rels/.rels')!.data.toString('utf8'), /Target="xl\/workbook\.xml"/);
   // No stray worksheet parts left over from the template.
   const sheetParts = names.filter((n) => /^xl\/worksheets\/sheet\d+\.xml$/.test(n));
   assert.deepStrictEqual(sheetParts, ['xl/worksheets/sheet1.xml']);
   // workbook.xml sheet count matches the declared parts.
-  const wbx = zip.get('xl/workbook.xml').data.toString('utf8');
+  const wbx = zip.get('xl/workbook.xml')!.data.toString('utf8');
   assert.strictEqual((wbx.match(/<sheet /g) || []).length, 1);
   assert.strictEqual((rels.match(/worksheet"/g) || []).length, 1);
 });
@@ -193,10 +202,10 @@ test('sharedStrings part is omitted when nothing is a string', () => {
   });
   const zip = readZip(out);
   assert.ok(!zip.has('xl/sharedStrings.xml'));
-  const ct = zip.get('[Content_Types].xml').data.toString('utf8');
+  const ct = zip.get('[Content_Types].xml')!.data.toString('utf8');
   assert.ok(!ct.includes('sharedStrings'));
   const wb = readWorkbook(out);
-  assert.strictEqual(wb.sheets[0].cells.find((c) => c.ref === 'A2').value, 2);
+  assert.strictEqual(wb.sheets[0].cells!.find((c) => c.ref === 'A2')!.value, 2);
 });
 
 // --------------------------------------------------------------------- zip
@@ -207,9 +216,9 @@ test('zip writer round-trips through the reader, including unicode names', () =>
     { name: 'random.bin', data: Buffer.from([0, 1, 2, 250, 251]) },
   ];
   const zip = readZip(writeZip(files));
-  assert.strictEqual(zip.get('a/b/c.xml').data.toString('utf8'), '<x/>');
-  assert.strictEqual(zip.get('中文/文件.txt').data.toString('utf8'), '内容');
-  assert.deepStrictEqual([...zip.get('random.bin').data], [0, 1, 2, 250, 251]);
+  assert.strictEqual(zip.get('a/b/c.xml')!.data.toString('utf8'), '<x/>');
+  assert.strictEqual(zip.get('中文/文件.txt')!.data.toString('utf8'), '内容');
+  assert.deepStrictEqual([...zip.get('random.bin')!.data], [0, 1, 2, 250, 251]);
 });
 
 test('zip writer output is byte-identical across runs', () => {
@@ -226,7 +235,7 @@ test('zip reader rejects non-zip input', () => {
 
 test('the workbook part is declared, or Microsoft Excel refuses the file', () => {
   const buf = writeSimpleSheet({ rows: [['a'], ['b']] });
-  const types = readZip(buf).get('[Content_Types].xml').data.toString('utf8');
+  const types = readZip(buf).get('[Content_Types].xml')!.data.toString('utf8');
   assert.match(
     types,
     /<Override PartName="\/xl\/workbook\.xml" ContentType="application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet\.main\+xml"\/>/,

@@ -18,6 +18,7 @@ import assert from 'node:assert';
 
 import { normalizeSpec, writeSpec, dateToSerial } from '../../src/workbook/workbook.ts';
 import { specPreview, sheetPreview } from '../../src/workbook/preview.ts';
+import type { WorkbookSpec } from '../../src/workbook/workbook.ts';
 
 /** A spec exercising every type, including the ones that need converting. */
 const SPEC = {
@@ -57,7 +58,7 @@ test('sheetPreview: the date serial resolves to the date that was written', () =
   // Checked against the epoch directly, not through dateToSerial: if that
   // helper were off by a day, the test above would agree with it.
   const serial = sheetPreview(writeSpec(norm()), '明细').rows[1][2];
-  const back = new Date(Date.UTC(1899, 11, 30) + Math.round(serial * 86400000));
+  const back = new Date(Date.UTC(1899, 11, 30) + Math.round((serial as number) * 86400000));
   assert.strictEqual(back.toISOString().slice(0, 10), '2026-01-08');
 });
 
@@ -122,7 +123,8 @@ test('specPreview and sheetPreview agree cell for cell', () => {
 });
 
 test('specPreview: an empty spec is an empty grid, not a throw', () => {
-  for (const input of [null, {}, { sheets: [] }]) {
+  // Incomplete on purpose: what a session holds before its first table.
+  for (const input of [null, {}, { sheets: [] }] as (WorkbookSpec | null)[]) {
     const p = specPreview(input);
     assert.deepStrictEqual(p.rows, []);
     assert.deepStrictEqual(p.formats, []);

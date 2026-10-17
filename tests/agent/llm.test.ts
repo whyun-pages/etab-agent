@@ -20,6 +20,8 @@ import path from 'node:path';
 import { Settings, mask } from '../../src/store/settings.ts';
 import { chat, LlmError, toLlmError, stripReasoning, imagePart, createClocks } from '../../src/agent/llm.ts';
 import { modelFromSecrets } from '../../src/agent/model.ts';
+import type { SettingsPatch } from '../../src/store/settings.ts';
+import type { Clocks } from '../../src/agent/llm.ts';
 
 function scratch() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'tab-agent-settings-'));
@@ -46,7 +48,8 @@ test('a corrupt settings file does not break startup', async () => {
 test('save then load round-trips, and unknown keys are dropped', async () => {
   const dir = scratch();
   const store = new Settings(dir);
-  await store.save({ apiKey: 'sk-test-abcdef123456', model: 'gpt-4o-mini', evil: 'ignored' });
+  // The unknown key is the point: save must drop what SettingsPatch does not name.
+  await store.save({ apiKey: 'sk-test-abcdef123456', model: 'gpt-4o-mini', evil: 'ignored' } as SettingsPatch);
   const reread = await new Settings(dir).load();
   assert.equal(reread.apiKey, 'sk-test-abcdef123456');
   assert.ok(!('evil' in reread), 'unknown key must not be persisted');
@@ -136,10 +139,11 @@ test('modelFromSecrets builds a custom model with conservative OpenAI compat', (
 // stub that returns a finished string exercises.
 
 import http from 'node:http';
+import type { AddressInfo } from 'node:net';
 
 /** Serve one scripted response per request; `script(res, req)` writes it. */
-function sseServer(t, script) {
-  const seen = [];
+function sseServer(t, script): Promise<{ creds: { baseUrl: string; apiKey: string; model: string }; seen: any[] }> {
+  const seen: any[] = [];
   const server = http.createServer((req, res) => {
     let raw = '';
     req.on('data', (c) => {
@@ -157,7 +161,11 @@ function sseServer(t, script) {
         server.close();
       });
       resolve({
-        creds: { baseUrl: `http://127.0.0.1:${server.address().port}/v1`, apiKey: 'sk-test', model: 'm' },
+        creds: {
+          baseUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}/v1`,
+          apiKey: 'sk-test',
+          model: 'm',
+        },
         seen,
       });
     });
@@ -168,7 +176,7 @@ function sseServer(t, script) {
 // port a previous one just released; a pooled keep-alive socket to the old
 // server would take the new request and fail it.
 const sseHead = (res) => res.writeHead(200, { 'content-type': 'text/event-stream', connection: 'close' });
-const delta = (d, finish = null) =>
+const delta = (d, finish: string | null = null) =>
   `data: ${JSON.stringify({ id: 'c1', object: 'chat.completion.chunk', created: 0, model: 'm', choices: [{ index: 0, delta: d, finish_reason: finish }] })}\n\n`;
 const done = (res) => res.end(delta({}, 'stop') + 'data: [DONE]\n\n');
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -214,7 +222,7 @@ test('an HTTP error surfaces the status and the provider message', async (t) => 
   });
   await assert.rejects(
     () => chat({ credentials: creds, messages: [{ role: 'user', content: 'x' }] }),
-    (err) => {
+    (err: any) => {
       assert.ok(err instanceof LlmError);
       assert.equal(err.status, 401);
       assert.match(err.message, /模型服务返回 401/);
@@ -228,7 +236,7 @@ test('a refused connection is reported as a connection problem', async (t) => {
   // Bind a port, then close it: nothing listens there now.
   const probe = http.createServer();
   await new Promise((r) => listenLocal(probe).then(r));
-  const port = probe.address().port;
+  const port = (probe.address() as AddressInfo).port;
   await new Promise((r) => probe.close(r));
   await assert.rejects(
     () =>
@@ -236,7 +244,7 @@ test('a refused connection is reported as a connection problem', async (t) => {
         credentials: { baseUrl: `http://127.0.0.1:${port}/v1`, apiKey: 'k', model: 'm' },
         messages: [{ role: 'user', content: 'x' }],
       }),
-    (err) => {
+    (err: any) => {
       assert.equal(err.code, 'network', err.message);
       assert.match(err.message, /无法连接模型服务/);
       return true;
@@ -247,11 +255,11 @@ test('a refused connection is reported as a connection problem', async (t) => {
 test('missing credentials are refused before any request is made', async () => {
   await assert.rejects(
     () => chat({ credentials: { baseUrl: 'u', apiKey: '', model: 'm' }, messages: [] }),
-    (err) => err.code === 'no-key',
+    (err: any) => err.code === 'no-key',
   );
   await assert.rejects(
     () => chat({ credentials: { baseUrl: '', apiKey: 'k', model: 'm' }, messages: [] }),
-    (err) => err.code === 'no-base-url',
+    (err: any) => err.code === 'no-base-url',
   );
 });
 
@@ -294,7 +302,7 @@ test('a stream that goes quiet is aborted by the idle clock, not the total one',
   });
   await assert.rejects(
     () => chat({ credentials: creds, messages: [{ role: 'user', content: 'x' }], idleTimeoutMs: 150, timeoutMs: 5000 }),
-    (err) => {
+    (err: any) => {
       assert.ok(err instanceof LlmError);
       assert.equal(err.code, 'aborted');
       assert.match(err.message, /没有任何输出/);
@@ -322,7 +330,13 @@ test('createClocks: touch(ms) arms that window for the next silence only', async
 });
 
 test('toLlmError: an idle abort quotes the window that fired, not the default', () => {
-  const clocks = { reason: () => 'idle', idleWindowMs: () => 180_000, idleTimeoutMs: 60_000, timeoutMs: 300_000 };
+  // Only what toLlmError reads; the signal and timers are not part of the message.
+  const clocks = {
+    reason: () => 'idle',
+    idleWindowMs: () => 180_000,
+    idleTimeoutMs: 60_000,
+    timeoutMs: 300_000,
+  } as unknown as Clocks;
   const err = toLlmError({ stopReason: 'aborted' }, clocks);
   assert.match(err.message, /模型 180 秒没有任何输出/);
 });
@@ -335,7 +349,7 @@ test('a stream that never stops still ends at the total cap', async (t) => {
   });
   await assert.rejects(
     () => chat({ credentials: creds, messages: [{ role: 'user', content: 'x' }], idleTimeoutMs: 200, timeoutMs: 400 }),
-    (err) => /请求超时/.test(err.message),
+    (err: any) => /请求超时/.test(err.message),
   );
 });
 
@@ -349,7 +363,7 @@ test('the caller can cancel', async (t) => {
   await assert.rejects(
     () =>
       chat({ credentials: creds, messages: [{ role: 'user', content: 'x' }], timeoutMs: 5000, signal: ctrl.signal }),
-    (err) => err.code === 'aborted' && /已取消/.test(err.message),
+    (err: any) => err.code === 'aborted' && /已取消/.test(err.message),
   );
 });
 
@@ -391,6 +405,6 @@ test('a provider that ignores stream:true is an error, not an empty answer', asy
   });
   await assert.rejects(
     () => chat({ credentials: creds, messages: [{ role: 'user', content: 'x' }], timeoutMs: 3000 }),
-    (err) => err.code === 'empty' && /流式输出/.test(err.message),
+    (err: any) => err.code === 'empty' && /流式输出/.test(err.message),
   );
 });

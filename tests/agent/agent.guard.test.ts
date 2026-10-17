@@ -40,6 +40,7 @@ test('looksLikeWork: a question ABOUT the table is still a question', () => {
 test('looksLikeWork: empty and whitespace are not work', () => {
   assert.strictEqual(looksLikeWork(''), false);
   assert.strictEqual(looksLikeWork('   '), false);
+  // @ts-expect-error -- null is the point: a missing message is not work either
   assert.strictEqual(looksLikeWork(null), false);
 });
 
@@ -180,7 +181,7 @@ test('runTurn: dropping rows passes when the user asked for it', async () => {
     spec: specWith(SPEC_3_ROWS.sheets[0].rows),
   });
   assert.strictEqual(res.intent, INTENT.ACTION);
-  assert.deepStrictEqual(res.spec.sheets[0].rows, [['甲', 100]]);
+  assert.deepStrictEqual(res.spec!.sheets[0].rows, [['甲', 100]]);
 });
 
 test('runTurn: notes from normalisation are passed through', async () => {

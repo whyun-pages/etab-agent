@@ -12,6 +12,8 @@
  * sockets. So: take the port, and if it is one fetch refuses, take another.
  */
 
+import type { Server, AddressInfo } from 'node:net';
+
 // https://fetch.spec.whatwg.org/#port-blocking
 const BAD_PORTS = new Set([
   1, 7, 9, 11, 13, 15, 17, 19, 20, 21, 22, 23, 25, 37, 42, 43, 53, 69, 77, 79, 87, 95, 101, 102, 103, 104, 109, 110,
@@ -21,16 +23,16 @@ const BAD_PORTS = new Set([
 ]);
 
 /** Resolves with the port once `server` listens on one fetch accepts. */
-async function listenLocal(server, host = '127.0.0.1') {
+async function listenLocal(server: Server, host = '127.0.0.1'): Promise<number> {
   for (;;) {
-    await new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       server.once('error', reject);
       server.listen(0, host, () => {
         server.off('error', reject);
         resolve();
       });
     });
-    const { port } = server.address();
+    const { port } = server.address() as AddressInfo;
     if (!BAD_PORTS.has(port)) return port;
     await new Promise((resolve) => server.close(resolve));
   }

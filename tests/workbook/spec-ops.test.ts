@@ -550,5 +550,5 @@ test('add_rows past the row cap is refused, and the existing rows are kept', () 
     () => applyOp(full, { op: 'add_rows', args: { sheet: 'S', before: 1, rows: [['new']] } }),
     (err) => err instanceof SpecOpError && /超过每个工作表 \d+ 行的上限/.test(err.message),
   );
-  assert.strictEqual(String(full.sheets[0].rows.at(-1)[0]), String(MAX_ROWS - 1), 'the last row is still there');
+  assert.strictEqual(String(full.sheets[0].rows.at(-1)![0]), String(MAX_ROWS - 1), 'the last row is still there');
 });

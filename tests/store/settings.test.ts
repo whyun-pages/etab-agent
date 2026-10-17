@@ -15,6 +15,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { Settings } from '../../src/store/settings.ts';
+import type { SettingsPatch } from '../../src/store/settings.ts';
 
 function scratch(t) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'settings-test-'));
@@ -33,7 +34,8 @@ test('a fresh directory loads defaults and is not configured', async (t) => {
 test('save -> load round-trips, drops unknown keys, writes one file', async (t) => {
   const dir = scratch(t);
   const store = new Settings(dir);
-  await store.save({ apiKey: 'sk-test-abcdef123456', model: 'gpt-4o-mini', evil: 'ignored' });
+  // The unknown key is the point: save must drop what SettingsPatch does not name.
+  await store.save({ apiKey: 'sk-test-abcdef123456', model: 'gpt-4o-mini', evil: 'ignored' } as SettingsPatch);
 
   const reread = await new Settings(dir).load();
   assert.strictEqual(reread.apiKey, 'sk-test-abcdef123456');
@@ -75,7 +77,7 @@ test('concurrent saves apply in call order and lose none', async (t) => {
           : Boolean(i % 2);
 
   const expected = {};
-  const ops = [];
+  const ops: Promise<unknown>[] = [];
   for (let i = 0; i < 20; i++) {
     const k = keys[i % keys.length];
     expected[k] = valueFor(k, i);

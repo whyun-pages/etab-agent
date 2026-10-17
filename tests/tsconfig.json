@@ -1,17 +1,26 @@
 {
-  // For the editor and for an opt-in `tsc -p tests`. The suite itself runs
-  // through tsx, which strips types without checking them, so nothing here
-  // gates `pnpm test`.
+  // `pnpm typecheck` runs this after the root config; CI runs both. The suite
+  // itself runs through tsx, which strips types without checking them, so
+  // this is the only place the tests are type-checked.
   //
-  // Not strict, unlike the root config: these files were JavaScript until the
-  // move to src/, and typing 6,700 lines of fixtures and fake transports is
-  // its own piece of work. Without this file the editor would still resolve
-  // `../src/x.ts`, but flag every import for its `.ts` extension.
+  // Strict, like the root config, with two exceptions:
+  //
+  // - noImplicitAny is off. A callback parameter in a fixture or a fake
+  //   transport (`(req, res) => ...`, `(m) => m.role`) would otherwise need
+  //   an annotation that says nothing the call site does not.
+  // - useUnknownInCatchVariables is off. A test's catch reads `err.message`
+  //   or `err.code` to assert on it; narrowing first would be ceremony.
+  //
+  // The rest of strict stays on, and it has to: the tests pull src/ into this
+  // program, and src/ is only correct under strictNullChecks. With strict off,
+  // `null` and `undefined` vanish from every type, and src/ itself stops
+  // type-checking.
   "extends": "../tsconfig.json",
   "compilerOptions": {
     "noEmit": true,
     "rootDir": "..",
-    "strict": false
+    "noImplicitAny": false,
+    "useUnknownInCatchVariables": false
   },
   "include": ["**/*.ts"]
 }

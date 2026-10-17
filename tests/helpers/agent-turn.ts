@@ -10,12 +10,13 @@
 import { runTurn } from '../../src/agent/agent.ts';
 import { loadPi } from '../../src/agent/pi.ts';
 import { normalizeSpec } from '../../src/workbook/workbook.ts';
+import type { AgentSettings, RunTurnArgs, TurnResult } from '../../src/agent/types.ts';
 
 /** A settings object that claims to be configured. */
-export function fakeSettings() {
+export function fakeSettings(): AgentSettings {
   return {
-    isConfigured: () => true,
-    secrets: () => ({ api: 'openai-completions', baseUrl: 'http://127.0.0.1/v1', apiKey: 'k', model: 'm' }),
+    isConfigured: async () => true,
+    secrets: async () => ({ api: 'openai-completions', baseUrl: 'http://127.0.0.1/v1', apiKey: 'k', model: 'm' }),
   };
 }
 
@@ -23,7 +24,7 @@ export function fakeSettings() {
 // file. One faux provider per test file (each runs in its own process); each
 // test replaces its script. It is registered in the app's own stream table
 // (src/agent/pi.ts), the way a protocol is.
-let pi = null;
+let pi: { ai: typeof import('@earendil-works/pi-ai'); faux: any } | null = null;
 export async function loadFaux() {
   if (!pi) {
     const ai = await import('@earendil-works/pi-ai');
@@ -65,9 +66,12 @@ export function step(ai, s) {
  * Run one turn against a script. The contexts the model was sent are kept on
  * the result, so a test can inspect the prompt and the tools offered.
  */
-export async function turnWith(steps, args) {
+export async function turnWith(
+  steps: unknown[],
+  args: Omit<RunTurnArgs, 'settings'> & { settings?: AgentSettings },
+): Promise<TurnResult & { contexts: any[] }> {
   const { ai, faux } = await loadFaux();
-  const contexts = [];
+  const contexts: any[] = [];
   faux.setResponses(
     steps.map((s) => (context) => {
       contexts.push(view(ai, context));
@@ -75,8 +79,7 @@ export async function turnWith(steps, args) {
     }),
   );
   const res = await runTurn({ settings: fakeSettings(), model: faux.getModel(), ...args });
-  res.contexts = contexts;
-  return res;
+  return { ...res, contexts };
 }
 
 export const SPEC_3_ROWS = {
@@ -97,7 +100,7 @@ export const SPEC_3_ROWS = {
   ],
 };
 
-export const specWith = (rows) =>
+export const specWith = (rows: unknown[][]) =>
   normalizeSpec({
     ...SPEC_3_ROWS,
     sheets: [{ ...SPEC_3_ROWS.sheets[0], rows }],

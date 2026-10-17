@@ -94,7 +94,7 @@ test('xlsx of one named sheet is a workbook of that sheet; unnamed is the whole 
 });
 
 test('the same spec exports to the same bytes', () => {
-  for (const format of ['xlsx', 'csv', 'json']) {
+  for (const format of ['xlsx', 'csv', 'json'] as const) {
     const a = exportSpec(spec(), { format });
     const b = exportSpec(spec(), { format });
     assert.deepStrictEqual(
@@ -107,6 +107,7 @@ test('the same spec exports to the same bytes', () => {
 
 test('an unknown sheet or format, or no table at all, is refused', () => {
   assert.throws(() => exportSpec(spec(), { format: 'csv', sheet: '没有' }), ExportError);
+  // @ts-expect-error -- an unsupported format is the input under test
   assert.throws(() => exportSpec(spec(), { format: 'pdf' }), ExportError);
   assert.throws(() => exportSpec({ title: 'x', sheets: [] }, { format: 'csv' }), ExportError);
 });
