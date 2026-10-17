@@ -1430,9 +1430,9 @@ function readAttachmentPart(att: Attachment, a: Record<string, unknown>): string
   }
 
   const sheets =
-    att.sheets && att.sheets.length > 1
+    (att.sheets && att.sheets.length > 1
       ? `\n文件里有多个工作表：${att.sheets.map((s) => s.sheet).join('、')}；下面是「${t.sheet}」。`
-      : '';
+      : '') + (att.note ? `\n（${att.note}）` : '');
   const total = t.rows.length;
   const from = Math.max(1, Math.trunc(Number(a.from) || 1));
   const to = Math.min(total, Math.trunc(Number(a.to) || from + ATTACH_PAGE_ROWS - 1), from + ATTACH_PAGE_ROWS - 1);
@@ -1460,7 +1460,8 @@ function describeLoaded(att: Attachment): string {
       .slice(0, 3)
       .map((r) => r.map(cellText).join('\t'))
       .join(' / ');
-    return `${att.name}：表格 ${t.rows.length} 行${sheets}；列：${t.header.join('、')}${sample ? `；前几行：${sample.slice(0, 300)}` : ''}`;
+    const note = att.note ? `（${att.note}）` : '';
+    return `${att.name}：表格 ${t.rows.length} 行${sheets}${note}；列：${t.header.join('、')}${sample ? `；前几行：${sample.slice(0, 300)}` : ''}`;
   }
   const text = String(att.text || '');
   if (text) return `${att.name}：文本 ${text.length} 字；开头：${text.slice(0, 300).replace(/\s+/g, ' ')}`;

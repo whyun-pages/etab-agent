@@ -872,6 +872,12 @@ function workbookAttachment(
   const sheets = parsedSheets.map((s) => matrixToTable(sheetToMatrix(s), { sheetName: s.name }));
   const primary = sheet ? sheets.find((t) => t.sheet === sheet) : null;
   const chosen = primary || sheets.find((t) => t.rows.length) || sheets[0] || null;
+  // Rows cut by the grid limit are said out loud: a count or a sum over this
+  // table would otherwise be silently short.
+  const cut = parsedSheets
+    .map((s) => ({ name: s.name, dropped: gridSize(s).droppedRows }))
+    .filter((s) => s.dropped > 0)
+    .map((s) => `「${s.name}」末尾 ${s.dropped} 行`);
   return {
     kind: 'table',
     name: filename,
@@ -880,6 +886,11 @@ function workbookAttachment(
     table: chosen,
     rows: chosen ? chosen.rows : [],
     header: chosen ? chosen.header : [],
+    ...(cut.length
+      ? {
+          note: `${filename} 太大，超过 ${MATRIX_MAX_CELLS} 个单元格的读取上限，${cut.join('、')}没有读取。`,
+        }
+      : {}),
   };
 }
 
@@ -1086,22 +1097,53 @@ function flattenValue(v: unknown): CellValue {
 }
 
 /** Convert a parsed sheet into a dense matrix, using cached formula values. */
-export function sheetToMatrix(sheet: import('./xlsx.ts').ParsedSheet): CellValue[][] {
-  const maxRow = Math.max(sheet.maxRow || 0, 1);
-  const maxCol = Math.max(sheet.maxCol || 0, 1);
-  const grid: CellValue[][] = Array.from({ length: maxRow }, () => new Array<CellValue>(maxCol).fill(null));
+export function sheetToMatrix(sheet: import('./xlsx.ts').ParsedSheet, maxCells = MATRIX_MAX_CELLS): CellValue[][] {
+  const { rows, cols } = gridSize(sheet, maxCells);
+  const grid: CellValue[][] = Array.from({ length: rows }, () => new Array<CellValue>(cols).fill(null));
   for (const c of sheet.cells || []) {
-    if (!c.row || !c.col) continue;
-    if (c.row > maxRow || c.col > maxCol) continue;
-    const raw = c.value;
-    let v: CellValue;
-    if (raw && typeof raw === 'object') {
-      if ('formula' in raw) v = (raw.cached ?? null) as CellValue;
-      else v = null;
-    } else {
-      v = raw;
-    }
-    grid[c.row - 1][c.col - 1] = v;
+    if (!c.row || !c.col || c.row > rows || c.col > cols) continue;
+    grid[c.row - 1][c.col - 1] = matrixValue(c.value);
   }
   return grid;
+}
+
+/**
+ * The most cells a sheet is laid out onto. A dense grid is what the table
+ * reader wants, and it is allocated up front, so its size has to come from
+ * something the file cannot inflate for free.
+ */
+export const MATRIX_MAX_CELLS = 2_000_000;
+
+/** A parsed cell's value as the grid holds it: a formula by its cached result, an error as empty. */
+function matrixValue(raw: import('./xlsx.ts').ParsedCell['value']): CellValue {
+  if (raw && typeof raw === 'object') return 'formula' in raw ? ((raw.cached ?? null) as CellValue) : null;
+  return raw;
+}
+
+/**
+ * How big the grid for `sheet` is: the span of cells that hold a VALUE, then
+ * cut to `maxCells` by dropping rows from the bottom.
+ *
+ * Not the sheet's `maxRow`/`maxCol`. Those count every <row> and <c> element,
+ * and an ordinary workbook with a column formatted to the bottom carries
+ * `<row r="1048576">`: the grid was a million rows of nothing, allocated
+ * before a single value was read. And a 572-byte file with one value in
+ * XFD1048576 asked for 1.7e10 cells.
+ */
+export function gridSize(
+  sheet: import('./xlsx.ts').ParsedSheet,
+  maxCells = MATRIX_MAX_CELLS,
+): { rows: number; cols: number; droppedRows: number } {
+  let spanRows = 0;
+  let spanCols = 0;
+  for (const c of sheet.cells || []) {
+    if (!c.row || !c.col) continue;
+    const v = matrixValue(c.value);
+    if (v === null || v === '') continue;
+    if (c.row > spanRows) spanRows = c.row;
+    if (c.col > spanCols) spanCols = c.col;
+  }
+  const cols = Math.max(spanCols, 1);
+  const rows = Math.max(1, Math.min(spanRows, Math.floor(maxCells / cols)));
+  return { rows, cols, droppedRows: Math.max(0, spanRows - rows) };
 }

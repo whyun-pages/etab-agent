@@ -471,7 +471,9 @@ function attachmentContext(uploads: UploadedAttachment[]): string {
       const cols = ((a.columns as Array<{ label: string }> | undefined) || []).map((c) => c.label).join('、');
       const rows = ((a.preview as unknown[][] | undefined) || []).map((r) => r.join('\t')).join('\n');
       const more = a.rowCount ? `（共 ${a.rowCount} 行，下面只给前几行；全部内容用 read_attachment 读取）` : '';
-      return `${head}${more}\n列：${cols}\n${rows}`;
+      // A table's note says what was NOT read (rows past the grid limit).
+      const note = a.note ? `\n（${a.note}）` : '';
+      return `${head}${more}${note}\n列：${cols}\n${rows}`;
     }
     if (a.textPreview) {
       const full = String(u.text || '').length;

@@ -15,6 +15,7 @@ import {
   markupToText,
   sniffKind,
   sheetToMatrix,
+  gridSize,
   ingestFile,
 } from '../../src/formats/attachments.ts';
 
@@ -321,6 +322,44 @@ test('sheetToMatrix lays cells onto a dense grid using cached values', () => {
     ['a', null, 'c'],
     [null, 5, 10],
   ]);
+});
+
+test('the grid spans the cells that hold values, not the declared dimension', () => {
+  // A column formatted to the bottom of the sheet declares row 1048576 with
+  // nothing in it. The grid was sized from that: a million empty rows,
+  // allocated before a value was read.
+  const size = gridSize({
+    maxRow: 1048576,
+    maxCol: 3,
+    cells: [
+      { row: 1, col: 1, value: '名称' },
+      { row: 2, col: 1, value: '甲' },
+      { row: 1048576, col: 3, value: null },
+      { row: 900000, col: 2, value: '' },
+    ],
+  });
+  assert.deepStrictEqual(size, { rows: 2, cols: 1, droppedRows: 0 });
+});
+
+test('a tiny file cannot ask for a huge grid; what is cut is said', async () => {
+  // One value in the last cell of the sheet: 572 bytes asked for 1.7e10 cells.
+  const buf = writeWorkbook({
+    sheets: [
+      {
+        name: 'S',
+        cells: [
+          { ref: 'A1', value: '名称' },
+          { ref: 'XFD1048576', value: 'x' },
+        ],
+      },
+    ],
+  });
+  const started = Date.now();
+  const att = await readAttachment(buf, 'bomb.xlsx');
+  assert.ok(Date.now() - started < 2000, `took ${Date.now() - started} ms`);
+  assert.strictEqual(att.kind, 'table');
+  assert.match(att.note, /读取上限/);
+  assert.match(att.note, /「S」末尾 \d+ 行/);
 });
 
 test('markupToText keeps block structure', () => {
