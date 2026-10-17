@@ -351,9 +351,15 @@ interface DosStamp {
   time: number;
 }
 
+/**
+ * DOS date and time carry no time zone, so which one is a choice. UTC, so the
+ * bytes do not depend on the machine: with local getters the fixed default
+ * encoded 08:00 in Shanghai and 00:00 in UTC, and the same workbook came out
+ * different depending on where it was written.
+ */
 function dosStamp(ms?: number): DosStamp {
   const d = new Date(ms == null ? DEFAULT_MTIME : ms);
-  const date = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
-  const time = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1);
+  const date = ((d.getUTCFullYear() - 1980) << 9) | ((d.getUTCMonth() + 1) << 5) | d.getUTCDate();
+  const time = (d.getUTCHours() << 11) | (d.getUTCMinutes() << 5) | (d.getUTCSeconds() >> 1);
   return { date: date & 0xffff, time: time & 0xffff };
 }
