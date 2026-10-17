@@ -31,7 +31,7 @@
  * of work next to a model call.
  */
 
-import { normalizeSpec, validateSpec, TYPES } from './workbook.ts';
+import { MAX_ROWS, normalizeSpec, validateSpec, TYPES } from './workbook.ts';
 import type { CellValue, ColumnType, SpecNote, WorkbookSpec } from './workbook.ts';
 import { QueryError, selectRows, computeRows, describeFailures, cellText, isBlank } from './table-query.ts';
 import type { QueryTable, Selection } from './table-query.ts';
@@ -354,6 +354,15 @@ function addRows(spec: WorkbookSpec | null, args: Record<string, unknown>, ctx: 
   const sheet = findSheet(raw, args.sheet);
   const rows = list(args.rows).map((r) => rowCells(sheet, r));
   if (!rows.length) throw new SpecOpError('add_rows 没有给出任何行。');
+  // Refused here, not left to normalizeSpec: past MAX_ROWS it keeps the first
+  // rows and drops the rest, and with `before` the rows dropped are the
+  // user's own, pushed off the end — while the count stays at the cap, so the
+  // row-loss guard saw nothing.
+  if (sheet.rows.length + rows.length > MAX_ROWS) {
+    throw new SpecOpError(
+      `「${sheet.name}」已有 ${sheet.rows.length} 行，再加 ${rows.length} 行会超过每个工作表 ${MAX_ROWS} 行的上限；没有修改。`,
+    );
+  }
   const at = args.before === undefined || args.before === null ? sheet.rows.length : rowIndex(sheet, args.before);
   sheet.rows.splice(at, 0, ...rows);
   const where = at === sheet.rows.length - rows.length ? '末尾' : `第 ${at + 1} 行处`;

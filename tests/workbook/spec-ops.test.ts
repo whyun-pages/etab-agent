@@ -15,7 +15,7 @@ import test from 'node:test';
 import assert from 'node:assert';
 
 import { applyOp, applyOps, readRows, SpecOpError, OPS } from '../../src/workbook/spec-ops.ts';
-import { normalizeSpec } from '../../src/workbook/workbook.ts';
+import { normalizeSpec, MAX_ROWS } from '../../src/workbook/workbook.ts';
 
 const base = () =>
   normalizeSpec({
@@ -536,4 +536,19 @@ test('an op carries its own today, so a replay lands the same day', () => {
     r.notes.some((n) => /不是日期/.test(n.message)),
     JSON.stringify(r.notes),
   );
+});
+
+test('add_rows past the row cap is refused, and the existing rows are kept', () => {
+  // Inserting at the top of a full sheet used to succeed: normalizeSpec kept
+  // the first MAX_ROWS rows, so the user's own last rows fell off the end,
+  // and the count — still exactly at the cap — gave the guard nothing to see.
+  const full = normalizeSpec({
+    title: 't',
+    sheets: [{ name: 'S', columns: ['n'], rows: Array.from({ length: MAX_ROWS }, (_, i) => [i]) }],
+  }).spec;
+  assert.throws(
+    () => applyOp(full, { op: 'add_rows', args: { sheet: 'S', before: 1, rows: [['new']] } }),
+    (err) => err instanceof SpecOpError && /超过每个工作表 \d+ 行的上限/.test(err.message),
+  );
+  assert.strictEqual(String(full.sheets[0].rows.at(-1)[0]), String(MAX_ROWS - 1), 'the last row is still there');
 });
