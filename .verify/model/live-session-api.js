@@ -44,7 +44,7 @@ function check(label, ok, detail) {
 }
 const scrub = (s) =>
   String(s == null ? '' : s)
-    .replace(/sk-[A-Za-z0-9_\-]{6,}/g, 'sk-***')
+    .replace(/sk-[A-Za-z0-9_-]{6,}/g, 'sk-***')
     .replace(/\b[\w-]{40,}\b/g, '<long-token>');
 
 async function main() {

@@ -169,7 +169,9 @@ const PROBE = `(() => {
   if (b.scrollHeight > b.clientHeight + 1) {
     const kids = [...b.children].map((n) => {
       const tag = n.tagName.toLowerCase();
-      const cls = (n.className || '').toString().trim().split(/\s+/)[0];
+      // Doubled backslash: this is source inside a template string, where a
+      // single one is dropped and the browser would split on the letter s.
+      const cls = (n.className || '').toString().trim().split(/\\s+/)[0];
       const r = n.getBoundingClientRect();
       return { name: tag + (cls ? '.' + cls : ''), top: Math.round(r.top), bottom: Math.round(r.bottom), h: Math.round(r.height) };
     });

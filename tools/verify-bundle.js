@@ -59,7 +59,7 @@ async function main() {
   console.log(`     ${r.inputs} inputs, ${r.bytes} bytes`);
   console.log(`     externals: ${r.externals.join(', ')}`);
   check('bundle is non-trivial', r.bytes > 20000, `${r.bytes} bytes`);
-  const unexplained = r.thirdParty.filter((s) => !Object.prototype.hasOwnProperty.call(OPTIONAL, s));
+  const unexplained = r.thirdParty.filter((s) => !Object.hasOwn(OPTIONAL, s));
   check('every non-builtin external is a known optional package', unexplained.length === 0, unexplained.join(', '));
   for (const s of r.thirdParty.filter((x) => OPTIONAL[x])) console.log(`     optional: ${s} — ${OPTIONAL[s]}`);
   for (const w of r.warnings) console.log(`     warning: ${w}`);

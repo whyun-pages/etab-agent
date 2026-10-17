@@ -36,11 +36,11 @@ const { createServer } = require(path.join(ROOT, 'src', 'http', 'server.ts'));
 const { modelFromTransport } = require('../support/transport-model');
 const { openPage, closePage, findEdge, sleep } = require('../support/cdp.js');
 
-let passed = 0;
+let _passed = 0;
 let failed = 0;
 function check(name, ok, detail) {
   if (ok) {
-    passed += 1;
+    _passed += 1;
     console.log(`  ok    ${name}`);
   } else {
     failed += 1;
@@ -146,7 +146,7 @@ async function main() {
       const target = el.closest(${JSON.stringify(sel)});
       return (target ? 'yes' : 'no') + ' | ' + el.tagName + '.' + (el.className || '');
     })()`);
-    async function clickSel(sel) {
+    const clickSel = async (sel) => {
       const box = await boxOf(sel);
       if (!box) return false;
       await page.send('Input.dispatchMouseEvent', {
@@ -173,7 +173,7 @@ async function main() {
       });
       await sleep(300);
       return true;
-    }
+    };
 
     // ── 1. new session ─────────────────────────────────────────────────
     const railBefore = await page.evaluate('document.querySelectorAll(".rail__item").length');

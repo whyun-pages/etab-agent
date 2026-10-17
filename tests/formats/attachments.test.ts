@@ -12,12 +12,9 @@ import {
   detectHeaderRow,
   coerce,
   columnType,
-  docxText,
   markupToText,
   sniffKind,
-  imageDimensions,
   sheetToMatrix,
-  jsonToTable,
   ingestFile,
 } from '../../src/formats/attachments.ts';
 

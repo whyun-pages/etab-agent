@@ -12,7 +12,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const ROOT = path.join(__dirname, '..', '..');
 const OUT = path.join(__dirname, '..', 'out');
 const ExcelJS = require('exceljs');
 const { openPage, closePage, findEdge } = require('../support/cdp.js');

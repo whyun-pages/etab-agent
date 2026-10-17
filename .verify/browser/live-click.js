@@ -90,7 +90,6 @@ async function main() {
   }
 
   const composerText = () => page.evaluate('(document.querySelector(".composer__input") || {}).value || ""');
-  const activeId = () => page.evaluate('window.__state ? window.__state.activeId : null');
 
   // ── 1. chips exist, and one responds to a real click ───────────────
   const chips = await page.evaluate('document.querySelectorAll(".chat__idea").length');

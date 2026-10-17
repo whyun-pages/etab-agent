@@ -68,7 +68,6 @@ async function main() {
   });
 
   let page = null;
-  let server = null;
   try {
     const health = await waitForHealth();
     check('packaged exe booted and answered /api/health', !!health, 'no health response');
@@ -115,16 +114,16 @@ async function main() {
       return el.className + ' | closest(.rail__del)=' + (del ? 'yes' : 'no') + ' | tag=' + el.tagName;
     })()`);
 
-    async function moveTo(x, y) {
+    const moveTo = async (x, y) => {
       await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, button: 'none', clickCount: 0 });
       await sleep(120);
-    }
-    async function clickAt(x, y) {
+    };
+    const clickAt = async (x, y) => {
       await moveTo(x, y);
       await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 });
       await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 });
       await sleep(300);
-    }
+    };
     const rowBoxOf = (title) =>
       page
         .evaluate(`(() => {

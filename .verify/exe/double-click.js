@@ -24,7 +24,6 @@
 
 const path = require('node:path');
 const fs = require('node:fs');
-const os = require('node:os');
 const http = require('node:http');
 const { spawn, execFileSync } = require('node:child_process');
 
@@ -144,20 +143,18 @@ async function main() {
   }
   const aArgs = USE_EXE ? [path.join(SHADOW, 'TabAgent.exe')] : [path.join(ROOT, '.build', 'js', 'desktop.js')];
 
-  const base = `"${aFile}" ${aArgs.map((a) => `"${a}"`).join(' ')}`;
-
   console.log('\n=== A) first launch, DEFAULT path (no --port; --headless so no window) ===');
   // A runs headless: the handoff logic under test does not depend on A owning a
   // window, and this keeps the desktop free of a stray window.
   const a = spawn(aFile, [...aArgs, '--headless', '--data-dir', DATA], {
     stdio: ['ignore', 'pipe', 'pipe'],
   });
-  let aOut = '';
+  let _aOut = '';
   a.stdout.on('data', (d) => {
-    aOut += d.toString();
+    _aOut += d.toString();
   });
   a.stderr.on('data', (d) => {
-    aOut += d.toString();
+    _aOut += d.toString();
   });
   let aExitedAt = null;
   a.on('exit', () => {

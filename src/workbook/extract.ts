@@ -113,7 +113,6 @@ export function parseChineseNumber(text: string): number | null {
       total += (section + number) * 1e8;
       section = 0;
       number = 0;
-      continue;
     }
   }
   return total + section + number;

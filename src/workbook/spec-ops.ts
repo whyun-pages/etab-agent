@@ -676,7 +676,7 @@ export const OPS: Record<string, (spec: WorkbookSpec | null, args: Record<string
 
 /** Apply one recorded operation. */
 export function applyOp(spec: WorkbookSpec | null, op: SpecOp): OpResult {
-  const fn = Object.prototype.hasOwnProperty.call(OPS, op.op) ? OPS[op.op] : undefined;
+  const fn = Object.hasOwn(OPS, op.op) ? OPS[op.op] : undefined;
   if (!fn) throw new SpecOpError(`未知的操作「${op.op}」`);
   return fn(spec, op.args || {});
 }

@@ -17,7 +17,6 @@
 
 const path = require('node:path');
 const fs = require('node:fs');
-const os = require('node:os');
 const http = require('node:http');
 const { spawn } = require('node:child_process');
 const { execFileSync } = require('node:child_process');

@@ -39,10 +39,21 @@
         "noExplicitAny": "off" // the few `any`s sit at untyped pi / Koa boundaries
       },
       "complexity": {
-        "useOptionalChain": "off" // `a && a.b` reads fine; rewriting 110 sites is churn
+        "useOptionalChain": "off", // `a && a.b` reads fine; rewriting 110 sites is churn
+        "useSimpleNumberKeys": "off" // BIFF record ids are written in hex, as the spec gives them
+      },
+      "correctness": {
+        "noUnusedFunctionParameters": "off" // positional callbacks: (req, res), (m, name)
       }
     }
   },
+  "overrides": [
+    {
+      // A port of pi's tools, kept close to upstream on purpose (see its header).
+      "includes": ["src/agent/pi-tools/**"],
+      "linter": { "rules": { "suspicious": { "noConfusingVoidType": "off" } } }
+    }
+  ],
   // Off for now: sorting imports reorders every file's header for no change in
   // behaviour. Turn it on in its own commit if wanted.
   "assist": { "enabled": true, "actions": { "source": { "organizeImports": "off" } } }

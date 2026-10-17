@@ -274,10 +274,10 @@ function formatNumber(v) {
  * from ¥ to $, which sweeps in %, &, ', (, ), *, + and more — so `0.00%`
  * matched "plain number" and the percent branch below never ran.
  */
-const NON_DATE = /^[#0,.\s%¥\$€£()\-+_]*$/;
+const NON_DATE = /^[#0,.\s%¥$€£()\-+_]*$/;
 
 /** The currency token in a format code, if it has one. */
-const CURRENCY = /[¥￥\$€£]/;
+const CURRENCY = /[¥￥$€£]/;
 
 /**
  * Render one cell the way the format code asks for.
@@ -341,7 +341,7 @@ function formatDate(d, fmt) {
   const p2 = (n) => String(n).padStart(2, '0');
   const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   if (/d-?mmm/i.test(fmt)) return `${day}-${MON[m - 1]}-${String(y).slice(2)}`;
-  if (/yyyy[-\/.]mm[-\/.]dd/i.test(fmt)) return `${y}-${p2(m)}-${p2(day)}`;
+  if (/yyyy[-/.]mm[-/.]dd/i.test(fmt)) return `${y}-${p2(m)}-${p2(day)}`;
   if (/^m\/d/i.test(fmt)) return `${m}/${day}/${y}`;
   return `${y}-${p2(m)}-${p2(day)}`;
 }

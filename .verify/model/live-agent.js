@@ -57,7 +57,7 @@ function check(label, ok, detail) {
 /** Never let key material into the output, whatever the provider echoes back. */
 function scrub(s) {
   const str = String(s == null ? '' : s);
-  return str.replace(/sk-[A-Za-z0-9_\-]{6,}/g, 'sk-***').replace(/\b[\w-]{40,}\b/g, '<long-token>');
+  return str.replace(/sk-[A-Za-z0-9_-]{6,}/g, 'sk-***').replace(/\b[\w-]{40,}\b/g, '<long-token>');
 }
 
 const settings = new Settings(DATA);

@@ -14,7 +14,6 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const os = require('node:os');
 const http = require('node:http');
 const { spawn } = require('node:child_process');
 
@@ -92,12 +91,12 @@ async function main() {
   console.log('\n=== 2) the endpoints answer on the running exe ===');
   fs.rmSync(DATA, { recursive: true, force: true });
   const child = spawn(EXE, ['--headless', '--port', '3241', '--data-dir', DATA], { stdio: ['ignore', 'pipe', 'pipe'] });
-  let out = '';
+  let _out = '';
   child.stdout.on('data', (d) => {
-    out += d.toString();
+    _out += d.toString();
   });
   child.stderr.on('data', (d) => {
-    out += d.toString();
+    _out += d.toString();
   });
   let dead = false;
   child.on('exit', () => {

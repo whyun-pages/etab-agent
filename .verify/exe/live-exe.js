@@ -6,7 +6,6 @@
 const http = require('node:http');
 
 const PORT = Number(process.argv[2] || 59431);
-const BASE = `http://127.0.0.1:${PORT}`;
 
 function request(method, path, body, headers = {}) {
   return new Promise((resolve, reject) => {

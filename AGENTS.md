@@ -167,6 +167,16 @@ run through tsx, so they never see `.build/js/`. `pnpm bundle` is what
 exercises the compiled tree — keep it after the tests in CI. `.verify/`
 scripts stay JavaScript and load the source with `require('tsx/cjs')`.
 
+## Formatting and lint
+
+Biome (`biome.jsonc`) owns formatting; do not hand-format against it. Run
+`pnpm format` before committing, or let VS Code do it on save
+(`.vscode/settings.json`). CI runs `biome ci .`, which fails on an unformatted
+file or a lint error. A rule that is switched off in `biome.jsonc` says why
+next to it; switch one back on in its own commit, with the fixes.
+
+A commit that only reformats goes into `.git-blame-ignore-revs`.
+
 ## Other conventions
 
 - **Erasable TypeScript only.** See `tsconfig.json` (`erasableSyntaxOnly`) and the

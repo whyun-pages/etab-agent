@@ -137,12 +137,12 @@ async function main() {
 
   console.log('\n=== A) headless server (no window) ===');
   const a = spawn(file, [...args, '--headless', '--data-dir', DATA], { stdio: ['ignore', 'pipe', 'pipe'] });
-  let aOut = '';
+  let _aOut = '';
   a.stdout.on('data', (d) => {
-    aOut += d.toString();
+    _aOut += d.toString();
   });
   a.stderr.on('data', (d) => {
-    aOut += d.toString();
+    _aOut += d.toString();
   });
   let aDead = false;
   a.on('exit', () => {

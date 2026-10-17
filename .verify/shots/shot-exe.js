@@ -4,10 +4,8 @@
  * Usage: node .verify/shots/shot-exe.js [port] [outName]
  */
 const fs = require('node:fs');
-const os = require('node:os');
 const path = require('node:path');
 
-const ROOT = path.join(__dirname, '..', '..');
 const OUT = path.join(__dirname, '..', 'out');
 const PORT = Number(process.argv[2] || 59431);
 const NAME = process.argv[3] || '18-exe-live';

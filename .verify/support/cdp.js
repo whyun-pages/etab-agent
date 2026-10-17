@@ -51,7 +51,7 @@ function getJson(port, urlPath) {
         const text = Buffer.concat(chunks).toString('utf8');
         try {
           resolve(JSON.parse(text));
-        } catch (err) {
+        } catch {
           reject(new Error(`bad JSON from ${urlPath}: ${text.slice(0, 120)}`));
         }
       });

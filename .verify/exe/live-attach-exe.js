@@ -28,11 +28,11 @@ const ROOT = path.join(__dirname, '..', '..');
 const OUT = path.join(__dirname, '..', 'out');
 const { openPage, closePage, findEdge, sleep } = require('../support/cdp.js');
 
-let passed = 0;
+let _passed = 0;
 let failed = 0;
 function check(name, ok, detail) {
   if (ok) {
-    passed += 1;
+    _passed += 1;
     console.log(`  ok    ${name}`);
   } else {
     failed += 1;

@@ -58,6 +58,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Formatting and lint, read-only: `biome ci` fails on an unformatted file
+      # or a lint error and never writes. Locally, `pnpm format` fixes both.
+      - name: Format and lint
+        run: pnpm exec biome ci .
+
       - name: Type-check
         run: pnpm run typecheck
 

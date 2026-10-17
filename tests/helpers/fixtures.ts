@@ -12,16 +12,12 @@
  */
 
 import zlib from 'node:zlib';
-import { readZip } from '../../src/formats/zip.ts';
-import { readWorkbook } from '../../src/formats/xlsx.ts';
 
 // ------------------------------------------------------------ raw ZIP builder
 const SIG_LOC = 0x04034b50;
 const SIG_CEN = 0x02014b50;
 const SIG_EOCD = 0x06054b50;
 const SIG_DD = 0x08074b50;
-const SIG_LOC64 = 0x07064b50;
-const SIG_EOCD64 = 0x06064b50;
 
 const CRC_TABLE = (() => {
   const t = new Int32Array(256);

@@ -78,7 +78,6 @@ function launch(extraArgs = []) {
 
 /** Kill the Edge renderer that owns our window profile. */
 function closeOurWindow() {
-  const marker = DATA.replace(/\\/g, '\\\\');
   const ps = `
 $p = Get-CimInstance Win32_Process -Filter "Name='msedge.exe'" |
      Where-Object { $_.CommandLine -like '*${DATA}*' }

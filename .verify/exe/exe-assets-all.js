@@ -92,10 +92,10 @@ async function main() {
   const refs = referencedKeys();
 
   console.log('=== public/ on disk (' + disk.length + ') ===');
-  disk.forEach((k) => console.log('   ' + k));
+  for (const k of disk) console.log('   ' + k);
 
   console.log('\n=== referenced by UI (' + refs.length + ') ===');
-  refs.forEach((k) => console.log('   ' + k));
+  for (const k of refs) console.log('   ' + k);
 
   const missing = refs.filter((r) => !disk.includes(r));
   console.log('\nreferenced but absent from public/: ' + (missing.length ? missing.join(', ') : 'none'));

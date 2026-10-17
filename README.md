@@ -315,6 +315,7 @@ git push origin v0.1.0
 
 ```powershell
 pnpm typecheck                   # tsc --noEmit
+pnpm lint                        # Biome：格式与 lint，只检查不改（pnpm format 会直接改好）
 pnpm test                        # 静态导入检查 + 核心测试（tsx 直接跑 src/，不用先编译）
 pnpm bundle                      # 合并器：外部依赖只剩内置模块和已知可选包；探针包拷到没有
                                  # node_modules 的临时目录里，真跑一次请求和一轮带工具调用的对话

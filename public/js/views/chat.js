@@ -17,7 +17,7 @@
         look like it ignored the request.
    ════════════════════════════════════════════════════════════════════ */
 
-import { el, esc } from '../dom.js';
+import { el } from '../dom.js';
 import { icon } from '../icons.js';
 import { composer, prepareComposer } from '../composer.js';
 
