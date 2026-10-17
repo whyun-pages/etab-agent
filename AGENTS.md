@@ -41,8 +41,8 @@ settings read.
 
 | Path | Applies? |
 |---|---|
-| `src/**` (except the two entries below) | **Yes** — this is the server, and it is the whole point |
-| `src/server.ts`, `src/desktop.ts` | **Yes** for anything after `listen()`; startup before the server is up may use sync |
+| `src/**` (except the entries below) | **Yes** — this is the server, and it is the whole point |
+| `src/server.ts`, `src/desktop.ts`, `src/desktop/**` | **Yes** for anything after `listen()`; startup before the server is up may use sync (and see the desktop note below) |
 | `tools/**` | No — one-shot build scripts, nothing is waiting on them |
 | `tests/**`, `.verify/**` | No — test setup and teardown may use sync; it is clearer that way |
 | `public/**` | No — browser code, no `fs` at all |
@@ -56,10 +56,11 @@ sync and add a comment saying why.
 finish before the module is usable stays sync — this is already the case in
 `src/formats/zip.ts` (building the CRC-32 lookup table) and is inherent, not a shortcut.
 
-**2. Atomic replace on shutdown.** Shutdown paths that must complete before the
-process exits cannot yield to the event loop. `src/desktop.ts` removes its
-`instance.json` in a `process.on('exit')` handler; an `await` there would simply
-never run.
+**2. Shutdown.** A shutdown path that must complete before the process exits
+cannot wait on the event loop. The desktop's `shutdown()` (src/desktop.ts,
+run from its SIGINT/SIGTERM/SIGHUP handlers and when the window closes)
+removes `instance.json` with `unlinkSync` and then schedules the exit; an
+`await` there could lose the race with that exit.
 
 **3. `src/platform/assets.ts` — synchronous by API shape.** `loadSea()`, `readAsset()` and
 `isPackaged()` are synchronous, and so is everything they call: `sea.getAsset()`
@@ -74,9 +75,12 @@ none. This is a decision, not an oversight.
 Everything else converts. If you believe a call site needs to stay sync and it is
 not one of the three above, say so in review rather than reaching for `*Sync`.
 
-`src/desktop.ts` keeps its remaining `*Sync` calls deliberately: they all run BEFORE
-`listen()` (resolving the Edge path, reading/writing `instance.json`, creating
-directories), which the table above already permits. `src/formats/zip.ts`'s
+The desktop entry (src/desktop.ts and src/desktop/) keeps its other `*Sync` calls
+deliberately. Most run BEFORE `listen()` — finding Edge, reading or clearing a
+stale `instance.json`, creating the data folder — which the table permits. Two
+run just after it, once per process: publishing `instance.json` and creating
+the window's profile folder. Both happen before the window that would send the
+first request exists, so nothing of the app's is waiting on them. `src/formats/zip.ts`'s
 `inflateRawSync`/`deflateRawSync` are pure CPU on in-memory buffers — `node:zlib`'s
 sync API is the only one that fits a synchronous `readZip`/`writeZip` contract,
 and no file descriptor is involved.

@@ -29,6 +29,7 @@ pnpm start --port 3179          # 先跑 tsc，再启动 .build/js/server.js
 ```
 src/
   cli.ts server.ts desktop.ts   入口：npm bin、HTTP 服务、桌面窗口
+  desktop/    桌面入口的各部分：参数、查找 Edge、单实例、窗口
   formats/    zip / xlsx / xlsx-writer / xls 编解码
   ingest/     把上传或抓取的文件读成文本或行：每种格式一个模块，ingest.ts 负责分发
   workbook/   spec 校验与落笔、编辑操作（spec-ops）、表查询、预览、导出
