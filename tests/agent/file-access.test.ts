@@ -111,3 +111,18 @@ test('performWrite: text only; creates folders, replaces whole, leaves no temp f
   await assert.rejects(performWrite({ path: path.join(s.docs, 'run.bat'), content: 'x' }, s.opts), /只能写文本类文件/);
   await assert.rejects(performWrite({ path: path.join(s.data, 'notes.txt'), content: 'x' }, s.opts), /禁止访问/);
 });
+
+test('readPath: a folder wider than the walk limit stops there, and says so', async (t) => {
+  // Depth was bounded, breadth was not: a wide tree was read in full. The
+  // limit is lowered through the seam, so the test needs 60 files, not 20,000.
+  const s = scratch(t);
+  const wide = path.join(s.docs, 'wide');
+  fs.mkdirSync(wide);
+  for (let i = 0; i < 60; i++) fs.writeFileSync(path.join(wide, `f${String(i).padStart(2, '0')}.csv`), 'a\n1\n');
+  const r = await readPath(wide, { ...s.opts, walkLimit: 50 });
+  assert.strictEqual(r.items.length, 50, 'the first 50 entries, in name order');
+  assert.ok(
+    r.skipped.some((p) => p.includes('超过 50 项')),
+    r.skipped.join('\n'),
+  );
+});

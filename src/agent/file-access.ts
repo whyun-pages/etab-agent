@@ -94,6 +94,8 @@ export interface FileAccessOptions {
   dataDir?: string;
   /** test seam for the home directory */
   home?: string;
+  /** test seam: entries a folder walk visits before stopping (WALK_MAX_ENTRIES) */
+  walkLimit?: number;
 }
 
 /** Home-relative locations that hold credentials or another program's secrets. */
@@ -228,28 +230,41 @@ function expandHome(p: string, home: string): string {
   return p;
 }
 
-/** `*` and `?` over a single name, case-insensitively. */
-function globMatch(pattern: string, name: string): boolean {
-  const re = new RegExp(
+/** `*` and `?` over a single name, case-insensitively, as a regex. */
+function globRegex(pattern: string): RegExp {
+  return new RegExp(
     `^${pattern
       .replace(/[.+^${}()|[\]\\]/g, '\\$&')
       .replace(/\*/g, '.*')
       .replace(/\?/g, '.')}$`,
     'i',
   );
-  return re.test(name);
 }
 
-/** Is `p` the same as, or inside, `dir`? Both already resolved. */
-function within(p: string, dir: string): boolean {
-  const a = fold(path.resolve(p));
-  const b = fold(path.resolve(dir));
-  if (a === b) return true;
-  return a.startsWith(b.endsWith(path.sep) ? b : b + path.sep);
+/**
+ * The blocklist, ready to match: each prefix resolved and case-folded with a
+ * trailing separator, each name pattern compiled. Built once per check or per
+ * walk, not per entry — rebuilt for every entry (with a fresh RegExp for every
+ * path segment times every pattern) it cost 5.5 s for the 20,000 entries a
+ * find or grep may visit, on the event loop.
+ */
+interface BlockRules {
+  prefixes: string[];
+  names: string[];
+  folded: string[];
+  patterns: RegExp[];
+}
+
+function compileRules({ prefixes, names }: { prefixes: string[]; names: string[] }): BlockRules {
+  const folded = prefixes.map((d) => {
+    const f = fold(path.resolve(d));
+    return f.endsWith(path.sep) ? f : f + path.sep;
+  });
+  return { prefixes, names, folded, patterns: names.map(globRegex) };
 }
 
 /** The full blocklist, built-in first, as prefixes and name patterns. */
-export function blockRules(opts: FileAccessOptions): { prefixes: string[]; names: string[] } {
+export function blockRules(opts: FileAccessOptions): BlockRules {
   const home = opts.home || os.homedir();
   const prefixes = [
     ...BLOCKED_IN_HOME.map((p) => path.join(home, p)),
@@ -266,22 +281,19 @@ export function blockRules(opts: FileAccessOptions): { prefixes: string[]; names
       prefixes.push(path.resolve(expandHome(entry, home)));
     else names.push(entry);
   }
-  return { prefixes, names };
-}
-
-/**
- * Whether a path is blocked as written, without resolving symlinks. For
- * pruning a walk cheaply; anything then opened still goes through `checkPath`.
- */
-export function isBlocked(p: string, opts: FileAccessOptions): boolean {
-  return blockedBy(p, blockRules(opts)) !== null;
+  return compileRules({ prefixes, names });
 }
 
 /** The rule a resolved path breaks, or null. */
-function blockedBy(p: string, rules: { prefixes: string[]; names: string[] }): string | null {
-  for (const dir of rules.prefixes) if (within(p, dir)) return dir;
-  for (const seg of path.resolve(p).split(/[\\/]/)) {
-    for (const pat of rules.names) if (seg && globMatch(pat, seg)) return pat;
+function blockedBy(p: string, rules: BlockRules): string | null {
+  const resolved = path.resolve(p);
+  // With a trailing separator, "is the prefix or inside it" is one startsWith.
+  const f = fold(resolved);
+  const withSep = f.endsWith(path.sep) ? f : f + path.sep;
+  for (let i = 0; i < rules.folded.length; i++) if (withSep.startsWith(rules.folded[i])) return rules.prefixes[i];
+  for (const seg of resolved.split(/[\\/]/)) {
+    if (!seg) continue;
+    for (let i = 0; i < rules.patterns.length; i++) if (rules.patterns[i].test(seg)) return rules.names[i];
   }
   return null;
 }
@@ -381,10 +393,19 @@ export async function readPath(
   const files: string[] = [];
 
   if (stat.isDirectory()) {
+    // Bounded like find and grep: depth alone does not stop a wide tree (a
+    // home folder four levels down is most of the disk).
+    const limit = opts.walkLimit ?? WALK_MAX_ENTRIES;
+    let visited = 0;
+    let cut = false;
     const walk = async (dir: string, depth: number): Promise<void> => {
       const dirents = await fs.promises.readdir(dir, { withFileTypes: true });
       dirents.sort((a, b) => COLLATOR.compare(a.name, b.name));
       for (const d of dirents) {
+        if (++visited > limit) {
+          cut = true;
+          return;
+        }
         const full = path.join(dir, d.name);
         if (isHiddenPath(d.name) || blockedBy(full, rules)) continue;
         if (d.isDirectory()) {
@@ -399,6 +420,7 @@ export async function readPath(
       }
     };
     await walk(root, 1);
+    if (cut) skipped.push(`${root}（文件夹里超过 ${limit} 项，只看了排在前面的这些）`);
   } else if (stat.isFile()) {
     files.push(root);
   } else {
@@ -493,6 +515,9 @@ export interface FileOperations {
  */
 export function fileOperations(opts: FileAccessOptions, writes: FileWrite[]): FileOperations {
   const recorded = (real: string) => writes.find((w) => w.path === real);
+  // Compiled once for every walk and listing these operations do.
+  const rules = blockRules(opts);
+  const blocked = (p: string) => blockedBy(p, rules) !== null;
 
   /**
    * A path to read: vetted, and its recorded content if the turn wrote it.
@@ -547,7 +572,7 @@ export function fileOperations(opts: FileAccessOptions, writes: FileWrite[]): Fi
     ignoreNames: Set<string>,
   ): Promise<{ path: string; dir: boolean }[]> => {
     const real = await checkPath(root, opts);
-    const skip = (full: string, name: string) => ignoreNames.has(name) || isBlocked(full, opts);
+    const skip = (full: string, name: string) => ignoreNames.has(name) || blocked(full);
     const found: { path: string; dir: boolean }[] = [];
     const glob = pattern.includes('/') ? pattern : `**/${pattern}`;
     for await (const d of fs.promises.glob(glob, {
@@ -593,7 +618,7 @@ export function fileOperations(opts: FileAccessOptions, writes: FileWrite[]): Fi
       stat: async (p) => fs.promises.stat((await vetRead(p)).real),
       readdir: async (p) => {
         const { real } = await vetRead(p);
-        return (await fs.promises.readdir(real)).filter((name) => !isBlocked(path.join(real, name), opts));
+        return (await fs.promises.readdir(real)).filter((name) => !blocked(path.join(real, name)));
       },
     },
     find: {
