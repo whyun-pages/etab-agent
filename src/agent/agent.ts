@@ -63,7 +63,7 @@
  *   and the draft may yet be refused by gate #3, held for confirmation, or
  *   rejected by the replay because another turn changed the table meanwhile —
  *   a saved file showing a change that never happened is worse than none.
- * - `fetch_url` reads a web resource (src/agent/tools/fetch-url.ts, which owns the SSRF
+ * - `fetch_url` reads a web resource (src/agent/fetch-url.ts, which owns the SSRF
  *   rules). With `importAs` it also records an edit — `create_workbook` or
  *   `add_sheet` with the fetched rows written into the arguments — so the
  *   server's replay stays a pure function and never goes back to the network.
@@ -77,8 +77,10 @@
  *   prompt.ts            the system prompt and the per-switch notes
  *   context.ts           the spec summary, change log and history the model sees
  *   gates.ts             the work filter, the row-loss guard, prose claims
- *   tools.ts             the tools offered, built for the turn's switches
- *   attachment-tools.ts  reading and querying uploads, for tools.ts
+ *   tools/               the tools offered: tools.ts picks them for the turn's
+ *                        switches, defs/ defines one tool (or the edit tools) per file
+ *   fetch-url.ts         fetching a URL, and what may not be fetched
+ *   file-access.ts       local paths: what may be read or written, and the reading
  *   transcript.ts        pi's messages in and out
  *
  * Callers import from here; the names they use are re-exported below.

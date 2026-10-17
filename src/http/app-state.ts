@@ -14,7 +14,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 
 import type { Attachment, Extractor } from '../ingest/types.ts';
-import type { FileWrite } from '../agent/tools/file-access.ts';
+import type { FileWrite } from '../agent/file-access.ts';
 import { openWithSystem } from '../platform/open-file.ts';
 import { Settings } from '../store/settings.ts';
 import { SessionStore, safeId as safeSessionId } from '../store/session-store.ts';
@@ -25,7 +25,7 @@ import { readWorkbook } from '../formats/xlsx.ts';
 import type { Workbook as ParsedWorkbook } from '../formats/xlsx.ts';
 import type { SpecOp } from '../workbook/spec-ops.ts';
 import type { ExportRequest } from '../agent/agent.ts';
-import type { FetchOptions } from '../agent/tools/fetch-url.ts';
+import type { FetchOptions } from '../agent/fetch-url.ts';
 import type { Model } from '@earendil-works/pi-ai';
 
 /** A pi-ai model, for the test seam that replaces the configured one. */
@@ -103,7 +103,7 @@ export class AppState {
   /**
    * Extra options for the agent's `fetch_url`. Test seam: a test sets
    * `{ allowPrivate: true }` here to fetch from its own 127.0.0.1 server.
-   * Production never sets it, so the SSRF rules in src/agent/tools/fetch-url.ts hold.
+   * Production never sets it, so the SSRF rules in src/agent/fetch-url.ts hold.
    */
   fetchOptions?: FetchOptions;
   /**

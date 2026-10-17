@@ -60,11 +60,11 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { ingestFile } from '../../ingest/ingest.ts';
-import { isHiddenPath } from '../../ingest/archive.ts';
-import { READABLE_EXT } from '../../ingest/kinds.ts';
-import type { Ingested } from '../../ingest/ingest.ts';
-import { GREP_MAX_FILE_BYTES } from './pi-tools/fs-tools.ts';
+import { ingestFile } from '../ingest/ingest.ts';
+import { isHiddenPath } from '../ingest/archive.ts';
+import { READABLE_EXT } from '../ingest/kinds.ts';
+import type { Ingested } from '../ingest/ingest.ts';
+import { GREP_MAX_FILE_BYTES } from './tools/pi-tools/fs-tools.ts';
 import type {
   EditOperations,
   FindOperations,
@@ -72,8 +72,8 @@ import type {
   LsOperations,
   ReadOperations,
   WriteOperations,
-} from './pi-tools/fs-tools.ts';
-import { COLLATOR } from '../../workbook/table-query.ts';
+} from './tools/pi-tools/fs-tools.ts';
+import { COLLATOR } from '../workbook/table-query.ts';
 
 export const FILE_ACCESS_MODES = ['off', 'read', 'readwrite'] as const;
 export type FileAccessMode = (typeof FILE_ACCESS_MODES)[number];

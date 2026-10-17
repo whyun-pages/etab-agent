@@ -149,9 +149,12 @@ silently went from atomic to racy.
 ```
 http/       Koa app, per-process AppState, respond.ts (the shared answers),
             projections.ts (what the client is shown), routes/
-agent/      the turn (agent.ts and its parts), model access (llm, model, pi);
-            tools/ is what the model may call — the edit tools, fetch_url,
-            local file access, pi's file and shell tools (tools/pi-tools/)
+agent/      the turn (agent.ts and its parts), model access (llm, model, pi),
+            fetch-url and file-access (the rules on what may be fetched or
+            touched on disk — routes and settings use them too);
+            tools/ is what the model may call: tools.ts picks the turn's
+            tools, defs/ defines them (one file per tool, the edit tools in
+            one table), pi-tools/ is pi's file and shell tools
 store/      settings, session-store — state on disk, each behind its own SerialQueue
 workbook/   spec validation and writing, spec-ops, table-query, preview, export
 ingest/     an uploaded or fetched file -> text or rows: one module per kind

@@ -6,7 +6,7 @@
  */
 
 import { EXPORT_FORMATS } from '../workbook/export.ts';
-import type { FileAccessMode } from './tools/file-access.ts';
+import type { FileAccessMode } from './file-access.ts';
 import { TYPES } from '../workbook/workbook.ts';
 
 export const SYSTEM = [

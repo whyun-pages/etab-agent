@@ -8,7 +8,7 @@
  * The tool name, parameters, description, tail truncation, exit-code and
  * timeout reporting are pi's.
  *
- * These are NOT behind src/agent/tools/file-access.ts. A command can read or write any
+ * These are NOT behind src/agent/file-access.ts. A command can read or write any
  * file this user can, and it runs the moment the model calls it — there is no
  * deferring a process to the end of the turn. src/agent/agent.ts offers them only
  * with read-write file access, and says so in the prompt.

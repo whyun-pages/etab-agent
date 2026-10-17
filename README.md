@@ -172,7 +172,7 @@ OpenAI 兼容协议默认按保守的兼容设置发请求（系统提示用 `sy
   同名文件不覆盖，自动加 ` (1)`、` (2)`。
 - **CSV** 带 UTF-8 BOM（Excel 打开中文不乱码）、CRLF 换行；以 `=` `+` `-` `@` 开头的文本单元格
   前面加 `'`，防止 Excel 把抓来的内容当公式执行。合计行按 xlsx 的同一算法写成数值。
-- **抓取的安全限制**（[src/agent/tools/fetch-url.ts](src/agent/tools/fetch-url.ts)）：只允许 http/https；回环、私网、
+- **抓取的安全限制**（[src/agent/fetch-url.ts](src/agent/fetch-url.ts)）：只允许 http/https；回环、私网、
   链路本地等地址一律拒绝，检查发生在实际连接时（DNS 重绑定绕不过），每次重定向都重新检查，
   最多 5 次；20 秒超时；正文上限 5 MB（按解压后计）。不走系统代理。
 - **风险：** 抓取是黑名单模式，不限制能访问哪些网站。抓到的网页可能藏着诱导模型的文字，
@@ -196,7 +196,7 @@ OpenAI 兼容协议默认按保守的兼容设置发请求（系统提示用 `sy
 - 在对话里给出完整路径（`D:\tmp\box3.zip 统计订单状态`）即可，相对路径以用户主目录为准。`read` 读文本和图片；
   表格要统计时用 `import_file`：读文件、文件夹（最多 4 层、100 个文件、共 200 MB）或 zip，
   读到的每个文件成为会话附件，之后用 `query_table` 统计。
-- **始终禁止**（不能在设置里去掉，见 [src/agent/tools/file-access.ts](src/agent/tools/file-access.ts)）：`~/.ssh` 等密钥目录、
+- **始终禁止**（不能在设置里去掉，见 [src/agent/file-access.ts](src/agent/file-access.ts)）：`~/.ssh` 等密钥目录、
   浏览器配置、Windows 凭据、系统目录、本程序的数据目录（存着 API key），以及 `*.pem`、`id_rsa*`、
   `.env` 等文件名。检查在解析符号链接之后进行；`\\` 开头的网络共享路径一律拒绝（在 Windows 上
   访问它就会把当前用户的 NTLM 凭据发给对方）。

@@ -44,8 +44,8 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { DEFAULT_API, defaultBaseUrl, normalizeApi } from '../agent/model.ts';
 import type { ModelApi } from '../agent/model.ts';
-import { isFileAccessMode } from '../agent/tools/file-access.ts';
-import type { FileAccessMode } from '../agent/tools/file-access.ts';
+import { isFileAccessMode } from '../agent/file-access.ts';
+import type { FileAccessMode } from '../agent/file-access.ts';
 import { SerialQueue } from './serial-queue.ts';
 
 const FILE_NAME = 'settings.json';
@@ -68,7 +68,7 @@ export interface SettingsRecord {
   // Default is to confirm, because a chat message is the easiest way to
   // change the wrong cell by accident, and a click is cheap.
   chatConfirmEdits: boolean;
-  // Whether the agent may fetch URLs (src/agent/tools/fetch-url.ts). Off by default: the
+  // Whether the agent may fetch URLs (src/agent/fetch-url.ts). Off by default: the
   // request leaves from this machine, and injected page text can steer it.
   chatCanFetch: boolean;
   // Hosts the agent must not fetch; each also covers its subdomains.
@@ -79,7 +79,7 @@ export interface SettingsRecord {
   // at use time so a settings file copied to another machine still works.
   exportDir: string;
   // Whether the agent may read local files ('read') and also write text files
-  // ('readwrite'). Off by default, for the reasons in src/agent/tools/file-access.ts.
+  // ('readwrite'). Off by default, for the reasons in src/agent/file-access.ts.
   chatFileAccess: FileAccessMode;
   // The user's additions to the built-in file blocklist: path prefixes or name patterns.
   fileBlocklist: string[];

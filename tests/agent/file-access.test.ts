@@ -1,6 +1,6 @@
 'use strict';
 /**
- * Tests for src/agent/tools/file-access.ts — the path checks, the import into
+ * Tests for src/agent/file-access.ts — the path checks, the import into
  * attachments, and the writes performed after a turn. The checks as pi's
  * tools see them are in tests/agent/tools/pi-tools.test.ts.
  *
@@ -18,8 +18,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { checkPath, readPath, performWrite, FileAccessError } from '../../../src/agent/tools/file-access.ts';
-import { writeZip } from '../../../src/formats/zip.ts';
+import { checkPath, readPath, performWrite, FileAccessError } from '../../src/agent/file-access.ts';
+import { writeZip } from '../../src/formats/zip.ts';
 
 /** A scratch tree: a fake home with a .ssh, a data folder, and some documents. */
 function scratch(t) {
