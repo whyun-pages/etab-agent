@@ -15,6 +15,7 @@ import { parseBlocklist } from '../../agent/tools/fetch-url.ts';
 import { chat, stripReasoning } from '../../agent/llm.ts';
 import { fail, jsonBody, bodyOf, isLocalRequest, messageOf } from '../respond.ts';
 import type { RouteDeps } from './index.ts';
+/** Entries either blocklist may hold: well past any real list, small enough to check per request. */ const MAX_BLOCKLIST = 500;
 
 type SettingsPatch = import('../../store/settings.ts').SettingsPatch;
 
@@ -48,7 +49,7 @@ export function settingsRoutes(router: Router, { state }: RouteDeps): void {
       // Normalised here, once, so the stored list is what the matcher compares
       // against: bare lower-case hosts, no scheme or path.
       const list = parseBlocklist(body.fetchBlocklist);
-      if (list.length > 500) return fail(ctx, 400, '禁止抓取的网站最多 500 条');
+      if (list.length > MAX_BLOCKLIST) return fail(ctx, 400, `禁止抓取的网站最多 ${MAX_BLOCKLIST} 条`);
       patch.fetchBlocklist = list;
     }
     if ('chatFileAccess' in body || 'fileBlocklist' in body) {
@@ -66,7 +67,7 @@ export function settingsRoutes(router: Router, { state }: RouteDeps): void {
           ? body.fileBlocklist
           : String(body.fileBlocklist || '').split(/\r?\n/);
         const list = raw.map((x) => String(x).trim()).filter(Boolean);
-        if (list.length > 500) return fail(ctx, 400, '禁止访问的路径最多 500 条');
+        if (list.length > MAX_BLOCKLIST) return fail(ctx, 400, `禁止访问的路径最多 ${MAX_BLOCKLIST} 条`);
         patch.fileBlocklist = list;
       }
     }

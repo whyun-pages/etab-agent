@@ -14,13 +14,13 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import crypto from 'node:crypto';
 import multer from '@koa/multer';
 import type { Router } from '@koa/router';
 import type { Context } from 'koa';
 import { ingestFile } from '../../ingest/ingest.ts';
 import { isOpenable } from '../../platform/open-file.ts';
 import { safeId as safeSessionId } from '../../store/session-store.ts';
+import { toUpload } from '../app-state.ts';
 import type { AppState, Extractor, UploadedAttachment } from '../app-state.ts';
 import { fail, isLocalRequest, safeFilename, messageOf, sessionOr404 } from '../respond.ts';
 import { publicUpload } from '../projections.ts';
@@ -131,12 +131,7 @@ export function attachmentRoutes(router: Router, { state, imageExtractor, textEx
           results.push({ name: it.name, kind: 'error', error: it.error });
           continue;
         }
-        const u: UploadedAttachment = {
-          ...it.att,
-          id: crypto.randomBytes(6).toString('hex'),
-          filename: it.filename,
-          data: it.data,
-        };
+        const u = toUpload({ ...it, att: it.att });
         parsed.push(u);
         results.push(publicUpload(u));
       }

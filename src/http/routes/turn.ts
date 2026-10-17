@@ -9,7 +9,6 @@
  * writes the turn asked for, and tell the user how that went.
  */
 
-import crypto from 'node:crypto';
 import type { Router } from '@koa/router';
 import { isFileAccessMode, performWrite, checkPath } from '../../agent/tools/file-access.ts';
 import type { FileAccessOptions, FileWrite } from '../../agent/tools/file-access.ts';
@@ -18,7 +17,7 @@ import { runTurn as runAgentTurn, describeChange, guardChange } from '../../agen
 import { applyOps } from '../../workbook/spec-ops.ts';
 import { exportSpec, writeExports } from '../../workbook/export.ts';
 import { specStats } from '../../workbook/workbook.ts';
-import { previewOf } from '../app-state.ts';
+import { previewOf, toUpload } from '../app-state.ts';
 import type { AppState, UploadedAttachment } from '../app-state.ts';
 import { fail, jsonBody, bodyOf, isLocalRequest, messageOf, sessionOr404, noSession } from '../respond.ts';
 import { publicAttachment, publicMessages, publicSession } from '../projections.ts';
@@ -143,7 +142,9 @@ export function turnRoutes(router: Router, { state }: RouteDeps): void {
       });
     } catch (err) {
       // A provider failure is not recorded: the user's own message is kept so
-      // retrying does not mean retyping.
+      // retrying does not mean retyping. Answered 200 with ok:false on purpose:
+      // the request was fine and the session is intact (`messages` is what the
+      // client re-renders); it is the turn that failed, and `error` says why.
       ctx.body = { ok: false, error: messageOf(err), messages: publicMessages(session.messages) };
       return;
     }
@@ -174,16 +175,7 @@ export function turnRoutes(router: Router, { state }: RouteDeps): void {
     // reading the disk again. Same name replaces, as on re-upload.
     if (turn.loaded && turn.loaded.length && (await state.sessions.load(session.id))) {
       const current = state.uploads.get(session.id) || [];
-      const fresh = turn.loaded
-        .filter((it) => it.att)
-        .map(
-          (it): UploadedAttachment => ({
-            ...it.att!,
-            id: crypto.randomBytes(6).toString('hex'),
-            filename: it.filename,
-            data: it.data,
-          }),
-        );
+      const fresh = turn.loaded.filter((it) => it.att).map((it) => toUpload({ ...it, att: it.att! }));
       const names = new Set(fresh.map((u) => u.name));
       state.uploads.set(session.id, [...current.filter((u) => !names.has(u.name)), ...fresh]);
     }

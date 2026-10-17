@@ -166,7 +166,6 @@ function safeId(id: unknown): string | null {
   return s;
 }
 
-/** Trim a stored message to what is worth keeping, or null if it is not one. */
 /** Attachment names as stored: strings only, bounded like everything else here. */
 function cleanNames(v: unknown): string[] | undefined {
   if (!Array.isArray(v)) return undefined;
@@ -194,6 +193,7 @@ function cleanChanges(v: unknown): ChangeRecord[] {
   return out.slice(-MAX_CHANGES);
 }
 
+/** Trim a stored message to what is worth keeping, or null if it is not one. */
 function cleanMessage(m: MessageInput): StoredMessage | null {
   if (!m || typeof m.content !== 'string') return null;
   // A message with no role is not a message. The first version defaulted it to

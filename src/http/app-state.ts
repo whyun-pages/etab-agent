@@ -49,6 +49,11 @@ export interface UploadedAttachment extends Attachment {
   openedPath?: string;
 }
 
+/** An ingested file as this process keeps it, under a fresh id. */
+export function toUpload(it: { att: Attachment; filename: string; data: Buffer }): UploadedAttachment {
+  return { ...it.att, id: crypto.randomBytes(6).toString('hex'), filename: it.filename, data: it.data };
+}
+
 /** A change held for confirmation, per session. */
 export interface PendingChange {
   /** what the preview showed, computed from the turn's snapshot */

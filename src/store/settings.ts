@@ -32,7 +32,7 @@
  * Module style
  * ------------
  * This file uses ESM `import`/`export` syntax and is compiled to CommonJS by
- * `tsc` (see tsconfig.json, `module: commonjs`). The extension on a relative
+ * `tsc` (see tsconfig.json, `module: nodenext`). The extension on a relative
  * specifier is `.ts` and is rewritten to `.js` at emit time by
  * `rewriteRelativeImportExtensions` — so a specifier here names the file you
  * would edit, and the build handles the rest.
