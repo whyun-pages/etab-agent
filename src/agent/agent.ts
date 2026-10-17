@@ -97,7 +97,7 @@ import {
   aggregate,
   selectRows,
   formatAggregate,
-  cellText,
+  tsvCell,
   CONDITION_OPS,
   METRIC_FNS,
   EXPRESSION_HELP,
@@ -721,8 +721,15 @@ const WORK_RE = new RegExp(
   'i',
 );
 
-/** Words that mark a question, which no amount of "表" should override. */
-const ASK_RE = /[?？]|是不是|能不能|可不可以|可以吗|行不行|怎么|为什么|为何|哪一?[个些]|什么|多少|如何|是不是|吗\b|吗$/;
+/**
+ * Words that mark a question, which no amount of "表" should override.
+ *
+ * A trailing 吗 counts only at the very end. (There was also a `吗\b`, which
+ * never fired: JS's \b knows only ASCII word characters, so it needed 吗 to be
+ * followed by a Latin letter. Widening it to 吗 before punctuation would turn
+ * a polite request — 能加一列吗，谢谢 — into a question, so it is simply gone.)
+ */
+const ASK_RE = /[?？]|是不是|能不能|可不可以|可以吗|行不行|怎么|为什么|为何|哪一?[个些]|什么|多少|如何|吗$/;
 
 /**
  * Is this message even shaped like a request to build or change something?
@@ -1226,12 +1233,12 @@ function buildTools(ai: Pi['ai'], state: TurnState, caps: Capabilities): AgentTo
         const shown = hits.slice(0, QUERY_MAX_ROWS);
         const more =
           hits.length > shown.length ? `，只列出前 ${shown.length} 行（要全部处理时用 where 条件，不要逐行操作）` : '';
-        const lines = shown.map((n) => `${n + 1}\t${source.table.rows[n].map(cellText).join('\t')}`);
+        const lines = shown.map((n) => `${n + 1}\t${source.table.rows[n].map(tsvCell).join('\t')}`);
         return {
           content: [
             {
               type: 'text',
-              text: `${source.frame}${source.label}：共 ${source.table.rows.length} 行，符合条件的 ${hits.length} 行${more}。第一列是行号。\n行号\t${source.table.header.join('\t')}\n${lines.join('\n')}`,
+              text: `${source.frame}${source.label}：共 ${source.table.rows.length} 行，符合条件的 ${hits.length} 行${more}。第一列是行号。\n行号\t${source.table.header.map(tsvCell).join('\t')}\n${lines.join('\n')}`,
             },
           ],
           details: {},
@@ -1450,14 +1457,14 @@ function readAttachmentPart(att: Attachment, a: Record<string, unknown>): string
   let size = 0;
   let last = from - 1;
   for (let r = from; r <= to; r++) {
-    const line = `${r}\t${t.rows[r - 1].map(cellText).join('\t')}`;
+    const line = `${r}\t${t.rows[r - 1].map(tsvCell).join('\t')}`;
     if (size + line.length > ATTACH_PAGE_CHARS && body.length) break;
     body.push(line);
     size += line.length + 1;
     last = r;
   }
   const more = last < total ? `；继续读请传 from=${last + 1}` : '';
-  return `${head}${sheets}\n共 ${total} 行，这是第 ${from}–${last} 行${more}。第一列是行号。\n行号\t${t.header.join('\t')}\n${body.join('\n')}`;
+  return `${head}${sheets}\n共 ${total} 行，这是第 ${from}–${last} 行${more}。第一列是行号。\n行号\t${t.header.map(tsvCell).join('\t')}\n${body.join('\n')}`;
 }
 
 /** One line for `import_file`: what the file turned out to be, with a taste of it. */
@@ -1467,7 +1474,7 @@ function describeLoaded(att: Attachment): string {
     const sheets = att.sheets && att.sheets.length > 1 ? `，工作表：${att.sheets.map((s) => s.sheet).join('、')}` : '';
     const sample = t.rows
       .slice(0, 3)
-      .map((r) => r.map(cellText).join('\t'))
+      .map((r) => r.map(tsvCell).join('\t'))
       .join(' / ');
     const note = att.note ? `（${att.note}）` : '';
     return `${att.name}：表格 ${t.rows.length} 行${sheets}${note}；列：${t.header.join('、')}${sample ? `；前几行：${sample.slice(0, 300)}` : ''}`;

@@ -113,6 +113,16 @@ export function cellText(v: unknown): string {
   return String(v);
 }
 
+/**
+ * A cell as one field of a tab-separated line, for the tables the model reads.
+ * A tab or line break inside the value would shift every column after it, so
+ * they become spaces here — and only here: `cellText` is what conditions
+ * compare against, and a multi-line cell must still match as written.
+ */
+export function tsvCell(v: unknown): string {
+  return cellText(v).replace(/[\t\r\n]+/g, ' ');
+}
+
 export function isBlank(v: unknown): boolean {
   return v === null || v === undefined || (typeof v === 'string' && v.trim() === '');
 }

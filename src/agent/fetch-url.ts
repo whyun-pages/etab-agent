@@ -41,6 +41,7 @@ import type { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { readAttachment, TABLE_EXT, TEXT_EXT } from '../formats/attachments.ts';
 import { TYPES } from '../workbook/workbook.ts';
+import { tsvCell } from '../workbook/table-query.ts';
 import type { CellValue } from '../workbook/workbook.ts';
 
 export const FETCH_TIMEOUT_MS = 20_000;
@@ -425,12 +426,6 @@ export function readFetched(f: Fetched): Promise<Attachment> {
   return readAttachment(f.bytes, f.filename);
 }
 
-function cellText(v: unknown): string {
-  if (v === null || v === undefined) return '';
-  if (v instanceof Date) return v.toISOString().slice(0, 10);
-  return String(v).replace(/[\t\r\n]+/g, ' ');
-}
-
 /**
  * What the model reads back from `fetch_url`.
  *
@@ -450,7 +445,7 @@ export function describeFetched(f: Fetched, att: Attachment): string {
       att.sheets && att.sheets.length > 1
         ? `\n文件里有多个工作表：${att.sheets.map((s) => s.sheet).join('、')}；下面是「${t.sheet}」。`
         : '';
-    const body = [t.header.join('\t'), ...shown.map((r) => r.map(cellText).join('\t'))].join('\n');
+    const body = [t.header.map(tsvCell).join('\t'), ...shown.map((r) => r.map(tsvCell).join('\t'))].join('\n');
     return `${head}${sheets}\n表格${more}，推测列类型：${t.columns.map((c) => `${c.label}=${c.type}`).join('，')}\n${body.slice(0, PREVIEW_CHARS)}`;
   }
   const text = String(att.text || '').trim();

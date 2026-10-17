@@ -439,3 +439,22 @@ test('runTurn: delete_rows with where removes the matching rows, and the guard s
   assert.strictEqual(res.spec.sheets[0].rows.length, 6);
   assert.ok(res.spec.sheets[0].rows.every((r) => r[1] >= 500));
 });
+
+test('runTurn: a tab or line break inside a cell does not shift the columns the model reads', async () => {
+  // read_attachment and query_table print tab-separated rows. A cell holding a
+  // tab made the model read every column after it one place to the right.
+  const csv = '名称,备注,金额\n甲,"第一行\n第二行",10\n乙,"有\t制表符",20\n';
+  const att = await csvAttachment('备注.csv', csv);
+  const res = await turnWith([{ tool: 'read_attachment', args: { name: '备注.csv' } }, '好'], {
+    message: '看看',
+    attachments: [att],
+  });
+  const text = res.contexts[1].messages.find((m) => m.role === 'toolResult').content[0].text;
+  const lines = text.split('\n');
+  const header = lines.findIndex((l) => l.startsWith('行号\t'));
+  const rows = lines.slice(header + 1).filter(Boolean);
+  assert.strictEqual(rows.length, 2, text);
+  for (const r of rows) assert.strictEqual(r.split('\t').length, 4, `row number + 3 columns: ${JSON.stringify(r)}`);
+  assert.match(text, /^1\t甲\t第一行 第二行\t10$/m);
+  assert.match(text, /^2\t乙\t有 制表符\t20$/m);
+});
