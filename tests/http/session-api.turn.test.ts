@@ -12,7 +12,7 @@ import assert from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { conversation, startServer, post, get, ACTION, ANSWER } from '../helpers/session-server.ts';
+import { conversation, startServer, settingsStub, post, get, ACTION, ANSWER } from '../helpers/session-server.ts';
 
 // ── turns ───────────────────────────────────────────────────────────
 
@@ -51,6 +51,20 @@ test('an action turn with confirmation ON holds the change', async (t) => {
 
   const still = await get(base, `/api/sessions/${id}`);
   assert.strictEqual(still.json.session.spec, null, 'not applied until confirmed');
+});
+
+test('a turn decides with the settings it read at the start, even if they change', async (t) => {
+  // The route read settings once for the tools offered, then again for
+  // "confirm edits": switching confirmation off while the model ran made one
+  // turn obey two different settings. The first read is the turn's.
+  const stub = settingsStub({ chatConfirmEdits: true });
+  let reads = 0;
+  const settings = { ...stub, load: () => ({ ...stub.load(), chatConfirmEdits: reads++ === 0 }) };
+  const { base } = await startServer(t, { replies: [ACTION], settings });
+  const { json: created } = await post(base, '/api/sessions', {});
+  const turn = await post(base, `/api/sessions/${created.session.id}/turn`, { message: '做一个销售台账' });
+  assert.strictEqual(turn.json.pending, true, 'confirmation was on when the turn began');
+  assert.strictEqual(turn.json.applied, false);
 });
 
 test('applying a held change makes it the document', async (t) => {

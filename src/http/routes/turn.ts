@@ -124,7 +124,7 @@ export function turnRoutes(router: Router, { state }: RouteDeps): void {
       note = '（「允许修改」已关闭，本次没有改动表格）';
     }
 
-    const confirmEdits = Boolean((await state.settings.load()).chatConfirmEdits);
+    const confirmEdits = Boolean(live.chatConfirmEdits);
     const pending = Boolean(spec) && confirmEdits;
     let applied = Boolean(spec) && !confirmEdits;
     // Backstop like the one above: the tool is not offered when saving is off,

@@ -62,7 +62,8 @@ export const promptOf = (ai, context) =>
  * `replies` is a list of turns, each a list of steps (see `step`), consumed in
  * order across the whole server. Running out makes the faux provider answer
  * with an error, which is what a dead provider looks like from here.
- * `seen` collects the prompt of each turn's first call.
+ * `seen` collects the prompt of each turn's first call. `settings` replaces the
+ * stub outright, for a test that needs settings to change under a turn.
  */
 export async function startServer(
   t,
@@ -74,6 +75,7 @@ export async function startServer(
     seen = null,
     extra = {},
     fetchOptions,
+    settings = null,
   } = {},
 ) {
   const dataDir = tmpdir();
@@ -90,7 +92,7 @@ export async function startServer(
     staticDir: path.join(__dirname, '..', '..', 'public'),
     // The model override the server accepts for exactly this purpose.
     model: faux.getModel(),
-    settingsOverride: settingsStub({ configured, chatCanEdit, chatConfirmEdits, extra }),
+    settingsOverride: settings || settingsStub({ configured, chatCanEdit, chatConfirmEdits, extra }),
     fetchOptions,
   });
 
