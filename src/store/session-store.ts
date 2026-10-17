@@ -71,6 +71,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { normalizeSpec } from '../workbook/workbook.ts';
+import { SerialQueue } from './serial-queue.ts';
 
 type WorkbookSpec = import('../workbook/workbook.ts').WorkbookSpec;
 
@@ -215,30 +216,19 @@ function cleanMessage(m: MessageInput): StoredMessage | null {
 
 class SessionStore {
   dir: string;
-  /** Tail of the serialisation chain. Resolved promise = idle. */
-  tail: Promise<unknown>;
+  #queue = new SerialQueue();
 
   constructor(dataDir: string) {
     this.dir = path.join(dataDir, DIR_NAME);
-    this.tail = Promise.resolve();
   }
 
   /**
-   * Run `fn` after every previously queued operation has finished.
-   *
-   * Chains onto the tail and swallows the result into the chain so one failure
-   * does not wedged every later call — but the caller still sees its own
-   * rejection. `finally`-style reset: the next caller always gets a live chain
-   * even if this one threw.
+   * Run `fn` after every previously queued operation has finished: one
+   * failure does not wedge later calls, and the caller still sees its own
+   * rejection (src/store/serial-queue.ts).
    */
   #run<T>(fn: () => T | Promise<T>): Promise<T> {
-    const run = this.tail.then(fn, fn);
-    // Keep the chain alive regardless of this call's outcome.
-    this.tail = run.then(
-      () => undefined,
-      () => undefined,
-    );
-    return run;
+    return this.#queue.run(fn);
   }
 
   file(id: string): string {

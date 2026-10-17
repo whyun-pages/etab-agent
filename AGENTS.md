@@ -104,7 +104,8 @@ requests one at a time.
 
 **How it is actually done here — `src/store/session-store.ts`:**
 
-- Every public method runs through `#run`, a per-instance promise queue. The
+- Every public method runs through `#run`, a per-instance promise queue
+  (`SerialQueue`, src/store/serial-queue.ts, shared with settings). The
   internals (`#loadFile`, `#writeFile`, ...) are private and NEVER call back into
 a public method: `prune` -> `list` -> `load` would each wait for the slot held by
 the outermost call, and deadlock.
@@ -144,7 +145,7 @@ silently went from atomic to racy.
 ```
 http/       Koa app, per-process AppState, routes/
 agent/      the turn, model access (llm, model, pi), fetch, local file access, pi-tools/
-store/      settings, session-store — state on disk, each behind its own queue
+store/      settings, session-store — state on disk, each behind its own SerialQueue
 workbook/   spec validation and writing, spec-ops, table-query, preview, export
 formats/    zip, xlsx, xlsx-writer, xls; attachments (uploaded file -> text/rows)
 platform/   SEA assets, open-with-system — usable from any layer

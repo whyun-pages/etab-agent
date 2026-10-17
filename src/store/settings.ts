@@ -46,6 +46,7 @@ import { DEFAULT_API, defaultBaseUrl, normalizeApi } from '../agent/model.ts';
 import type { ModelApi } from '../agent/model.ts';
 import { isFileAccessMode } from '../agent/file-access.ts';
 import type { FileAccessMode } from '../agent/file-access.ts';
+import { SerialQueue } from './serial-queue.ts';
 
 const FILE_NAME = 'settings.json';
 
@@ -169,14 +170,12 @@ export function resolveExportDir(s: Pick<SettingsRecord, 'exportDir'>): string {
 export class Settings {
   dir: string;
   file: string;
-  /** Tail of the serialisation chain. A resolved promise means idle. */
-  tail: Promise<unknown>;
   cache: SettingsRecord | null;
+  #queue = new SerialQueue();
 
   constructor(dir: string) {
     this.dir = dir;
     this.file = path.join(dir, FILE_NAME);
-    this.tail = Promise.resolve();
     this.cache = null;
   }
 
@@ -189,16 +188,11 @@ export class Settings {
    * impossible by never yielding; `await` reintroduces the window. The queue is
    * what closes it again.
    *
-   * One failure must not wedge the chain, but the caller still sees its own
-   * rejection.
+   * The queue itself is src/store/serial-queue.ts, shared with the session
+   * store.
    */
   #run<T>(fn: () => T | Promise<T>): Promise<T> {
-    const run = this.tail.then(fn, fn);
-    this.tail = run.then(
-      () => undefined,
-      () => undefined,
-    );
-    return run;
+    return this.#queue.run(fn);
   }
 
   // ---------------------------------------------------------- internals
