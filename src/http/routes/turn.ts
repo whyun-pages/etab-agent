@@ -26,12 +26,48 @@ import type { RouteDeps } from './index.ts';
 
 type WorkbookSpec = import('../../workbook/workbook.ts').WorkbookSpec;
 type Session = import('../../store/session-store.ts').Session;
+type ChangeRecord = import('../../store/session-store.ts').ChangeRecord;
+type SpecOp = import('../../workbook/spec-ops.ts').SpecOp;
+type ExportRequest = import('../../agent/agent.ts').ExportRequest;
 type ExportFile = import('../../workbook/export.ts').ExportFile;
 type FetchOptions = import('../../agent/fetch-url.ts').FetchOptions;
 type Settings = Awaited<ReturnType<AppState['settings']['load']>>;
 
 /** An export file, and the folder it was asked to go to (null: the export folder). */
 type DirectedExport = ExportFile & { dir?: string | null };
+
+/**
+ * A turn's operations replayed on the spec as stored now, then guarded.
+ *
+ * Pure, and run inside the store's queue slot by both the turn and the apply
+ * route: the operations were computed from a snapshot, and another turn may
+ * have changed the table since. When nothing raced the replay reproduces the
+ * turn's spec exactly; when the operations no longer fit, nothing lands and
+ * `conflict` says why.
+ */
+function replayChange(
+  current: WorkbookSpec | null,
+  ops: SpecOp[],
+  message: string,
+): { landed: WorkbookSpec | null; conflict: string } {
+  try {
+    const next = applyOps(current, ops).spec;
+    const verdict = next ? guardChange({ current, next, message }) : { ok: false, reason: '修改结果为空' };
+    return verdict.ok && next ? { landed: next, conflict: '' } : { landed: null, conflict: verdict.reason };
+  } catch (err) {
+    return { landed: null, conflict: messageOf(err) };
+  }
+}
+
+/** The files a turn asked to save, as bytes of `spec`, each with the folder it goes to. */
+function directedExports(spec: WorkbookSpec, wanted: ExportRequest[]): DirectedExport[] {
+  return wanted.flatMap((r) => exportSpec(spec, r).map((file) => ({ ...file, dir: r.dir || null })));
+}
+
+/** The change-log entry for an edit that landed, judged from the two specs. */
+function changeLine(request: string, before: WorkbookSpec | null, after: WorkbookSpec): ChangeRecord {
+  return { request, summary: describeChange(before, after), at: new Date().toISOString() };
+}
 
 /** The file checks for a turn: the user's blocklist, and this app's data folder. */
 function fileOptionsOf(state: AppState, live: Settings): FileAccessOptions {
@@ -188,17 +224,9 @@ export function turnRoutes(router: Router, { state }: RouteDeps): void {
     const saved = await state.sessions.update(session.id, (current: Session) => {
       let landed: WorkbookSpec | null = null;
       if (applied) {
-        let conflict = '';
-        try {
-          const next = applyOps(current.spec, ops).spec;
-          const verdict = next
-            ? guardChange({ current: current.spec, next, message })
-            : { ok: false, reason: '修改结果为空' };
-          if (verdict.ok) landed = next;
-          else conflict = verdict.reason;
-        } catch (err) {
-          conflict = messageOf(err);
-        }
+        const replay = replayChange(current.spec, ops, message);
+        landed = replay.landed;
+        const conflict = replay.conflict;
         if (!landed) {
           applied = false;
           note = `${note}（表格在这期间被改动过，本次修改没有应用：${conflict}）`;
@@ -217,9 +245,7 @@ export function turnRoutes(router: Router, { state }: RouteDeps): void {
           if (!target) note = `${note}（没有保存文件：还没有表格。）`;
           else {
             try {
-              exportFiles = exportsWanted.flatMap((r) =>
-                exportSpec(target, r).map((file) => ({ ...file, dir: r.dir || null })),
-              );
+              exportFiles = directedExports(target, exportsWanted);
             } catch (err) {
               note = `${note}（没有保存文件：${messageOf(err)}）`;
             }
@@ -230,16 +256,11 @@ export function turnRoutes(router: Router, { state }: RouteDeps): void {
       return {
         ...current,
         // First change names the session, unless the user named it earlier.
-        title: current.title || (landed && landed.title) || current.title,
+        title: current.title || (landed && landed.title) || '',
         spec: landed || current.spec,
         // Recorded against `current.spec`, the freshest one, inside the queue
         // slot — the same reason the spec itself is written here.
-        changes: landed
-          ? [
-              ...current.changes,
-              { request: message, summary: describeChange(current.spec, landed), at: new Date().toISOString() },
-            ]
-          : current.changes,
+        changes: landed ? [...current.changes, changeLine(message, current.spec, landed)] : current.changes,
         messages: [
           ...current.messages,
           {
@@ -321,22 +342,13 @@ export function turnRoutes(router: Router, { state }: RouteDeps): void {
     let files: DirectedExport[] = [];
     let saveError = '';
     const saved = await state.sessions.update(session.id, (current: Session) => {
-      let landed: WorkbookSpec | null = null;
-      try {
-        const next = applyOps(current.spec, held.ops).spec;
-        const verdict = next
-          ? guardChange({ current: current.spec, next, message: held.message })
-          : { ok: false, reason: '修改结果为空' };
-        if (verdict.ok) landed = next;
-        else conflict = verdict.reason;
-      } catch (err) {
-        conflict = messageOf(err);
-      }
+      const replay = replayChange(current.spec, held.ops, held.message);
+      const landed = replay.landed;
+      conflict = replay.conflict;
       if (!landed) return current;
       if (held.exports.length) {
-        const target = landed;
         try {
-          files = held.exports.flatMap((r) => exportSpec(target, r).map((file) => ({ ...file, dir: r.dir || null })));
+          files = directedExports(landed, held.exports);
         } catch (err) {
           saveError = messageOf(err);
         }
@@ -345,10 +357,7 @@ export function turnRoutes(router: Router, { state }: RouteDeps): void {
         ...current,
         title: current.title || landed.title || '',
         spec: landed,
-        changes: [
-          ...current.changes,
-          { request: held.message, summary: describeChange(current.spec, landed), at: new Date().toISOString() },
-        ],
+        changes: [...current.changes, changeLine(held.message, current.spec, landed)],
       };
     });
     state.pending.delete(session.id);
