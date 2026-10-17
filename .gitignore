@@ -11,7 +11,6 @@ data/
 
 # Verification scratch
 .verify/out/
-.verify/node_modules/
 
 # Working safety net. Backups written before a destructive edit (a rename, a
 # rewrite) land here. They are insurance for the minutes a change is in flight,

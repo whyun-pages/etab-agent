@@ -81,7 +81,7 @@ jobs:
 
       # devDependencies are needed: `prepack` runs tsc, and tsc is a dev dep.
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile --filter @whyun/etab-agent
+        run: pnpm install --frozen-lockfile
 
       # Test here rather than trusting that ci.yml passed on this commit — a tag
       # can be pushed on a commit CI never saw. The suite runs the source

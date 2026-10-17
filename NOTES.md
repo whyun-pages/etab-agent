@@ -23,10 +23,8 @@ pnpm test                          # 432 pass, 0 fail
 node .verify/model/live-ui.js            # 12 passed, 0 failed（真模型 + 真浏览器）
 node .verify/model/live-session-api.js   # 29 passed, 0 failed（真模型，纯 API）
 node .verify/model/live-agent.js         # 24 passed, 0 failed（真模型，决策层）
-node .verify/external/workbook-verify.js    # 32 passed, 0 failed（exceljs 对照）
 node .verify/browser/probe-ui-turn.js      # 12 passed, 0 failed（假模型，验 UI 接线）
 node .verify/browser/probe-sheet-render.js # 12 passed, 0 failed（真 Edge 渲染网格）
-node .verify/external/verify.js    # ALL EXTERNAL CHECKS PASSED（exceljs 对照）
 ```
 
 > Windows 注意：`node --test tests/` 不认目录，必须写 glob `"tests/*.test.ts"`。
@@ -745,7 +743,7 @@ operation 只能来自**解析成功的对象**，没解析成功的回复没有
     链路不落盘：模型只产 **spec**（纯 JSON）→ spec 存进 `sessions/<id>.json`
     → 点下载时路由现场 `writeSpec(spec)` 在**内存里**拼 Buffer →
     `res.end(buffer)` 推给浏览器 → **浏览器**写进下载目录。
-    实测（`.verify/node/probe-workbook-on-disk.cjs` 11/11）：下载前后、乃至连下三次，
+    实测（原 `.verify/` 探针，现为 `tests/session-api.test.ts` 的一条）：下载前后、乃至连下三次，
     data 目录里 `.xlsx` 数量恒为 **0**；唯一持久的是含 spec 的会话 JSON。
     三个后果值得记住：同 spec 反复下载字节一致（纯函数、无缓存）；
     删会话即删表（本来就没单独存过文件）；「下载」这个动作里，
@@ -907,9 +905,13 @@ operation 只能来自**解析成功的对象**，没解析成功的回复没有
       `tests/tsconfig.json` 目前只服务编辑器。
     - **`.verify/` 按用途分目录**（node / external / browser / model / exe / shots / support），
       一次性的调试探针删掉（结论都在这份笔记里）。脚本保持 JS，要用源码的在开头 `require('tsx/cjs')`。
-      顺带修好两个早就坏了的：`probe-settings-sabotage` 把篡改副本写在 `.verify/`，
-      它自己的相对 require 在那里解析不到；`probe-sheet-format` 从 server 拿 `sheetPreview`，
-      而这个函数一直在 preview 模块里。
+    - **不需要桌面的检查并进 `tests/`，让 CI 每次都跑。** 两处并发（session-store 的 append、
+      settings 的 save）、HTTP 上一阵并发轮次不丢消息、端口变量、下载不落盘、exceljs 对照。
+      exceljs 成了根目录的 devDependency，`.verify` 不再是 workspace 子包。
+      搬的时候每个并发测试都拆掉对应的队列（或让 turn 路由写回模型调用前的快照）跑过一次，确认会红；
+      原先的 sabotage 脚本因此不再需要。也顺手收紧了两条原本恒为真的断言：
+      settings 的并发检查只看「六个键都在」，而默认值本来就有六个键；
+      session-store 的「不留临时文件」查的是数据目录根，临时文件其实写在 `sessions/` 下。
 
 - **探测正则要用归一化后的文本。** 单行提示词那次我拿全角原文试，误判成正则写错了。
 - **自读自写不能证明兼容。** 这一轮又是 exceljs 对照和真文件流程抓出了盲区。

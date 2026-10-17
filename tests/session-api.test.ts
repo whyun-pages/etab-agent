@@ -146,6 +146,37 @@ test('a session can be created, listed, and deleted', async (t) => {
   assert.strictEqual(after.json.sessions.length, 0);
 });
 
+test('deleting twice reports 404 the second time, not a crash', async (t) => {
+  const { base } = await startServer(t);
+  const { json: created } = await post(base, '/api/sessions', {});
+  const url = `${base}/api/sessions/${created.session.id}`;
+  assert.strictEqual((await fetch(url, { method: 'DELETE' })).status, 200);
+  assert.strictEqual((await get(base, `/api/sessions/${created.session.id}`)).status, 404);
+  assert.strictEqual((await fetch(url, { method: 'DELETE' })).status, 404);
+});
+
+test('concurrent creates over HTTP all land, with distinct ids', async (t) => {
+  // The store has its own version of this; here it is the route that must
+  // await the create before answering, or the list misses some.
+  const { base } = await startServer(t);
+  const many = await Promise.all(Array.from({ length: 10 }, (_, i) => post(base, '/api/sessions', { title: `批量-${i}` })));
+  assert.ok(many.every((m) => m.status === 200), many.map((m) => m.status).join(','));
+  assert.strictEqual(new Set(many.map((m) => m.json.session.id)).size, 10, 'a duplicate id');
+  assert.strictEqual((await get(base, '/api/sessions')).json.sessions.length, 10);
+});
+
+test("a title the user gave is kept; an untitled session takes the first table's", async (t) => {
+  const { base } = await startServer(t, { replies: [ACTION, ACTION], chatConfirmEdits: false });
+
+  const { json: named } = await post(base, '/api/sessions', { title: '我的台账' });
+  await post(base, `/api/sessions/${named.session.id}/turn`, { message: '做一个销售台账' });
+  assert.strictEqual((await get(base, `/api/sessions/${named.session.id}`)).json.session.title, '我的台账');
+
+  const { json: untitled } = await post(base, '/api/sessions', { title: '' });
+  await post(base, `/api/sessions/${untitled.session.id}/turn`, { message: '做一个销售台账' });
+  assert.strictEqual((await get(base, `/api/sessions/${untitled.session.id}`)).json.session.title, SPEC.title);
+});
+
 test('an unknown session is 404, not a crash', async (t) => {
   const { base } = await startServer(t);
   assert.strictEqual((await get(base, '/api/sessions/none-0000')).status, 404);
@@ -302,6 +333,32 @@ test('the workbook endpoint returns real xlsx bytes', async (t) => {
   assert.strictEqual(bytes[0], 0x50, 'PK zip magic');
   assert.strictEqual(bytes[1], 0x4b);
   assert.ok(bytes.length > 1000, `${bytes.length} bytes`);
+});
+
+test('downloading writes no workbook file: the spec is what persists', async (t) => {
+  // "The file appears in Downloads" makes it easy to assume the app wrote one
+  // somewhere. It does not: writeSpec builds a Buffer and the route sends it;
+  // the browser writes the bytes it was handed. Worth proving rather than
+  // reading, so a cache or a temp copy cannot creep in unnoticed.
+  const { base, dataDir } = await startServer(t, { replies: [ACTION], chatConfirmEdits: false });
+  const { json: created } = await post(base, '/api/sessions', {});
+  const id = created.session.id;
+  await post(base, `/api/sessions/${id}/turn`, { message: '做一个销售台账' });
+
+  const xlsxUnder = (dir) => fs.readdirSync(dir, { recursive: true }).filter((p) => /.xls[xm]$/i.test(String(p)));
+  assert.deepStrictEqual(xlsxUnder(dataDir), [], 'a workbook file exists before any download');
+
+  for (let i = 0; i < 3; i++) {
+    const r = await fetch(`${base}/api/sessions/${id}/workbook.xlsx`);
+    assert.strictEqual(r.status, 200);
+    assert.match(r.headers.get('content-disposition') || '', /attachment/);
+    await r.arrayBuffer();
+  }
+  assert.deepStrictEqual(xlsxUnder(dataDir), [], 'a download left a workbook file behind');
+
+  const raw = fs.readFileSync(path.join(dataDir, 'sessions', `${id}.json`), 'utf8');
+  assert.ok(!raw.startsWith('PK'), 'the session file is a zip');
+  assert.ok(JSON.parse(raw).spec.sheets.length >= 1, 'the session file holds no spec');
 });
 
 test('no workbook before there is a spec', async (t) => {
@@ -512,6 +569,27 @@ function concurrentScript({ held, heldCall, other, otherCall }) {
   };
   return { steps: [route, route, route, route], release: () => release(), inFlight };
 }
+
+test('a burst of concurrent turns on one session loses no message', async (t) => {
+  // The test below pins one interleaving exactly. This one goes by volume, the
+  // way it was first measured: before `store.update`, 12 concurrent turns
+  // left 4 of 26 messages on disk (AGENTS.md). Each turn read the session,
+  // waited on the model, and wrote back a snapshot that predated the others.
+  const TURNS = 12;
+  const { base } = await startServer(t, { replies: Array.from({ length: TURNS }, () => ANSWER) });
+  const { json: created } = await post(base, '/api/sessions', {});
+  const id = created.session.id;
+
+  const burst = await Promise.all(Array.from({ length: TURNS }, (_, i) =>
+    post(base, `/api/sessions/${id}/turn`, { message: `并发第 ${i} 次` })));
+  assert.ok(burst.every((b) => b.status === 200), burst.map((b) => b.status).join(','));
+
+  const messages = (await get(base, `/api/sessions/${id}`)).json.session.messages;
+  const asked = new Set(messages.filter((m) => m.role === 'user').map((m) => m.content));
+  const lost = Array.from({ length: TURNS }, (_, i) => `并发第 ${i} 次`).filter((m) => !asked.has(m));
+  assert.deepStrictEqual(lost, [], 'these turns vanished');
+  assert.strictEqual(messages.length, TURNS * 2, 'one user and one assistant message per turn');
+});
 
 test('two concurrent turns both land: the slower one is replayed on the newer table', async (t) => {
   // The failure this prevents: the slow turn writing back the spec it computed

@@ -20,7 +20,7 @@
 ```powershell
 pnpm install                    # 运行时依赖 pi-agent（pi-agent-core / pi-ai），开发依赖
                                 # typescript / tsx / esbuild / @types/node / postject，
-                                # 外加 .verify/ 的 exceljs
+                                # 外加测试里做独立对照的 exceljs
 pnpm start --port 3179          # 先跑 tsc，再启动 .build/js/server.js
 ```
 
@@ -334,15 +334,12 @@ pnpm verify:live                 # 先重新打包 exe，再跑真机探针子�
 
 Windows 注意：`node --test tests/` 不认目录，必须写 glob。
 
-`.verify/` 是 pnpm workspace 的子包，唯一的依赖 exceljs 随根目录的 `pnpm install`
-一起装好（CI 用 `--filter tab-agent` 跳过它，因为这些检查不在 CI 里跑）。
+`.verify/` 只放必须在 Windows 桌面上跑的检查：能在 CI 里跑的都已经在 `tests/` 里。
 脚本直接 `node .verify/<目录>/<脚本>.js` 运行；要用源码的脚本自己在开头加载 `tsx/cjs`。
 按用途分目录：
 
 | 目录 | 内容 | 需要 |
 |---|---|---|
-| `node/` | 真实 HTTP / 真实进程，不开浏览器：会话路由、附件路由、端口、并发写、settings 队列（含 sabotage 反证） | 仅 Node |
-| `external/` | 用 exceljs 这个独立实现对照：`verify.js` 比对同一份输入，`workbook-verify.js` 比对落笔结果 | exceljs |
 | `browser/` | 开发服务器 + 真 Edge，用 CDP 发真实鼠标键盘事件（不是 `element.click()`——那个跳过命中测试，有浮层盖着也发现不了）；模型是假的 | Windows + Edge |
 | `model/` | 同上，但接用户本机配置的真实模型 | 另需已配模型 |
 | `exe/` | 针对打包好的 `dist/TabAgent.exe`：资源、窗口、单实例、生命周期 | 先 `pnpm build` |

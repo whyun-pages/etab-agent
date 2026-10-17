@@ -51,6 +51,14 @@ test('specPreview: a date becomes a serial number, not a Date', () => {
   assert.strictEqual(JSON.stringify(p).includes('T00:00:00'), false, 'no ISO strings travel to the client');
 });
 
+test('sheetPreview: the date serial resolves to the date that was written', () => {
+  // Checked against the epoch directly, not through dateToSerial: if that
+  // helper were off by a day, the test above would agree with it.
+  const serial = sheetPreview(writeSpec(norm()), '明细').rows[1][2];
+  const back = new Date(Date.UTC(1899, 11, 30) + Math.round(serial * 86400000));
+  assert.strictEqual(back.toISOString().slice(0, 10), '2026-01-08');
+});
+
 test('specPreview: the grid can be serialised without losing a type', () => {
   // The response is JSON, so anything that survives is what the client sees.
   const round = JSON.parse(JSON.stringify(specPreview(norm())));

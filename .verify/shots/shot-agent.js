@@ -14,7 +14,7 @@ const path = require('node:path');
 
 const ROOT = path.join(__dirname, '..', '..');
 const OUT = path.join(__dirname, '..', 'out');
-const ExcelJS = require(path.join(__dirname, '..', 'node_modules', 'exceljs'));
+const ExcelJS = require('exceljs');
 const { openPage, closePage, findEdge } = require('../support/cdp.js');
 
 const XLSX = path.join(OUT, 'live-agent-build.xlsx');

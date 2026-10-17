@@ -222,3 +222,67 @@ test('the written file is not world-readable', async () => {
   const mode = fs.statSync(path.join(dir, 'sessions', `${s.id}.json`)).mode & 0o777;
   assert.strictEqual(mode, 0o600, mode.toString(8));
 });
+
+// ── concurrency ─────────────────────────────────────────────────────
+//
+// `append` is read-modify-write: load -> push -> save. With async I/O, two
+// appends can interleave between the load and the save, and the later save
+// writes from a snapshot that predates the earlier one — a lost message, with
+// nothing thrown and nothing logged. `#run` (the per-instance queue) is what
+// prevents it; see AGENTS.md, "The trap this rule creates".
+//
+// The tests cannot reach the await boundary to force an interleaving, so they
+// fire many concurrent calls and detect by volume. Measured with the queue
+// removed: the run does not even get as far as a lost update — Windows refuses
+// two concurrent renames onto one destination (EPERM), and before temp names
+// were unique the shared `.tmp` vanished under the second writer (ENOENT).
+// Either way these tests go red.
+
+test('concurrent appends to one session keep every message', async () => {
+  const CONCURRENCY = 50;
+  for (let round = 1; round <= 5; round += 1) {
+    const dir = tmpdir();
+    const store = new SessionStore(dir);
+    const session = await store.create('并发测试');
+
+    await Promise.all(Array.from({ length: CONCURRENCY }, (_, i) =>
+      store.append(session.id, { role: 'user', content: `msg-${round}-${i}`, at: new Date().toISOString() })));
+
+    const loaded = await store.load(session.id);
+    const got = new Set(loaded.messages.map((m) => m.content));
+    const missing = Array.from({ length: CONCURRENCY }, (_, i) => `msg-${round}-${i}`).filter((w) => !got.has(w));
+    assert.deepStrictEqual(missing, [], `round ${round}: lost to interleaving`);
+    assert.strictEqual(loaded.messages.length, CONCURRENCY, `round ${round}`);
+
+    const strays = fs.readdirSync(path.join(dir, 'sessions')).filter((n) => n.endsWith('.tmp'));
+    assert.deepStrictEqual(strays, [], `round ${round}: stray temp files`);
+  }
+});
+
+test('concurrent appends to distinct sessions do not cross over', async () => {
+  // A serialiser keyed on the wrong thing would pass the test above and fail
+  // this one.
+  const store = new SessionStore(tmpdir());
+  const sessions = [];
+  for (let i = 0; i < 8; i += 1) sessions.push(await store.create(`session-${i}`));
+
+  await Promise.all(sessions.flatMap((s, si) =>
+    Array.from({ length: 6 }, (_, m) => store.append(s.id, { role: 'assistant', content: `s${si}-${m}` }))));
+
+  for (let i = 0; i < sessions.length; i += 1) {
+    const loaded = await store.load(sessions[i].id);
+    assert.strictEqual(loaded.messages.length, 6, `session ${i}`);
+    assert.ok(loaded.messages.every((m) => m.content.startsWith(`s${i}-`)), `session ${i} picked up another session's message`);
+  }
+});
+
+test('concurrent creates all land, each with its own id and title', async () => {
+  const store = new SessionStore(tmpdir());
+  const created = await Promise.all(Array.from({ length: 20 }, (_, i) => store.create(`title-${i}`)));
+  assert.strictEqual(new Set(created.map((s) => s.id)).size, 20, 'create() handed out a duplicate id');
+  for (const s of created) {
+    const loaded = await store.load(s.id);
+    assert.ok(loaded, `session ${s.id} did not persist`);
+    assert.strictEqual(loaded.title, s.title);
+  }
+});

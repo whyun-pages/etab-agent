@@ -53,11 +53,10 @@ jobs:
         with:
           node-version: '24'
 
-      # `--filter @whyun/etab-agent` installs the root package only. `.verify/` is a
-      # workspace package too, but its exceljs tree (80-odd packages) serves the
-      # local probes, none of which run here — see the header comment.
+      # exceljs (80-odd packages) comes along as a devDependency: the suite uses
+      # it as an independent reader to judge the files we write.
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile --filter @whyun/etab-agent
+        run: pnpm install --frozen-lockfile
 
       - name: Type-check
         run: pnpm run typecheck
@@ -96,7 +95,7 @@ jobs:
           node-version: '24'
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile --filter @whyun/etab-agent
+        run: pnpm install --frozen-lockfile
 
       # build-exe.js compiles TypeScript first (step 0) and is not optional:
       # the bundler reads `.build/js/`, which does not exist until tsc has run.
