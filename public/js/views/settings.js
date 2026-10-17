@@ -292,7 +292,7 @@ function modelTab(root, state) {
     field({
       label: 'API key',
       hint: s.hasKey
-        ? `已保存 ${esc(s.keyHint || '')}。留空表示不改动；要清除请点「清除 key」。`
+        ? `已保存 ${s.keyHint || ''}。留空表示不改动；要清除请点「清除 key」。`
         : '只保存在本机。不会回显到页面上。',
       value: draft.apiKey ?? '',
       type: 'password',
