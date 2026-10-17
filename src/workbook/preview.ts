@@ -18,20 +18,10 @@
  */
 
 import { columnTotal, dateToSerial, totalsLabelColumn } from './workbook.ts';
+import type { WorkbookSpec, ColumnType } from './workbook.ts';
 import * as xlsx from '../formats/xlsx.ts';
+import type { ParsedSheet, Workbook as ParsedWorkbook } from '../formats/xlsx.ts';
 import { FORMAT_CODES } from '../formats/xlsx-writer.ts';
-
-/**
- * The spec types, named locally.
- *
- * `import type` and a namespace import are both compile-time here, so the spec
- * layer's exported types are referenced through inline `import(...)` positions
- * and given short local aliases.
- */
-type WorkbookSpec = import('./workbook.ts').WorkbookSpec;
-type ColumnType = import('./workbook.ts').ColumnType;
-type ParsedSheet = import('../formats/xlsx.ts').ParsedSheet;
-type ParsedWorkbook = import('../formats/xlsx.ts').Workbook;
 
 /**
  * The first window, sent with every session and turn response. The rest of the

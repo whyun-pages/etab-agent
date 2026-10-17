@@ -18,14 +18,13 @@
 import type { Router } from '@koa/router';
 import { applyOps } from '../../workbook/spec-ops.ts';
 import { exportSpec, isExportFormat, ExportError } from '../../workbook/export.ts';
+import type { ExportFile } from '../../workbook/export.ts';
 import { PREVIEW_PAGE_ROWS, MAX_PAGE_ROWS } from '../../workbook/preview.ts';
 import { previewOf, previewSource } from '../app-state.ts';
 import { fail, jsonBody, bodyOf, contentDisposition, messageOf, sessionOr404, noSession } from '../respond.ts';
 import { publicSession } from '../projections.ts';
 import type { RouteDeps } from './index.ts';
-
-type Session = import('../../store/session-store.ts').Session;
-type ExportFile = import('../../workbook/export.ts').ExportFile;
+import type { Session } from '../../store/session-store.ts';
 
 export function sessionRoutes(router: Router, { state }: RouteDeps): void {
   router.get('/api/sessions', async (ctx) => {

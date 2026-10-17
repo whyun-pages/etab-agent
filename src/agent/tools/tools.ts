@@ -38,6 +38,7 @@ import {
 } from '../../workbook/table-query.ts';
 import type { Pi } from '../pi.ts';
 import { TYPES } from '../../workbook/workbook.ts';
+import type { WorkbookSpec, SpecNote } from '../../workbook/workbook.ts';
 import type { ExportRequest, Attachment } from '../types.ts';
 import { SHELL_TOOL } from '../prompt.ts';
 import {
@@ -51,14 +52,15 @@ import {
   columnTypeOf,
   plainCell,
 } from './attachment-tools.ts';
+import type { TSchema } from '@earendil-works/pi-ai';
 
 // ---------------------------------------------------------------- tools
 
 /** What the tools of one turn share: the draft and what was done to it. */
 export interface TurnState {
-  draft: import('../../workbook/workbook.ts').WorkbookSpec | null;
+  draft: WorkbookSpec | null;
   ops: SpecOp[];
-  notes: import('../../workbook/workbook.ts').SpecNote[];
+  notes: SpecNote[];
   summaries: string[];
   question: string | null;
   exports: ExportRequest[];
@@ -159,7 +161,7 @@ export function buildTools(ai: Pi['ai'], state: TurnState, caps: Capabilities): 
     StringEnum(['all', 'any'], { description: '多个条件：all 全部满足（默认），any 满足任一' }),
   );
 
-  const params: Record<string, import('@earendil-works/pi-ai').TSchema> = {
+  const params: Record<string, TSchema> = {
     create_workbook: Type.Object({
       title: Type.String({ description: '工作簿标题' }),
       sheets: Type.Array(

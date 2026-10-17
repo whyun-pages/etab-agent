@@ -71,9 +71,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { normalizeSpec } from '../workbook/workbook.ts';
+import type { WorkbookSpec } from '../workbook/workbook.ts';
 import { SerialQueue } from './serial-queue.ts';
-
-type WorkbookSpec = import('../workbook/workbook.ts').WorkbookSpec;
 
 const DIR_NAME = 'sessions';
 const MAX_SESSIONS = 200;

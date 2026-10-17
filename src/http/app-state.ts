@@ -19,17 +19,17 @@ import { openWithSystem } from '../platform/open-file.ts';
 import { Settings } from '../store/settings.ts';
 import { SessionStore, safeId as safeSessionId } from '../store/session-store.ts';
 import { writeSpec } from '../workbook/workbook.ts';
+import type { WorkbookSpec } from '../workbook/workbook.ts';
 import { sheetWindow, MAX_PREVIEW_ROWS } from '../workbook/preview.ts';
 import { readWorkbook } from '../formats/xlsx.ts';
+import type { Workbook as ParsedWorkbook } from '../formats/xlsx.ts';
+import type { SpecOp } from '../workbook/spec-ops.ts';
+import type { ExportRequest } from '../agent/agent.ts';
+import type { FetchOptions } from '../agent/tools/fetch-url.ts';
+import type { Model } from '@earendil-works/pi-ai';
 
-type WorkbookSpec = import('../workbook/workbook.ts').WorkbookSpec;
-type SpecOp = import('../workbook/spec-ops.ts').SpecOp;
-type ExportRequest = import('../agent/agent.ts').ExportRequest;
-type FetchOptions = import('../agent/tools/fetch-url.ts').FetchOptions;
-type ParsedWorkbook = import('../formats/xlsx.ts').Workbook;
-type SettingsLike = import('../store/settings.ts').Settings;
 /** A pi-ai model, for the test seam that replaces the configured one. */
-export type PiModel = import('@earendil-works/pi-ai').Model<any>;
+export type PiModel = Model<any>;
 
 // Re-exported for the routes, which take them from here with the rest of
 // the state's shapes.
@@ -94,7 +94,7 @@ export class AppState {
    */
   pending: Map<string, PendingChange>;
   /** Model credentials, read from settings.json in the data directory. */
-  settings: SettingsLike;
+  settings: Settings;
   /**
    * The model a session turn drives. Absent means the one built from settings;
    * `createServer` sets it from the `model` seam.

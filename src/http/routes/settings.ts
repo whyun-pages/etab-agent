@@ -15,9 +15,8 @@ import { parseBlocklist } from '../../agent/tools/fetch-url.ts';
 import { chat, stripReasoning } from '../../agent/llm.ts';
 import { fail, jsonBody, bodyOf, isLocalRequest, messageOf } from '../respond.ts';
 import type { RouteDeps } from './index.ts';
+import type { SettingsPatch } from '../../store/settings.ts';
 /** Entries either blocklist may hold: well past any real list, small enough to check per request. */ const MAX_BLOCKLIST = 500;
-
-type SettingsPatch = import('../../store/settings.ts').SettingsPatch;
 
 export function settingsRoutes(router: Router, { state }: RouteDeps): void {
   router.get('/api/settings', async (ctx) => {

@@ -10,6 +10,7 @@ import { INTENT } from './types.ts';
 import type { HistoryMessage, ChangeLine, AgentMessage, AgentMessagesArgs } from './types.ts';
 import { SYSTEM } from './prompt.ts';
 import { isoDay } from '../workbook/workbook.ts';
+import type { WorkbookSpec as Spec, SheetSpec as Sheet } from '../workbook/workbook.ts';
 
 /** Rows sent to the model. Enough to see the shape, not enough to blow the budget. */
 export const DEFAULT_ROW_BUDGET = 200;
@@ -65,10 +66,7 @@ const CHANGE_REQUEST_CAP = 80;
  * (see src/workbook/spec-ops.ts), so the model refers to a row by the label it was
  * shown, and never has to count.
  */
-export function specSummary(
-  spec: import('../workbook/workbook.ts').WorkbookSpec | null | undefined,
-  budget = DEFAULT_ROW_BUDGET,
-): string {
+export function specSummary(spec: Spec | null | undefined, budget = DEFAULT_ROW_BUDGET): string {
   if (!spec || !Array.isArray(spec.sheets) || !spec.sheets.length) return '';
   const stats = specStats(spec);
   const lines = [`当前工作簿：${spec.title || '(未命名)'}（${stats.sheets} 个工作表，共 ${stats.rows} 行）`];
@@ -90,9 +88,6 @@ export function specSummary(
   }
   return lines.join('\n');
 }
-
-type Spec = import('../workbook/workbook.ts').WorkbookSpec;
-type Sheet = import('../workbook/workbook.ts').SheetSpec;
 
 /**
  * What a change did to the document, in one line, from the two specs.

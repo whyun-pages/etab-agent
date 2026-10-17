@@ -12,6 +12,8 @@ import type { FetchOptions } from './tools/fetch-url.ts';
 import type { Ingested } from '../ingest/ingest.ts';
 import type { Attachment } from '../ingest/types.ts';
 import type { FileAccessMode, FileAccessOptions, FileWrite } from './tools/file-access.ts';
+import type { WorkbookSpec, SpecNote } from '../workbook/workbook.ts';
+import type { Credentials } from './llm.ts';
 
 /** What the user's message asks for. */
 export const INTENT = {
@@ -51,7 +53,7 @@ export interface AgentMessage {
 export interface AgentMessagesArgs {
   history?: HistoryMessage[];
   message: string;
-  spec?: import('../workbook/workbook.ts').WorkbookSpec | null;
+  spec?: WorkbookSpec | null;
   rowBudget?: number;
   historyBudget?: number;
   changes?: ChangeLine[];
@@ -67,14 +69,14 @@ export interface GuardVerdict {
 /** A settings object, as far as this module is concerned. */
 export interface AgentSettings {
   isConfigured(): Promise<boolean>;
-  secrets(): Promise<import('./llm.ts').Credentials>;
+  secrets(): Promise<Credentials>;
 }
 
 /** Arguments to `runTurn`. */
 export interface RunTurnArgs {
   settings: AgentSettings;
   message: string;
-  spec?: import('../workbook/workbook.ts').WorkbookSpec | null;
+  spec?: WorkbookSpec | null;
   history?: HistoryMessage[];
   changes?: ChangeLine[];
   signal?: AbortSignal;
@@ -140,7 +142,7 @@ export interface TurnResult {
   reply: string;
   /** what the tools reported doing, one line each; empty for an answer */
   reason: string;
-  spec: import('../workbook/workbook.ts').WorkbookSpec | null;
+  spec: WorkbookSpec | null;
   /**
    * The edits that produced `spec`, in order. The server replays these against
    * the freshest stored spec rather than writing `spec` back wholesale — `spec`
@@ -149,7 +151,7 @@ export interface TurnResult {
   ops: SpecOp[];
   /** saves to perform after `ops` land; empty when none was asked for */
   exports: ExportRequest[];
-  notes: import('../workbook/workbook.ts').SpecNote[];
+  notes: SpecNote[];
   prefiltered: boolean;
   /** a compact transcript of the loop, for debugging */
   raw: string;

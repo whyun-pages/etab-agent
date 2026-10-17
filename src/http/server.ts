@@ -28,9 +28,8 @@ import type { Extractor, PiModel } from './app-state.ts';
 import { createRouter } from './routes/index.ts';
 import { serveStatic } from './routes/static.ts';
 import { fail, messageOf, safeFilename } from './respond.ts';
-
-type SettingsLike = import('../store/settings.ts').Settings;
-type FetchOptions = import('../agent/tools/fetch-url.ts').FetchOptions;
+import type { Settings } from '../store/settings.ts';
+import type { FetchOptions } from '../agent/tools/fetch-url.ts';
 
 /**
  * What `createServer` accepts.
@@ -47,7 +46,7 @@ interface ServerOptions {
   imageExtractor?: Extractor;
   textExtractor?: Extractor;
   model?: PiModel;
-  settingsOverride?: SettingsLike;
+  settingsOverride?: Settings;
   /** Test seam for `fetch_url`; see `AppState.fetchOptions`. */
   fetchOptions?: FetchOptions;
   /** Test seams for opening attachments; see `AppState.openFile` / `openDir`. */

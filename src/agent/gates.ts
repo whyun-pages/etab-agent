@@ -7,6 +7,7 @@
 
 import { stripReasoning } from './llm.ts';
 import { validateSpec, specStats } from '../workbook/workbook.ts';
+import type { WorkbookSpec } from '../workbook/workbook.ts';
 import type { GuardVerdict } from './types.ts';
 
 // --------------------------------------------------------- the cheap filter
@@ -60,9 +61,9 @@ const SHRINK_RE = /删|清空|去掉|移除|不要了|重新做|重做|换成|�
 /** Arguments to `guardChange`. */
 export interface GuardChangeArgs {
   /** the spec in force (null on a fresh start) */
-  current: import('../workbook/workbook.ts').WorkbookSpec | null;
+  current: WorkbookSpec | null;
   /** the proposed spec, already normalised */
-  next: import('../workbook/workbook.ts').WorkbookSpec;
+  next: WorkbookSpec;
   /** what the user actually said */
   message: string;
 }

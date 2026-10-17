@@ -8,6 +8,7 @@
  */
 
 import { readZip, writeZip } from './zip.ts';
+import type { ZipEntry } from './zip.ts';
 
 // Re-exported, not merely imported: `src/formats/xlsx` has always exposed `readZip` as
 // part of its own surface (tests and probes destructure it from here rather
@@ -212,7 +213,7 @@ export interface Workbook {
   sharedStrings: string[];
   styles: StylesTable;
   definedNames: Record<string, string>;
-  zip: Map<string, import('./zip.ts').ZipEntry>;
+  zip: Map<string, ZipEntry>;
 }
 
 /**

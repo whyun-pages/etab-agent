@@ -9,6 +9,7 @@ import { tsvCell } from '../../workbook/table-query.ts';
 import type { QueryTable } from '../../workbook/table-query.ts';
 import type { Attachment, AttachmentTable } from '../types.ts';
 import { isoDay } from '../../workbook/workbook.ts';
+import type { WorkbookSpec } from '../../workbook/workbook.ts';
 
 /** Rows per `read_attachment` page; the same cap as `read_rows`. */
 const ATTACH_PAGE_ROWS = 200;
@@ -147,7 +148,7 @@ interface QuerySource {
 }
 
 export function querySource(
-  draft: import('../../workbook/workbook.ts').WorkbookSpec | null,
+  draft: WorkbookSpec | null,
   attachments: Attachment[],
   a: Record<string, unknown>,
 ): QuerySource {

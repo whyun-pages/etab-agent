@@ -14,22 +14,21 @@ import { isFileAccessMode, performWrite, checkPath } from '../../agent/tools/fil
 import type { FileAccessOptions, FileWrite } from '../../agent/tools/file-access.ts';
 import { resolveExportDir } from '../../store/settings.ts';
 import { runTurn as runAgentTurn, describeChange, guardChange } from '../../agent/agent.ts';
+import type { ExportRequest } from '../../agent/agent.ts';
 import { applyOps } from '../../workbook/spec-ops.ts';
+import type { SpecOp } from '../../workbook/spec-ops.ts';
 import { exportSpec, writeExports } from '../../workbook/export.ts';
+import type { ExportFile } from '../../workbook/export.ts';
 import { specStats } from '../../workbook/workbook.ts';
+import type { WorkbookSpec } from '../../workbook/workbook.ts';
 import { previewOf, toUpload } from '../app-state.ts';
 import type { AppState, UploadedAttachment } from '../app-state.ts';
 import { fail, jsonBody, bodyOf, isLocalRequest, messageOf, sessionOr404, noSession } from '../respond.ts';
 import { publicAttachment, publicMessages, publicSession } from '../projections.ts';
 import type { RouteDeps } from './index.ts';
+import type { Session, ChangeRecord } from '../../store/session-store.ts';
+import type { FetchOptions } from '../../agent/tools/fetch-url.ts';
 
-type WorkbookSpec = import('../../workbook/workbook.ts').WorkbookSpec;
-type Session = import('../../store/session-store.ts').Session;
-type ChangeRecord = import('../../store/session-store.ts').ChangeRecord;
-type SpecOp = import('../../workbook/spec-ops.ts').SpecOp;
-type ExportRequest = import('../../agent/agent.ts').ExportRequest;
-type ExportFile = import('../../workbook/export.ts').ExportFile;
-type FetchOptions = import('../../agent/tools/fetch-url.ts').FetchOptions;
 type Settings = Awaited<ReturnType<AppState['settings']['load']>>;
 
 /** An export file, and the folder it was asked to go to (null: the export folder). */
