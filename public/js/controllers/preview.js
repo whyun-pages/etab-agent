@@ -3,9 +3,9 @@
    dragged in the grid.
    ════════════════════════════════════════════════════════════════════ */
 
-import { api, ApiError } from '../api.js';
+import { api } from '../api.js';
 import { state, set } from '../state.js';
-import { fail } from '../feedback.js';
+import { errText, fail } from '../feedback.js';
 
 // ── preview paging ───────────────────────────────────────────────────
 
@@ -42,8 +42,7 @@ export async function loadMorePreview() {
       },
     });
   } catch (err) {
-    if (state.activeId === id)
-      set({ previewError: err instanceof ApiError ? err.message : String(err?.message || err) });
+    if (state.activeId === id) set({ previewError: errText(err) });
   } finally {
     set({ previewLoading: false });
   }

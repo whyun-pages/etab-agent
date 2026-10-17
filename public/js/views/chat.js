@@ -343,9 +343,11 @@ function chipsRow(state, handlers) {
       el('button', {
         class: 'chip__x',
         type: 'button',
-        title: '移除',
+        // Every chip's x clears them all: the server can only clear a
+        // session's attachments, and the bytes to re-send the rest are gone.
+        title: '清空全部附件',
         html: icon('x'),
-        onclick: () => handlers.onRemoveAttachment(i),
+        onclick: () => handlers.onClearAttachments(),
       }),
     );
     wrap.append(chip);

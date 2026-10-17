@@ -3,10 +3,10 @@
    the connection.
    ════════════════════════════════════════════════════════════════════ */
 
-import { api, ApiError } from '../api.js';
+import { api } from '../api.js';
 import { state, set, setBusy } from '../state.js';
 import { toast } from '../ui.js';
-import { clock, fail } from '../feedback.js';
+import { clock, errText, fail } from '../feedback.js';
 import { refreshSessions } from './sessions.js';
 
 // ── model settings ───────────────────────────────────────────────────
@@ -84,7 +84,7 @@ export async function saveSettings(draft) {
     // The first save is what makes the app usable; go find the work.
     if (!state.sessions.length) await refreshSessions();
   } catch (err) {
-    const msg = err instanceof ApiError ? err.message : String(err?.message || err);
+    const msg = errText(err);
     set({ settingsNotice: { tone: 'err', text: `保存失败：${msg}` }, status: msg });
     toast({ tone: 'err', title: '保存失败', body: msg, ms: 7000 });
   } finally {

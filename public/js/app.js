@@ -16,7 +16,7 @@
    feedback.js for the failure toast they all use.
    ════════════════════════════════════════════════════════════════════ */
 
-import { api, ApiError, saveBlob } from './api.js';
+import { api, saveBlob } from './api.js';
 import { hydrateIcons, icon } from './icons.js';
 import { $, el, mount, beginRender, endRender } from './dom.js';
 import { state, set, setBusy, subscribe, ready } from './state.js';
@@ -28,7 +28,7 @@ import { captureChatScroll, restoreChatScroll, stickChat } from './chat-scroll.j
 import { previewView } from './views/preview.js';
 import { sessionsView } from './views/sessions.js';
 import { settingsView } from './views/settings.js';
-import { fail } from './feedback.js';
+import { errText, fail } from './feedback.js';
 import { refreshSessions, openSession, createSession, confirmRemoveSession } from './controllers/sessions.js';
 import {
   bindFileInput,
@@ -36,7 +36,7 @@ import {
   pickFiles,
   pickFolder,
   handleFiles,
-  removeAttachment,
+  clearAttachments,
   openAttachment,
 } from './controllers/attachments.js';
 import { loadMorePreview, setColumnWidth } from './controllers/preview.js';
@@ -225,7 +225,7 @@ async function send(text) {
     // A rename lands on the first change, so the list needs refreshing.
     if (res.applied) refreshSessions();
   } catch (err) {
-    restoreDraft(message, err instanceof ApiError ? err.message : String(err?.message || err));
+    restoreDraft(message, errText(err));
   } finally {
     setBusy('turn', false);
     focusComposer();
@@ -517,7 +517,7 @@ const handlers = {
   onPickFiles: pickFiles,
   onPickFolder: pickFolder,
   onPasteFiles: pasteFiles,
-  onRemoveAttachment: removeAttachment,
+  onClearAttachments: clearAttachments,
   onOpenAttachment: openAttachment,
   onApply: applyPending,
   onDismiss: dismissPending,

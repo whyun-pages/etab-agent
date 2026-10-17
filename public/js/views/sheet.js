@@ -254,9 +254,13 @@ function parseMerges(merges) {
   return map;
 }
 
+// Built once: constructing an Intl.NumberFormat per cell is the slow part of
+// formatting, and a page of the preview formats thousands of cells.
+const INTEGER_FORMAT = new Intl.NumberFormat('zh-CN');
+const DECIMAL_FORMAT = new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 4 });
+
 function formatNumber(v) {
-  if (Number.isInteger(v)) return new Intl.NumberFormat('zh-CN').format(v);
-  return new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 4 }).format(v);
+  return (Number.isInteger(v) ? INTEGER_FORMAT : DECIMAL_FORMAT).format(v);
 }
 
 // ── number formats ────────────────────────────────────────────────────

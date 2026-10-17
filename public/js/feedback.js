@@ -12,8 +12,13 @@ export function clock() {
   return new Date().toLocaleTimeString('zh-CN', { hour12: false });
 }
 
+/** What to show for a failure: the server's own message, else whatever was thrown. */
+export function errText(err) {
+  return err instanceof ApiError ? err.message : String(err?.message || err);
+}
+
 export function fail(title, err) {
-  const msg = err instanceof ApiError ? err.message : String(err?.message || err);
+  const msg = errText(err);
   set({ error: msg, status: msg });
   toast({ tone: 'err', title, body: msg, ms: 7000 });
 }

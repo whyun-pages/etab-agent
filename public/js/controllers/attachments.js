@@ -223,15 +223,14 @@ async function refreshAttachments(id = state.activeId) {
  * longer hold the File objects for those survivors, so the honest move is to
  * clear and say so — silently keeping a file the user removed would be worse.
  */
-export async function removeAttachment(index) {
+export async function clearAttachments() {
   if (!state.activeId) return;
   setBusy('attach', true);
   try {
     await api.clearAttachments(state.activeId);
     set({ attachments: [], status: '已清空附件' });
-    void index;
   } catch (err) {
-    fail('移除失败', err);
+    fail('清空附件失败', err);
   } finally {
     setBusy('attach', false);
   }
