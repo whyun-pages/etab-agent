@@ -4,11 +4,18 @@
  *
  * This is the case the static shots cannot reach: at a comfortable window size
  * the settings form fits, so nothing looks wrong. The bug only appears when the
- * height runs out, and it shows up as the bottom of the form (the margin note
- * and the save row) being simply gone.
+ * height runs out, and it shows up as the bottom of the form being simply gone.
  *
  * Scrollbars are deliberately NOT hidden here — in a shot meant to show whether
  * the content is reachable, a hidden scrollbar would hide the evidence.
+ *
+ * What "reachable" means now: the save and test buttons sit in the page's
+ * header bar (`.settings__bar`), outside the scrolling part, so they must be
+ * on screen at any height; the form scrolls in `.settings__main`, and its last
+ * field must come into view when that is scrolled to the bottom. The first
+ * version of this probe looked for `.editor__scroll` and a save row at the
+ * foot of the form — an earlier UI — found neither, and reported "STILL
+ * CLIPPED" with two identical screenshots.
  *
  * Usage: node .verify/shots/shot-settings-short.js [height]
  */
@@ -17,13 +24,10 @@
 require('tsx/cjs');
 const fs = require('node:fs');
 const path = require('node:path');
-const http = require('node:http');
-const { spawn } = require('node:child_process');
+const { openPage, closePage } = require('../support/browser.js');
 
 const ROOT = path.join(__dirname, '..', '..');
 const PORT = 3251;
-const CDP_PORT = 4251;
-const EDGE = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
 const OUT = path.join(ROOT, '.verify', 'out');
 const DATA = path.join(OUT, 'shot-short-data');
 const PROFILE = path.join(OUT, 'shot-short-profile');
@@ -31,89 +35,12 @@ const HEIGHT = Number(process.argv[2] || 470);
 
 const { createServer } = require(path.join(ROOT, 'src', 'http', 'server.ts'));
 
-function sleep(ms) {
-  return new Promise((r) => setTimeout(r, ms));
-}
-
-function get(urlPath, port = PORT) {
-  return new Promise((resolve, reject) => {
-    const req = http.request({ host: '127.0.0.1', port, path: urlPath, method: 'GET' }, (res) => {
-      const chunks = [];
-      res.on('data', (c) => chunks.push(c));
-      res.on('end', () => resolve({ status: res.statusCode, body: Buffer.concat(chunks).toString('utf8') }));
-    });
-    req.on('error', reject);
-    req.end();
-  });
-}
-
-class CDP {
-  constructor(ws) {
-    this.ws = ws;
-    this.id = 0;
-    this.pending = new Map();
-    this.errors = [];
-  }
-
-  static async attach(wsUrl) {
-    const ws = new WebSocket(wsUrl);
-    await new Promise((res, rej) => {
-      ws.onopen = res;
-      ws.onerror = () => rej(new Error('CDP websocket failed to open'));
-    });
-    const client = new CDP(ws);
-    ws.onmessage = (ev) => {
-      let msg;
-      try {
-        msg = JSON.parse(ev.data);
-      } catch {
-        return;
-      }
-      if (msg.method === 'Runtime.exceptionThrown') {
-        client.errors.push(msg.params?.exceptionDetails?.exception?.description || 'exception');
-      }
-      const slot = client.pending.get(msg.id);
-      if (!slot) return;
-      client.pending.delete(msg.id);
-      msg.error ? slot.reject(new Error(msg.error.message)) : slot.resolve(msg.result);
-    };
-    return client;
-  }
-
-  send(method, params = {}) {
-    const id = ++this.id;
-    return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        this.pending.delete(id);
-        reject(new Error(method + ' timed out'));
-      }, 20000);
-      this.pending.set(id, {
-        resolve: (r) => {
-          clearTimeout(timer);
-          resolve(r);
-        },
-        reject: (e) => {
-          clearTimeout(timer);
-          reject(e);
-        },
-      });
-      this.ws.send(JSON.stringify({ id, method, params }));
-    });
-  }
-
-  async eval(expression) {
-    const r = await this.send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
-    return r.result.value;
-  }
-
-  close() {
-    try {
-      this.ws.close();
-    } catch {
-      /* ignore */
-    }
-  }
-}
+/** Is the element's box inside the viewport, top to bottom? */
+const IN_VIEW = `(el) => {
+  if (!el) return null;
+  const r = el.getBoundingClientRect();
+  return r.height > 0 && r.top >= 0 && r.bottom <= innerHeight;
+}`;
 
 async function main() {
   fs.mkdirSync(DATA, { recursive: true });
@@ -122,117 +49,76 @@ async function main() {
   const server = createServer({ dataDir: DATA, staticDir: path.join(ROOT, 'public') });
   await new Promise((r) => server.listen(PORT, '127.0.0.1', r));
 
-  const edge = spawn(
-    EDGE,
-    [
-      `--remote-debugging-port=${CDP_PORT}`,
-      `--user-data-dir=${PROFILE}`,
-      '--no-first-run',
-      '--no-default-browser-check',
-      'about:blank',
-    ],
-    { stdio: 'ignore', detached: true },
-  );
-  edge.unref();
+  const page = await openPage({ profile: PROFILE, window: `1180,${HEIGHT}` });
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto(`http://127.0.0.1:${PORT}/`);
+  await page.waitForSelector('.rail__head', { state: 'attached', timeout: 10000 });
 
-  let page = null;
-  for (let i = 0; i < 80 && !page; i++) {
-    await sleep(250);
-    try {
-      const res = await get('/json/list', CDP_PORT);
-      page = JSON.parse(res.body).find((t) => t.type === 'page') || null;
-    } catch {
-      /* not up yet */
-    }
-  }
-  if (!page) throw new Error('Edge CDP never came up');
-
-  const cdp = await CDP.attach(page.webSocketDebuggerUrl);
-  await cdp.send('Page.enable');
-  await cdp.send('Runtime.enable');
-  await cdp.send('Emulation.setDeviceMetricsOverride', {
-    width: 1180,
-    height: HEIGHT,
-    deviceScaleFactor: 1,
-    mobile: false,
-  });
-  await cdp.send('Page.navigate', { url: `http://127.0.0.1:${PORT}/` });
-
-  for (let i = 0; i < 40; i++) {
-    await sleep(250);
-    if (await cdp.eval('!!document.querySelector(".editor__body")')) break;
-  }
-
-  // Open settings the way the user does.
-  await cdp.eval(`(() => {
-    const b = [...document.querySelectorAll('.activity__item')].find(x => x.dataset.activity === 'settings');
-    if (b) b.click();
-    return !!b;
-  })()`);
-  await sleep(700);
+  // Open settings the way the user does — unless the app opened on it, which
+  // it does when no model is configured (a fresh data folder).
+  if (await page.evaluate(`document.getElementById('settings-page').hidden`)) await page.click('#btn-settings');
+  await page.waitForSelector('#settings-page:not([hidden]) .settings__main', { timeout: 5000 });
 
   const state = JSON.parse(
-    await cdp.eval(`(() => {
-    const sc = document.querySelector('.editor__scroll');
-    const panel = document.querySelector('.settings');
-    const foot = document.querySelector('.settings__actions');
-    const rect = foot ? foot.getBoundingClientRect() : null;
+    await page.evaluate(`(() => {
+    const inView = ${IN_VIEW};
+    const sc = document.querySelector('.settings__main');
+    const fields = document.querySelectorAll('.settings__main .settings__field, .settings__main .settings__toggle');
     return JSON.stringify({
       viewport: innerHeight,
       scrollClientH: sc ? sc.clientHeight : -1,
       scrollH: sc ? sc.scrollHeight : -1,
-      panelH: panel ? panel.offsetHeight : -1,
-      // Is the save button inside the visible band before scrolling?
-      footVisibleBeforeScroll: rect ? (rect.top >= 0 && rect.bottom <= innerHeight) : null,
       scrollable: sc ? sc.scrollHeight > sc.clientHeight + 1 : false,
+      actionsVisible: inView(document.querySelector('.settings__actions')),
+      lastVisibleBeforeScroll: inView(fields[fields.length - 1]),
     });
   })()`),
   );
 
   console.log(`viewport         ${state.viewport}`);
   console.log(`scroll container ${state.scrollClientH}  content ${state.scrollH}  scrollable ${state.scrollable}`);
-  console.log(`panel height     ${state.panelH}`);
-  console.log(`save row visible without scrolling: ${state.footVisibleBeforeScroll}`);
+  console.log(`save/test buttons on screen: ${state.actionsVisible}`);
+  console.log(`last field visible without scrolling: ${state.lastVisibleBeforeScroll}`);
 
-  const a = await cdp.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
-  fs.writeFileSync(path.join(OUT, '09-settings-short-top.png'), Buffer.from(a.data, 'base64'));
+  await page.screenshot({ path: path.join(OUT, '09-settings-short-top.png') });
 
-  // Then scroll to the bottom, which is only possible if the fix is in place.
-  await cdp.eval(`(() => {
-    const sc = document.querySelector('.editor__scroll');
-    if (sc) sc.scrollTop = sc.scrollHeight;
-    return sc ? sc.scrollTop : -1;
-  })()`);
-  await sleep(400);
-
+  // Then scroll to the bottom with the wheel, as the user would. Not by
+  // setting scrollTop: an `overflow: hidden` box scrolls from script all the
+  // same, so that would report the clipped form as reachable — it did, until
+  // this was checked against `.settings__main { overflow: hidden }`.
+  const box = await page.locator('.settings__main').boundingBox();
+  if (box) {
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.wheel(0, 5000);
+    await page.waitForTimeout(400);
+  }
   const after = JSON.parse(
-    await cdp.eval(`(() => {
-    const foot = document.querySelector('.settings__actions');
-    const r = foot ? foot.getBoundingClientRect() : null;
-    return JSON.stringify({ scrollTop: document.querySelector('.editor__scroll')?.scrollTop ?? -1,
-      footVisible: r ? (r.top >= 0 && r.bottom <= innerHeight) : null });
+    await page.evaluate(`(() => {
+    const inView = ${IN_VIEW};
+    const sc = document.querySelector('.settings__main');
+    const fields = document.querySelectorAll('.settings__main .settings__field, .settings__main .settings__toggle');
+    return JSON.stringify({
+      scrollTop: sc ? sc.scrollTop : -1,
+      lastVisible: inView(fields[fields.length - 1]),
+      actionsVisible: inView(document.querySelector('.settings__actions')),
+    });
   })()`),
   );
 
-  console.log(`after scrolling to bottom: scrollTop ${after.scrollTop}, save row reachable: ${after.footVisible}`);
+  console.log(`after scrolling to bottom: scrollTop ${after.scrollTop}, last field reachable: ${after.lastVisible}`);
 
-  const b = await cdp.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
-  fs.writeFileSync(path.join(OUT, '10-settings-short-bottom.png'), Buffer.from(b.data, 'base64'));
-
+  await page.screenshot({ path: path.join(OUT, '10-settings-short-bottom.png') });
   console.log(`saved 09-settings-short-top.png, 10-settings-short-bottom.png`);
-  if (cdp.errors.length) console.log('front-end errors:', cdp.errors);
+  if (errors.length) console.log('front-end errors:', errors);
 
-  cdp.close();
+  await closePage(page, { trashProfile: true });
   server.close();
-  try {
-    edge.kill();
-  } catch {
-    /* ignore */
-  }
-  await sleep(400);
 
-  const ok = state.scrollable && after.footVisible;
-  console.log(ok ? '\nSHORT WINDOW: content scrollable, save row reachable.' : '\nSHORT WINDOW: STILL CLIPPED.');
+  // At a height where everything fits there is nothing to scroll, and that is
+  // fine too: what must hold is that the end of the form can be seen.
+  const ok = state.actionsVisible && after.actionsVisible && after.lastVisible && !errors.length;
+  console.log(ok ? '\nSHORT WINDOW: content reachable, buttons on screen.' : '\nSHORT WINDOW: STILL CLIPPED.');
   return ok ? 0 : 1;
 }
 

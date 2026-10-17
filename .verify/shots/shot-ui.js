@@ -24,7 +24,7 @@ const OUT = path.join(__dirname, '..', 'out');
 const SEED = process.argv.includes('--seed');
 
 const { createServer } = require(path.join(ROOT, 'src', 'http', 'server.ts'));
-const { openPage, closePage, findEdge } = require('../support/cdp.js');
+const { openPage, closePage } = require('../support/browser.js');
 
 /** Start the app on a free port, against a scratch data dir. */
 async function startApp() {
@@ -147,10 +147,8 @@ async function main() {
   }
 
   const page = await openPage({
-    edge: findEdge(),
     profile: path.join(OUT, 'shot-ui-profile'),
     url: base,
-    port: 9731,
     window: '1440,900',
     // Not `.composer`: with no key configured the app opens on settings, so a
     // composer wait would time out on exactly the fresh-install case this
@@ -159,17 +157,24 @@ async function main() {
   });
 
   // Give the first render + the session fetch time to settle.
-  await page.send('Runtime.evaluate', { expression: 'new Promise(r => setTimeout(r, 1800))', awaitPromise: true });
+  await page.waitForTimeout(1800);
 
   const shots = [];
   const shot = async (name, expr) => {
     if (expr) await page.evaluate(expr);
-    await page.send('Runtime.evaluate', { expression: 'new Promise(r => setTimeout(r, 500))', awaitPromise: true });
-    const r = await page.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+    await page.waitForTimeout(500);
     const file = path.join(OUT, `${name}.png`);
-    fs.writeFileSync(file, Buffer.from(r.data, 'base64'));
+    await page.screenshot({ path: file });
     shots.push([name, fs.statSync(file).size]);
   };
+
+  // A scratch data folder has no model configured, and the app then opens on
+  // settings. The workspace shot has to leave it first — until it did, every
+  // "13-ui-empty" was a picture of the settings page.
+  if (!(await page.evaluate(`document.getElementById('settings-page').hidden`))) {
+    await page.click('#btn-settings');
+    await page.waitForSelector('#shell:not([hidden])', { timeout: 5000 });
+  }
 
   // What the page actually did, so a blank screenshot is explainable.
   const report = await page.evaluate(`(() => {

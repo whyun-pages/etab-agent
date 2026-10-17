@@ -26,7 +26,7 @@ const path = require('node:path');
 
 const ROOT = path.join(__dirname, '..', '..');
 const OUT = path.join(__dirname, '..', 'out');
-const { openPage, closePage, findEdge, sleep } = require('../support/cdp.js');
+const { openPage, closePage, sleep } = require('../support/browser.js');
 
 let _passed = 0;
 let failed = 0;
@@ -91,10 +91,8 @@ async function main() {
     if (!up) throw new Error('exe never answered');
 
     page = await openPage({
-      edge: findEdge(),
       profile: path.join(OUT, 'attach-exe-profile'),
       url: base,
-      port: 9765,
       window: '1440,900',
       waitForSelector: '.rail',
     });
@@ -121,10 +119,9 @@ async function main() {
     // Upload via the real input element.
     const csvPath = path.join(OUT, '打包附件.csv');
     fs.writeFileSync(csvPath, CSV, 'utf8');
-    await page.send('DOM.enable');
-    const doc = await page.send('DOM.getDocument', { depth: -1 });
-    const node = await page.send('DOM.querySelector', { nodeId: doc.root.nodeId, selector: '#file-input' });
-    await page.send('DOM.setFileInputFiles', { files: [csvPath], nodeId: node.nodeId });
+    // setInputFiles: CDP's DOM.setFileInputFiles underneath, and it fires
+    // `change` as a picker does.
+    await page.locator('#file-input').setInputFiles(csvPath);
 
     let chip = false;
     for (let i = 0; i < 40 && !chip; i++) {

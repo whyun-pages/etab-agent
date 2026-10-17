@@ -917,7 +917,7 @@ operation 只能来自**解析成功的对象**，没解析成功的回复没有
       原先的 sabotage 脚本因此不再需要。也顺手收紧了两条原本恒为真的断言：
       settings 的并发检查只看「六个键都在」，而默认值本来就有六个键；
       session-store 的「不留临时文件」查的是数据目录根，临时文件其实写在 `sessions/` 下。
-67. **`.verify/browser/` 改用 playwright-core，手写的 CDP 客户端退到只剩 exe/model/shots 在用。**
+67. **`.verify/` 改用 playwright-core，手写的 CDP 客户端删掉。**
     `support/cdp.js` 是 378 行自写的 DevTools 客户端：spawn Edge、轮询调试端口、挑 target、
     手发 `Input.dispatchMouseEvent`。`support/browser.js` 换成 playwright-core（锁 1.63.0，
     不下载浏览器，`executablePath` 指向本机 msedge.exe，经管道而不是端口连接）。底下仍是 CDP，
@@ -938,6 +938,22 @@ operation 只能来自**解析成功的对象**，没解析成功的回复没有
     改完拿 `.settings__main { overflow: hidden }` 反向验证，能报出 CLIPPED。
     旧版异常退出时不关自己 detached 的 Edge，残留实例会占住配置目录，新启动的 Edge 把请求
     交给它就退出——Playwright 报的是「browser has been closed」，看不出是这个原因。
+    第二步迁了 exe/（3 个）、shots/（6 个）和 model/live-ui，`support/cdp.js` 和 shots 里
+    另外三份手写客户端一起删掉；「只杀探针自己的 Edge」并进 `support/kill-leftovers.js`。
+    迁之前同样先跑基准，又是几个早就坏了的：
+    - **`live-delete-exe` 8 项失败，不是删除坏了。** 全新数据目录没配模型，应用直接开在设置页，
+      会话栏隐藏，每一行量出来都是 0×0，点击全落在标题栏上。开发版 `live-delete.js` 先往
+      数据目录写了一份带占位 key 的 settings.json，所以一直绿；打包版没写。现在打包版
+      像用户一样点齿轮离开设置页。另一项查 `app.js` 里的 openModal 导入——拆 app.js 之后
+      导入在 `controllers/sessions.js`，这项从那以后每次打包都红。
+    - **`shot-settings` / `shot-settings-short` 对着旧界面**（activity bar、单面板、表单底部的保存行），
+      一个第一下点击就抛错，一个两张截图一模一样却报「仍被裁切」。按现在的两个标签页重写。
+    - **`shot-ui` 的「空状态」截的其实是设置页**，同一个原因。
+    - **用代码滚动证明不了能滚动。** `overflow: hidden` 的盒子照样可以 `scrollTop = …`，
+      短窗口探针因此对裁切的表单报「可达」；拿 `overflow: hidden` 反向验证才发现。改成真的滚轮。
+    - **`--window-size` 不等于视口。** 旧客户端 1440×900 实际渲染 1396×798；`browser.js` 设的是
+      视口本身。所有测量类探针在两种尺寸下结果一致。
+    `model/live-ui.js` 要用用户本机的真实模型和 key，迁完没有在这里跑。
 
 - **探测正则要用归一化后的文本。** 单行提示词那次我拿全角原文试，误判成正则写错了。
 - **自读自写不能证明兼容。** 这一轮又是 exceljs 对照和真文件流程抓出了盲区。

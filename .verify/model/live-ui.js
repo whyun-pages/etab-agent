@@ -25,7 +25,7 @@ const ROOT = path.join(__dirname, '..', '..');
 const OUT = path.join(__dirname, '..', 'out');
 
 const { createServer } = require(path.join(ROOT, 'src', 'http', 'server.ts'));
-const { openPage, closePage, findEdge } = require('../support/cdp.js');
+const { openPage, closePage } = require('../support/browser.js');
 
 const ASK =
   '做一个销售台账，三个客户：杭州云图科技、上海临港数据服务、深圳前海智算中心，' +
@@ -84,19 +84,13 @@ async function main() {
   const port = server.address().port;
 
   const page = await openPage({
-    edge: findEdge(),
     profile: path.join(OUT, 'live-ui-profile'),
     url: `http://127.0.0.1:${port}/`,
-    port: 9761,
     window: '1440,900',
     waitForSelector: '.composer',
   });
 
-  const wait = (ms) =>
-    page.send('Runtime.evaluate', {
-      expression: `new Promise(r => setTimeout(r, ${ms}))`,
-      awaitPromise: true,
-    });
+  const wait = (ms) => page.waitForTimeout(ms);
 
   await wait(1500);
 
@@ -140,8 +134,7 @@ async function main() {
   check('no page errors', !state.busy, state.status);
   if (state.guard) check('the guard did not need to intervene', false, state.guard);
 
-  const shot = await page.send('Page.captureScreenshot', { format: 'png' });
-  fs.writeFileSync(path.join(OUT, '17-live-ui.png'), Buffer.from(shot.data, 'base64'));
+  await page.screenshot({ path: path.join(OUT, '17-live-ui.png') });
 
   console.log('\n--- 3) the value in the grid is a value, not the word for it ---');
   const grid = JSON.parse(
@@ -183,8 +176,7 @@ async function main() {
     check('the change applied without confirmation being asked', state.cells > 0, `${state.cells} cells`);
   }
 
-  const shot2 = await page.send('Page.captureScreenshot', { format: 'png' });
-  fs.writeFileSync(path.join(OUT, '18-live-ui-applied.png'), Buffer.from(shot2.data, 'base64'));
+  await page.screenshot({ path: path.join(OUT, '18-live-ui-applied.png') });
 
   await closePage(page, { trashProfile: true });
   server.close();

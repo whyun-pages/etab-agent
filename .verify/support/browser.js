@@ -2,8 +2,8 @@
 /**
  * Real Edge for the .verify scripts, driven through playwright-core.
  *
- * This replaced a hand-written CDP client (support/cdp.js, still used by the
- * exe/, model/ and shots/ scripts until they move too). Playwright speaks
+ * This replaced a hand-written CDP client (support/cdp.js, and three more
+ * copies inside shots/ scripts). Playwright speaks
  * the same protocol to Edge — CDP is the only one a Chromium browser has —
  * but owns the parts every probe used to get wrong on its own: polling for
  * the debugging endpoint, picking the right target, an exception inside the
@@ -65,9 +65,11 @@ function moveToTrash(src, label) {
 /**
  * Launch Edge on a scratch profile and open one page.
  *
- * `window` is the viewport, "width,height", as the old `--window-size` was:
- * headless Edge has no browser chrome, so the two are the same size, and the
- * layout probes measure against it.
+ * `window` is the viewport, "width,height", exactly. The old `--window-size`
+ * was not: headless Edge still took about 44 px of width and 100 px of height
+ * off it (1440,900 rendered a 1396x798 page — compare an old screenshot). The
+ * layout probes passed the same at both sizes; their expectations are about
+ * proportion and reachability, not those pixels.
  *
  * @param {{ edge?: string, profile: string, url?: string, window?: string,
  *           waitForSelector?: string }} opts

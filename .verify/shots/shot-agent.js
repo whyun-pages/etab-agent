@@ -14,7 +14,7 @@ const path = require('node:path');
 
 const OUT = path.join(__dirname, '..', 'out');
 const ExcelJS = require('exceljs');
-const { openPage, closePage, findEdge } = require('../support/cdp.js');
+const { openPage, closePage } = require('../support/browser.js');
 
 const XLSX = path.join(OUT, 'live-agent-build.xlsx');
 
@@ -122,15 +122,12 @@ async function main() {
   fs.writeFileSync(htmlPath, html, 'utf8');
 
   const page = await openPage({
-    edge: findEdge(),
     profile: path.join(OUT, 'shot-agent-profile'),
     url: 'file:///' + htmlPath.replace(/\\/g, '/'),
-    port: 9721,
     window: '1360,620',
   });
-  const shot = await page.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true });
   const file = path.join(OUT, '12-agent-spec.png');
-  fs.writeFileSync(file, Buffer.from(shot.data, 'base64'));
+  await page.screenshot({ path: file });
   console.log(`saved 12-agent-spec.png (${fs.statSync(file).size} bytes)`);
   await closePage(page, { trashProfile: true });
 }

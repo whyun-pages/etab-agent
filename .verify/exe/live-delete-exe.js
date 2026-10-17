@@ -10,7 +10,7 @@
  *
  * Steps, one observable at a time:
  *   1. exe boots and serves /api/health
- *   2. embedded /js/app.js carries the fixed import line (openModal/closeModal)
+ *   2. embedded /js/controllers/sessions.js carries the fixed import line (openModal/closeModal)
  *   3. rail shows seeded sessions
  *   4. hover reveals the row's trash; it is hit-testable at its own centre
  *   5. clicking it opens a confirm modal naming the session
@@ -26,7 +26,7 @@ const { spawn } = require('node:child_process');
 const ROOT = path.join(__dirname, '..', '..');
 const OUT = path.join(__dirname, '..', 'out');
 const EXE = path.join(ROOT, 'dist', 'TabAgent.exe');
-const { openPage, closePage, findEdge, sleep } = require('../support/cdp.js');
+const { openPage, closePage, sleep } = require('../support/browser.js');
 
 const PORT = 59512;
 const BASE = `http://127.0.0.1:${PORT}`;
@@ -75,9 +75,12 @@ async function main() {
     check('health reports the tab-agent identity', health.app === 'tab-agent', JSON.stringify(health));
 
     // 2. the embedded bundle carries the fix, not a stale copy
-    const js = await fetch(`${BASE}/js/app.js`).then((r) => r.text());
+    // The session handlers moved out of app.js into controllers/sessions.js;
+    // that is where the import now has to be. (Checked against app.js, this
+    // failed on every build after the split, fix shipped or not.)
+    const js = await fetch(`${BASE}/js/controllers/sessions.js`).then((r) => r.text());
     check(
-      'embedded app.js imports openModal + closeModal (the fix shipped)',
+      'embedded controllers/sessions.js imports openModal + closeModal (the fix shipped)',
       /openModal\s*,\s*closeModal/.test(js),
       'import line missing from the exe bundle',
     );
@@ -96,13 +99,18 @@ async function main() {
     console.log(`  (seeded ${idA}, ${idB})`);
 
     page = await openPage({
-      edge: findEdge(),
       profile: path.join(OUT, 'delete-exe-profile'),
       url: BASE,
-      port: 9754,
       window: '1440,900',
     });
     await sleep(1200);
+    // A fresh data folder has no model configured, and the app then opens on
+    // settings with the session list hidden: every row measures 0x0 and each
+    // click below lands on the title bar. Leave settings the way a user does.
+    if (!(await page.evaluate(`document.getElementById('settings-page').hidden`))) {
+      await page.click('#btn-settings');
+      await page.waitForSelector('#shell:not([hidden])', { timeout: 5000 });
+    }
 
     const rowCount = () => page.evaluate('document.querySelectorAll(".rail__item").length');
     const modalText = () => page.evaluate('(document.querySelector(".modal") || {}).textContent || ""');
@@ -115,13 +123,12 @@ async function main() {
     })()`);
 
     const moveTo = async (x, y) => {
-      await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, button: 'none', clickCount: 0 });
+      await page.mouse.move(x, y);
       await sleep(120);
     };
     const clickAt = async (x, y) => {
       await moveTo(x, y);
-      await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 });
-      await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 });
+      await page.mouse.click(x, y);
       await sleep(300);
     };
     const rowBoxOf = (title) =>

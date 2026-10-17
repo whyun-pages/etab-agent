@@ -10,7 +10,7 @@ const { spawn } = require('node:child_process');
 
 const OUT = path.join(__dirname, '..', 'out');
 const EXE = path.join(__dirname, '..', '..', 'dist', 'TabAgent.exe');
-const { openPage, closePage, findEdge, sleep } = require('../support/cdp.js');
+const { openPage, closePage, sleep } = require('../support/browser.js');
 
 let failures = 0;
 function check(name, cond, extra = '') {
@@ -46,10 +46,8 @@ function check(name, cond, extra = '') {
   await sleep(8000);
 
   const page = await openPage({
-    edge: findEdge(),
     profile: path.join(OUT, 'click-exe-profile'),
     url: `http://127.0.0.1:${port}`,
-    port: 9755,
     window: '1440,900',
   });
   await sleep(1000);
@@ -65,9 +63,8 @@ function check(name, cond, extra = '') {
       .then((s) => (s ? JSON.parse(s) : null));
 
   async function clickAt(x, y) {
-    await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, button: 'none', clickCount: 0 });
-    await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 });
-    await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 });
+    await page.mouse.move(x, y);
+    await page.mouse.click(x, y);
     await sleep(300);
   }
 
@@ -86,30 +83,18 @@ function check(name, cond, extra = '') {
   const railBefore = await page.evaluate('document.getElementById("rail").getBoundingClientRect().width');
   const s = await boxOf('#split-rail');
   check('packaged: splitter has a grabbable width', s && s.w >= 4, JSON.stringify(s));
-  await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: s.x, y: s.y, button: 'none', clickCount: 0 });
-  await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: s.x, y: s.y, button: 'left', clickCount: 1 });
+  await page.mouse.move(s.x, s.y);
+  await page.mouse.down();
   for (let i = 1; i <= 8; i++) {
-    await page.send('Input.dispatchMouseEvent', {
-      type: 'mouseMoved',
-      x: s.x + i * 10,
-      y: s.y,
-      button: 'left',
-      clickCount: 1,
-    });
+    await page.mouse.move(s.x + i * 10, s.y);
     await sleep(20);
   }
-  await page.send('Input.dispatchMouseEvent', {
-    type: 'mouseReleased',
-    x: s.x + 80,
-    y: s.y,
-    button: 'left',
-    clickCount: 1,
-  });
+  await page.mouse.up();
   await sleep(300);
   const railAfter = await page.evaluate('document.getElementById("rail").getBoundingClientRect().width');
   check('packaged: dragging widens the rail', railAfter > railBefore + 40, `${railBefore} -> ${railAfter}`);
 
-  await page.screenshot(path.join(OUT, '20-exe-splitters.png'));
+  await page.screenshot({ path: path.join(OUT, '20-exe-splitters.png') });
   console.log('  wrote .verify/out/20-exe-splitters.png');
 
   await closePage(page, { trashProfile: true });

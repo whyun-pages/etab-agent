@@ -352,7 +352,7 @@ Windows 注意：`node --test tests/` 不认目录，必须写 glob。
 | `model/` | 同上，但接用户本机配置的真实模型 | 另需已配模型 |
 | `exe/` | 针对打包好的 `dist/TabAgent.exe`：资源、窗口、单实例、生命周期 | 先 `pnpm build` |
 | `shots/` | 截图与测量，产出图片，不判对错 | Windows + Edge |
-| `support/` | 共用代码（`browser.js`：playwright-core 驱动本机 Edge；`cdp.js`：exe / model / shots 还在用的旧 CDP 客户端；假模型 transport）和清理残留进程 / 窗口的脚本 | — |
+| `support/` | 共用代码（`browser.js`：playwright-core 驱动本机 Edge；假模型 transport）和清理脚本（`kill-leftovers.js` 结束残留的 TabAgent.exe 和探针自己的 Edge） | — |
 
 ## 已知限制
 
