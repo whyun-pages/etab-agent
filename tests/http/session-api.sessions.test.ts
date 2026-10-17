@@ -58,7 +58,10 @@ test('deleting twice reports 404 the second time, not a crash', async (t) => {
   const url = `${base}/api/sessions/${created.session.id}`;
   assert.strictEqual((await fetch(url, { method: 'DELETE' })).status, 200);
   assert.strictEqual((await get(base, `/api/sessions/${created.session.id}`)).status, 404);
-  assert.strictEqual((await fetch(url, { method: 'DELETE' })).status, 404);
+  const again = await fetch(url, { method: 'DELETE' });
+  assert.strictEqual(again.status, 404);
+  // Shaped like every other failure: the client shows `error`.
+  assert.deepStrictEqual(await again.json(), { ok: false, error: '会话不存在' });
 });
 
 test('concurrent creates over HTTP all land, with distinct ids', async (t) => {

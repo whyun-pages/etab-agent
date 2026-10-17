@@ -130,7 +130,8 @@ export function sessionRoutes(router: Router, { state }: RouteDeps): void {
     const sid = ctx.params.id;
     const ok = await state.sessions.remove(sid);
     state.dropUploads(sid);
-    ctx.status = ok ? 200 : 404;
+    // A miss answers like every other failure, with an `error` to show.
+    if (!ok) return fail(ctx, 404, '会话不存在');
     ctx.body = { ok };
   });
 
