@@ -1,7 +1,13 @@
 'use strict';
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { normalizeText, parseNumber, parseChineseNumber, parseDate, parseBoolean } from '../../src/workbook/extract.ts';
+import {
+  normalizeText,
+  parseNumber,
+  parseChineseNumber,
+  parseDate,
+  parseBoolean,
+} from '../../src/workbook/parse-values.ts';
 
 // -------------------------------------------------------------- normalising
 test('full-width text is normalised to ASCII', () => {

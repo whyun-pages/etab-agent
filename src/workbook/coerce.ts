@@ -5,7 +5,7 @@
  * might spell a column's type with.
  */
 
-import { parseNumber, parseChineseNumber, parseDate, parseBoolean } from './extract.ts';
+import { parseNumber, parseChineseNumber, parseDate, parseBoolean } from './parse-values.ts';
 import { TYPES, TYPE_LABELS, MAX_CELL_CHARS, MAX_NAME_CHARS } from './spec-types.ts';
 import type { ColumnType, CellValue, ColumnSpec } from './spec-types.ts';
 
