@@ -17,8 +17,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { exportSpec, writeExports, cleanBaseName, ExportError } from '../src/workbook/export.ts';
-import { normalizeSpec } from '../src/workbook/workbook.ts';
+import { exportSpec, writeExports, cleanBaseName, ExportError } from '../../src/workbook/export.ts';
+import { normalizeSpec } from '../../src/workbook/workbook.ts';
 
 const spec = () => normalizeSpec({
   title: '销售',

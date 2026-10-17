@@ -14,14 +14,14 @@
 
 import test from 'node:test';
 import assert from 'node:assert';
-import { listenLocal } from './helpers/listen.ts';
+import { listenLocal } from '../helpers/listen.ts';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
 
-import { createServer } from '../src/http/server.ts';
-import { loadPi } from '../src/agent/pi.ts';
+import { createServer } from '../../src/http/server.ts';
+import { loadPi } from '../../src/agent/pi.ts';
 
 const tmpdir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'sess-api-'));
 
@@ -75,7 +75,7 @@ async function startServer(t, { configured = true, replies = [], chatCanEdit = t
 
   const server = createServer({
     dataDir,
-    staticDir: path.join(__dirname, '..', 'public'),
+    staticDir: path.join(__dirname, '..', '..', 'public'),
     // The model override the server accepts for exactly this purpose.
     model: faux.getModel(),
     settingsOverride: settingsStub({ configured, chatCanEdit, chatConfirmEdits, extra }),
@@ -411,7 +411,7 @@ test('a session survives a server restart', async (t) => {
   faux.setResponses(ACTION.map((s) => (context) => step(ai, s, context)));
   const opts = {
     dataDir,
-    staticDir: path.join(__dirname, '..', 'public'),
+    staticDir: path.join(__dirname, '..', '..', 'public'),
     model: faux.getModel(),
     settingsOverride: settingsStub({ chatConfirmEdits: false }),
   };

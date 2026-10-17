@@ -1,13 +1,13 @@
 'use strict';
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { writeZip, readZip } from '../src/formats/zip.ts';
-import { writeSimpleSheet, writeWorkbook } from '../src/formats/xlsx-writer.ts';
+import { writeZip, readZip } from '../../src/formats/zip.ts';
+import { writeSimpleSheet, writeWorkbook } from '../../src/formats/xlsx-writer.ts';
 import {
   readAttachment, parseCsv, guessDelimiter, decodeText, matrixToTable,
   detectHeaderRow, coerce, columnType, docxText, markupToText, sniffKind,
   imageDimensions, sheetToMatrix, jsonToTable, ingestFile,
-} from '../src/formats/attachments.ts';
+} from '../../src/formats/attachments.ts';
 
 // ---------------------------------------------------------------------- CSV
 test('CSV parsing handles quoting, embedded delimiters and newlines', () => {

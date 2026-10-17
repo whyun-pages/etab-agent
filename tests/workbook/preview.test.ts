@@ -16,8 +16,8 @@
 import test from 'node:test';
 import assert from 'node:assert';
 
-import { normalizeSpec, writeSpec, dateToSerial } from '../src/workbook/workbook.ts';
-import { specPreview, sheetPreview } from '../src/workbook/preview.ts';
+import { normalizeSpec, writeSpec, dateToSerial } from '../../src/workbook/workbook.ts';
+import { specPreview, sheetPreview } from '../../src/workbook/preview.ts';
 
 /** A spec exercising every type, including the ones that need converting. */
 const SPEC = {
@@ -170,8 +170,8 @@ test('sheetPreview: formats are null, not "General", on plain cells', () => {
 
 // ── windows ─────────────────────────────────────────────────────────
 
-import { sheetWindow, MAX_PREVIEW_ROWS } from '../src/workbook/preview.ts';
-import { readWorkbook } from '../src/formats/xlsx.ts';
+import { sheetWindow, MAX_PREVIEW_ROWS } from '../../src/workbook/preview.ts';
+import { readWorkbook } from '../../src/formats/xlsx.ts';
 
 const longSpec = (n) => normalizeSpec({
   title: 'T',

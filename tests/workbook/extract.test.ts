@@ -4,7 +4,7 @@ import assert from 'node:assert';
 import {
   normalizeText, parseNumber, parseChineseNumber, numberNear,
   parseDate, dateNear, textAfterLabel, parseBoolean, matchEnum,
-} from '../src/workbook/extract.ts';
+} from '../../src/workbook/extract.ts';
 
 // -------------------------------------------------------------- normalising
 test('full-width text is normalised to ASCII', () => {

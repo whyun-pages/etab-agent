@@ -33,7 +33,7 @@
     "check:imports": "node tools/check-imports.cjs",
     "preverify:live": "node tools/build-exe.js",
     "verify:live": "node .verify/browser/live-totals.js && node .verify/browser/live-controls.js && node .verify/browser/live-attach.js && node .verify/exe/live-delete-exe.js && node .verify/exe/live-attach-exe.js",
-    "test": "node tools/check-imports.cjs && node --import tsx --test \"tests/*.test.ts\"",
+    "test": "node tools/check-imports.cjs && node --import tsx --test \"tests/**/*.test.ts\"",
     "bundle": "node tools/verify-bundle.js",
     "build": "node tools/build-exe.js"
   },

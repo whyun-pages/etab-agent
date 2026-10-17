@@ -14,7 +14,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { SessionStore, safeId, MAX_SESSIONS } from '../src/store/session-store.ts';
+import { SessionStore, safeId, MAX_SESSIONS } from '../../src/store/session-store.ts';
 
 const tmpdir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'session-store-'));
 

@@ -19,7 +19,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert';
-import { listenLocal } from './helpers/listen.ts';
+import { listenLocal } from '../helpers/listen.ts';
 
 import {
   runTurn,
@@ -32,10 +32,10 @@ import {
   changesSummary,
   INTENT,
   MAX_STEPS,
-} from '../src/agent/agent.ts';
-import { loadPi } from '../src/agent/pi.ts';
+} from '../../src/agent/agent.ts';
+import { loadPi } from '../../src/agent/pi.ts';
 
-import { normalizeSpec } from '../src/workbook/workbook.ts';
+import { normalizeSpec } from '../../src/workbook/workbook.ts';
 
 // ── helpers ─────────────────────────────────────────────────────────
 
@@ -663,9 +663,9 @@ test('specSummary: dates are rendered, not serialised as numbers', () => {
 
 // ── saving and fetching ─────────────────────────────────────────────
 
-import { applyOps } from '../src/workbook/spec-ops.ts';
+import { applyOps } from '../../src/workbook/spec-ops.ts';
 import http from 'node:http';
-import { readAttachment } from '../src/formats/attachments.ts';
+import { readAttachment } from '../../src/formats/attachments.ts';
 
 function csvServer(body) {
   return new Promise((resolve) => {

@@ -1,9 +1,9 @@
 'use strict';
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { fixtureA } from './helpers/fixtures.ts';
-import { readWorkbook, writeZip, readZip, escapeXml, unescapeXml, numFmtCodeFor } from '../src/formats/xlsx.ts';
-import { writeWorkbook, writeSimpleSheet, CellBuilder, formatNumber } from '../src/formats/xlsx-writer.ts';
+import { fixtureA } from '../helpers/fixtures.ts';
+import { readWorkbook, writeZip, readZip, escapeXml, unescapeXml, numFmtCodeFor } from '../../src/formats/xlsx.ts';
+import { writeWorkbook, writeSimpleSheet, CellBuilder, formatNumber } from '../../src/formats/xlsx-writer.ts';
 
 // ------------------------------------------------------------------- builder
 test('CellBuilder emits the right cell kind for each value type', () => {

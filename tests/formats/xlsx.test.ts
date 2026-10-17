@@ -1,9 +1,9 @@
 'use strict';
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { fixtureA, fixtureB } from './helpers/fixtures.ts';
-import { readWorkbook, parseRef, colName, cellRef, numFmtCodeFor } from '../src/formats/xlsx.ts';
-import { readZip } from '../src/formats/zip.ts';
+import { fixtureA, fixtureB } from '../helpers/fixtures.ts';
+import { readWorkbook, parseRef, colName, cellRef, numFmtCodeFor } from '../../src/formats/xlsx.ts';
+import { readZip } from '../../src/formats/zip.ts';
 
 // ------------------------------------------------------------------ addresses
 test('cell address helpers round-trip', () => {

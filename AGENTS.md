@@ -154,7 +154,12 @@ platform/   SEA assets, open-with-system — usable from any layer
 protocol and file-access definitions in `agent/`. Nothing in `workbook/` or
 `formats/` may import upward.
 
-Tests are `.ts` and import the source directly (`../src/formats/xlsx.ts`); they
+Tests mirror `src/`: the test for `src/<layer>/<module>.ts` is
+`tests/<layer>/<module>.test.ts`. A test that drives several modules goes where
+its entry point lives — everything that goes in over HTTP is under `tests/http/`.
+Shared fixtures live in `tests/helpers/`.
+
+Tests are `.ts` and import the source directly (`../../src/formats/xlsx.ts`); they
 run through tsx, so they never see `.build/js/`. `pnpm bundle` is what
 exercises the compiled tree — keep it after the tests in CI. `.verify/`
 scripts stay JavaScript and load the source with `require('tsx/cjs')`.

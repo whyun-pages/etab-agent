@@ -18,10 +18,10 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { fileOperations } from '../src/agent/file-access.ts';
-import * as tools from '../src/agent/pi-tools/fs-tools.ts';
-import * as shell from '../src/agent/pi-tools/shell.ts';
-import { loadPi } from '../src/agent/pi.ts';
+import { fileOperations } from '../../src/agent/file-access.ts';
+import * as tools from '../../src/agent/pi-tools/fs-tools.ts';
+import * as shell from '../../src/agent/pi-tools/shell.ts';
+import { loadPi } from '../../src/agent/pi.ts';
 
 /** A scratch tree: a fake home with a .ssh, a data folder, and some documents. */
 function scratch(t) {

@@ -2,7 +2,7 @@
 /**
  * Does the GRID draw a date as a date?
  *
- * tests/workbook-preview.test.ts checks that the format code reaches the client. That
+ * tests/workbook/preview.test.ts checks that the format code reaches the client. That
  * is only half the bug: a code that arrives and is not rendered looks identical
  * to no code at all. So this drives `public/js/views/sheet.js` — the module the
  * browser actually loads — through real Edge, with the real preview payload from

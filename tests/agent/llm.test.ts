@@ -12,14 +12,14 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { listenLocal } from './helpers/listen.ts';
+import { listenLocal } from '../helpers/listen.ts';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { Settings, mask } from '../src/store/settings.ts';
-import { chat, LlmError, toLlmError, stripReasoning, imagePart, createClocks } from '../src/agent/llm.ts';
-import { modelFromSecrets } from '../src/agent/model.ts';
+import { Settings, mask } from '../../src/store/settings.ts';
+import { chat, LlmError, toLlmError, stripReasoning, imagePart, createClocks } from '../../src/agent/llm.ts';
+import { modelFromSecrets } from '../../src/agent/model.ts';
 
 function scratch() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'tab-agent-settings-'));

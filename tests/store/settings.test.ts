@@ -14,7 +14,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { Settings } from '../src/store/settings.ts';
+import { Settings } from '../../src/store/settings.ts';
 
 function scratch(t) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'settings-test-'));

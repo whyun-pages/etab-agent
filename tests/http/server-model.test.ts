@@ -13,15 +13,15 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { listenLocal } from './helpers/listen.ts';
+import { listenLocal } from '../helpers/listen.ts';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
 
-import { createServer, AppState } from '../src/http/server.ts';
+import { createServer, AppState } from '../../src/http/server.ts';
 
-const PUBLIC_DIR = path.join(__dirname, '..', 'public');
+const PUBLIC_DIR = path.join(__dirname, '..', '..', 'public');
 
 /** Boot a server over a scratch dir; returns {base, dir, close}. */
 async function boot(t) {

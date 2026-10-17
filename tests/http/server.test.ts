@@ -9,13 +9,13 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { listenLocal } from './helpers/listen.ts';
+import { listenLocal } from '../helpers/listen.ts';
 import http from 'node:http';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { createServer, AppState, safeFilename } from '../src/http/server.ts';
+import { createServer, AppState, safeFilename } from '../../src/http/server.ts';
 
 // --------------------------------------------------------------- harness
 /** Start a server on an ephemeral port with a scratch data directory. */
@@ -81,7 +81,7 @@ function multipart(fields) {
 // point. A typo in an import path is invisible to `node --check` but breaks
 // the app at runtime, so every hop is fetched for real.
 
-const PUBLIC_DIR = path.join(__dirname, '..', 'public');
+const PUBLIC_DIR = path.join(__dirname, '..', '..', 'public');
 
 /** Start a server that also serves public/. */
 async function startUiServer(t) {

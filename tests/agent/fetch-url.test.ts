@@ -18,14 +18,14 @@
 
 import test from 'node:test';
 import assert from 'node:assert';
-import { listenLocal } from './helpers/listen.ts';
+import { listenLocal } from '../helpers/listen.ts';
 import http from 'node:http';
 import zlib from 'node:zlib';
 
 import {
   fetchUrl, readFetched, describeFetched, tableForImport, isPublicAddress,
   parseBlocklist, blockedBy, normalizeHost, filenameFor, checkUrl, FetchError,
-} from '../src/agent/fetch-url.ts';
+} from '../../src/agent/fetch-url.ts';
 
 function serve(handler) {
   return new Promise((resolve) => {

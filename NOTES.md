@@ -27,7 +27,7 @@ node .verify/browser/probe-ui-turn.js      # 12 passed, 0 failed（假模型，�
 node .verify/browser/probe-sheet-render.js # 12 passed, 0 failed（真 Edge 渲染网格）
 ```
 
-> Windows 注意：`node --test tests/` 不认目录，必须写 glob `"tests/*.test.ts"`。
+> Windows 注意：`node --test tests/` 不认目录，必须写 glob `"tests/**/*.test.ts"`。
 
 启动服务：`node server.js --port 3179`
 
@@ -231,7 +231,7 @@ node .verify/browser/probe-sheet-render.js # 12 passed, 0 failed（真 Edge 渲�
 
     能控制的部分做到了：**key 永不通过 API 返回**。`Settings.publicSettings()`
     存在的唯一目的就是让调用方无法不小心泄露它，只回 `hasKey` + `sk-…3456` 这种
-    掩码提示。健康检查也不带它。这三条都有测试盯着（`tests/server-model.test.js`）。
+    掩码提示。健康检查也不带它。这三条都有测试盯着（`tests/http/server-model.test.ts`）。
 26. **「配置了但没有 key」和「配置了且 key 可用」是两种状态。**
     初版把这两个混在一起，结果是 key 填了但 baseUrl 空的时候 UI 显示「已配置」，
     然后每次调用都报一个看不懂的网络错。现在 `isConfigured()` 要求 key、
@@ -295,7 +295,7 @@ node .verify/browser/probe-sheet-render.js # 12 passed, 0 failed（真 Edge 渲�
     修法：预算提到 512；并把剥完思考块后为空的情况显式判为失败，
     带上能看懂的原因和原文。后者才是关键 —— 空回复不该读作成功。
 
-    三个回归测试盯住这三点（`tests/server-model.test.js`）。
+    三个回归测试盯住这三点（`tests/http/server-model.test.ts`）。
 
 ### 提示词输入卡顿（已修复）
 
@@ -743,7 +743,7 @@ operation 只能来自**解析成功的对象**，没解析成功的回复没有
     链路不落盘：模型只产 **spec**（纯 JSON）→ spec 存进 `sessions/<id>.json`
     → 点下载时路由现场 `writeSpec(spec)` 在**内存里**拼 Buffer →
     `res.end(buffer)` 推给浏览器 → **浏览器**写进下载目录。
-    实测（原 `.verify/` 探针，现为 `tests/session-api.test.ts` 的一条）：下载前后、乃至连下三次，
+    实测（原 `.verify/` 探针，现为 `tests/http/session-api.test.ts` 的一条）：下载前后、乃至连下三次，
     data 目录里 `.xlsx` 数量恒为 **0**；唯一持久的是含 spec 的会话 JSON。
     三个后果值得记住：同 spec 反复下载字节一致（纯函数、无缓存）；
     删会话即删表（本来就没单独存过文件）；「下载」这个动作里，

@@ -58,7 +58,7 @@
  * for the queue slot held by the outermost call, forever. So the queue is on the
  * public surface ONLY; everything below it (`#loadFile`, `#writeFile`, ...) is a
  * private async method that never re-enters the queue. A red concurrency test
- * in tests/session-store.test.ts means this split was done wrong, not that the
+ * in tests/store/session-store.test.ts means this split was done wrong, not that the
  * test is wrong.
  *
  * Note the queue is per-instance, not per-file or global. Two stores over the

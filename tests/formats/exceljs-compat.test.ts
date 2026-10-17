@@ -18,10 +18,10 @@ import test from 'node:test';
 import assert from 'node:assert';
 import ExcelJS from 'exceljs';
 
-import { normalizeSpec, validateSpec, writeSpec } from '../src/workbook/workbook.ts';
-import { writeWorkbook, writeSimpleSheet } from '../src/formats/xlsx-writer.ts';
-import { readWorkbook } from '../src/formats/xlsx.ts';
-import { fixtureA } from './helpers/fixtures.ts';
+import { normalizeSpec, validateSpec, writeSpec } from '../../src/workbook/workbook.ts';
+import { writeWorkbook, writeSimpleSheet } from '../../src/formats/xlsx-writer.ts';
+import { readWorkbook } from '../../src/formats/xlsx.ts';
+import { fixtureA } from '../helpers/fixtures.ts';
 
 /** Load bytes into exceljs. */
 async function excel(buffer) {

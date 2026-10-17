@@ -13,7 +13,7 @@
 import test from 'node:test';
 import assert from 'node:assert';
 
-import { aggregate, selectRows, compileExpression, computeRows, toNumber, QueryError } from '../src/workbook/table-query.ts';
+import { aggregate, selectRows, compileExpression, computeRows, toNumber, QueryError } from '../../src/workbook/table-query.ts';
 
 const t = {
   header: ['订单', '状态', '金额', '日期'],

@@ -19,7 +19,7 @@ import http from 'node:http';
 import net from 'node:net';
 import { spawn } from 'node:child_process';
 
-const ROOT = path.join(__dirname, '..');
+const ROOT = path.join(__dirname, '..', '..');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /** Start the entry and hand back a handle that can be probed, then stopped. */

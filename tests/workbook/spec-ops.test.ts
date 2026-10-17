@@ -14,8 +14,8 @@
 import test from 'node:test';
 import assert from 'node:assert';
 
-import { applyOp, applyOps, readRows, SpecOpError, OPS } from '../src/workbook/spec-ops.ts';
-import { normalizeSpec } from '../src/workbook/workbook.ts';
+import { applyOp, applyOps, readRows, SpecOpError, OPS } from '../../src/workbook/spec-ops.ts';
+import { normalizeSpec } from '../../src/workbook/workbook.ts';
 
 const base = () => normalizeSpec({
   title: '销售',

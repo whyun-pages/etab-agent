@@ -10,8 +10,8 @@
 
 import test from 'node:test';
 import assert from 'node:assert';
-import { recomputeCachedValues } from '../src/workbook/formula.ts';
-import { readZip, readWorkbook } from '../src/formats/xlsx.ts';
+import { recomputeCachedValues } from '../../src/workbook/formula.ts';
+import { readZip, readWorkbook } from '../../src/formats/xlsx.ts';
 
 import {
   normalizeSpec,
@@ -25,7 +25,7 @@ import {
   displayWidth,
   writeSpec,
   linkTarget,
-} from '../src/workbook/workbook.ts';
+} from '../../src/workbook/workbook.ts';
 
 // ── normalisation ───────────────────────────────────────────────────
 

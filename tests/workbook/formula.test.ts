@@ -1,8 +1,8 @@
 'use strict';
 import test from 'node:test';
 import assert from 'node:assert';
-import { evaluateFormula, recomputeCachedValues, splitArgs } from '../src/workbook/formula.ts';
-import { parseRef } from '../src/formats/xlsx.ts';
+import { evaluateFormula, recomputeCachedValues, splitArgs } from '../../src/workbook/formula.ts';
+import { parseRef } from '../../src/formats/xlsx.ts';
 
 /** Build a grid list from a compact spec: {B4: 100, B5: 50}. */
 function cellsFrom(spec) {

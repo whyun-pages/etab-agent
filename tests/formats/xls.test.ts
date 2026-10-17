@@ -1,8 +1,8 @@
 'use strict';
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { readCfb, readXls, decodeRk, isCfb } from '../src/formats/xls.ts';
-import { readAttachment, sniffKind, sheetToMatrix } from '../src/formats/attachments.ts';
+import { readCfb, readXls, decodeRk, isCfb } from '../../src/formats/xls.ts';
+import { readAttachment, sniffKind, sheetToMatrix } from '../../src/formats/attachments.ts';
 
 // ------------------------------------------------------------- fixtures
 //
