@@ -1,0 +1,65 @@
+{
+  "id": "inventory",
+  "title": "进销存：期末结存与安全库存预警",
+  "source": [
+    {
+      "name": "实在智能 — 库存统计表：期初结存、本期入库、本期出库、期末结存",
+      "url": "https://www.ai-indeed.com/encyclopedia/17055.html"
+    },
+    {
+      "name": "实在智能 — Excel 进销存：SUMIF 汇总出入库，条件格式标红低于安全库存",
+      "url": "https://www.ai-indeed.com/encyclopedia/16395.html"
+    },
+    {
+      "name": "CSDN 论坛 — 库存情况表：本期结存 = 上期结存 + 本期收入 - 本期发出",
+      "url": "https://bbs.csdn.net/topics/20239566"
+    }
+  ],
+  "tags": ["compute_column", "IF"],
+  "given": {
+    "title": "办公用品库存表",
+    "sheets": [
+      {
+        "name": "库存",
+        "columns": [
+          { "header": "商品编码", "type": "text" },
+          { "header": "商品名称", "type": "text" },
+          { "header": "期初库存", "type": "integer" },
+          { "header": "本期入库", "type": "integer" },
+          { "header": "本期出库", "type": "integer" },
+          { "header": "安全库存", "type": "integer" }
+        ],
+        "rows": [
+          ["P001", "A4复印纸", 120, 200, 260, 80],
+          ["P002", "签字笔", 500, 0, 180, 100],
+          ["P003", "订书机", 30, 20, 45, 10],
+          ["P004", "文件夹", 80, 100, 90, 50],
+          ["P005", "碳粉盒", 12, 10, 20, 5]
+        ]
+      }
+    ]
+  },
+  "turns": [
+    {
+      "message": "算出期末结存＝期初库存+本期入库-本期出库，再加一列库存状态：结存低于安全库存的写“补货”，否则写“正常”。",
+      "expect": {
+        "intent": "action",
+        "guarded": false,
+        "rowCount": 5,
+        "columns": ["结存", "状态"],
+        "cells": [
+          { "row": 1, "column": "结存", "equals": 60 },
+          { "row": 2, "column": "结存", "equals": 320 },
+          { "row": 3, "column": "结存", "equals": 5 },
+          { "row": 4, "column": "结存", "equals": 90 },
+          { "row": 5, "column": "结存", "equals": 2 },
+          { "row": 1, "column": "状态", "equals": "补货" },
+          { "row": 2, "column": "状态", "equals": "正常" },
+          { "row": 3, "column": "状态", "equals": "补货" },
+          { "row": 4, "column": "状态", "equals": "正常" },
+          { "row": 5, "column": "状态", "equals": "补货" }
+        ]
+      }
+    }
+  ]
+}

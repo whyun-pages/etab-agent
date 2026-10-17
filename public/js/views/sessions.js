@@ -56,7 +56,10 @@ export function sessionsView(state, handlers) {
 function toggleButton(state, handlers) {
   const label = state.railCollapsed ? '展开会话列表（Ctrl+B）' : '折叠会话列表（Ctrl+B）';
   const btn = el('button', {
-    class: 'iconbtn rail__toggle', type: 'button', title: label, html: icon('panel'),
+    class: 'iconbtn rail__toggle',
+    type: 'button',
+    title: label,
+    html: icon('panel'),
   });
   btn.setAttribute('aria-label', label);
   btn.setAttribute('aria-expanded', String(!state.railCollapsed));
@@ -102,7 +105,9 @@ function row(session, activeId, handlers) {
   });
   btn.append(del);
 
-  btn.addEventListener('click', () => { if (!isActive) handlers.onOpen(session.id); });
+  btn.addEventListener('click', () => {
+    if (!isActive) handlers.onOpen(session.id);
+  });
 
   li.append(btn);
   return li;

@@ -81,16 +81,21 @@ jobs:
 
       # devDependencies are needed: `prepack` runs tsc, and tsc is a dev dep.
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile --filter @whyun/etab-agent
+        run: pnpm install --frozen-lockfile
 
-      # The published tree is exactly what the tests run against, so test it
-      # here rather than trusting that ci.yml passed on this commit — a tag can
-      # be pushed on a commit CI never saw.
+      # Test here rather than trusting that ci.yml passed on this commit — a tag
+      # can be pushed on a commit CI never saw. The suite runs the source
+      # through tsx, so it says nothing about the compiled tree that actually
+      # ships; the bundle check after it does, by loading `.build/js/` and
+      # running the bundled server code with no node_modules in reach.
       - name: Compile TypeScript
         run: pnpm run build:js
 
       - name: Test
         run: pnpm test
+
+      - name: Bundle smoke check
+        run: pnpm run bundle
 
       # `npm publish`, not `pnpm publish`: pnpm refuses to publish from a
       # detached HEAD (its git-checks want a branch), and a tag checkout is

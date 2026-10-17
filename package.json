@@ -1,7 +1,7 @@
 {
   "name": "@whyun/etab-agent",
   "version": "0.1.2",
-  "description": "说一句中文要什么表，模型给出工作簿，代码校验后落笔。运行时零依赖。",
+  "description": "说一句中文要什么表，模型给出工作簿，代码校验后落笔。",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -24,23 +24,42 @@
     "prepack": "tsc",
     "prestart": "tsc",
     "start": "node .build/js/server.js",
-    "start:dev": "tsx server.ts",
+    "start:dev": "tsx src/server.ts",
     "predesktop": "tsc",
     "desktop": "node .build/js/desktop.js",
-    "desktop:dev": "tsx desktop.ts",
-    "typecheck": "tsc --noEmit",
+    "desktop:dev": "tsx src/desktop.ts",
+    "typecheck": "tsc --noEmit && tsc -p tests",
+    "lint": "biome check .",
+    "format": "biome check --write .",
     "build:js": "tsc",
-    "check:imports": "node .verify/check-imports.cjs",
+    "check:imports": "node tools/check-imports.cjs",
     "preverify:live": "node tools/build-exe.js",
-    "verify:live": "node --require ./tools/dev-resolve.js .verify/live-totals.js && node --require ./tools/dev-resolve.js .verify/live-controls.js && node --require ./tools/dev-resolve.js .verify/live-attach.js && node .verify/live-delete-exe.js && node .verify/live-attach-exe.js",
-    "test": "node .verify/check-imports.cjs && node --require ./tools/dev-resolve.js --test \"tests/*.test.js\"",
+    "verify:live": "node .verify/browser/live-totals.js && node .verify/browser/live-controls.js && node .verify/browser/live-attach.js && node .verify/exe/live-delete-exe.js && node .verify/exe/live-attach-exe.js",
+    "test": "node tools/check-imports.cjs && node --import tsx --test \"tests/**/*.test.ts\"",
     "bundle": "node tools/verify-bundle.js",
     "build": "node tools/build-exe.js"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.5.15",
+    "@types/koa": "3.0.3",
+    "@types/koa__multer": "2.0.8",
+    "@types/multer": "2.3.0",
     "@types/node": "^26.6.3",
+    "esbuild": "0.28.2",
+    "exceljs": "4.4.0",
+    "playwright-core": "1.63.0",
     "postject": "^1.0.0-alpha.6",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "@earendil-works/pi-agent-core": "1.3.0",
+    "@earendil-works/pi-ai": "1.3.0",
+    "@koa/bodyparser": "6.1.0",
+    "@koa/multer": "4.0.0",
+    "@koa/router": "15.7.0",
+    "koa": "3.2.1",
+    "multer": "2.4.0",
+    "re2js": "2.8.6"
   }
 }

@@ -23,8 +23,18 @@ export const state = {
   activeId: null,
   /** The open session's transcript: [{ role, content, at, intent, guarded, notes }] */
   messages: [],
-  /** The grid of the open session's workbook, or null when it has none. */
+  /**
+   * The grid of the open session's workbook, or null when it has none:
+   * { name, rows, formats, merged, cols, startRow, totalRows, totalCols, key,
+   * proposed }. `rows` grows as the user scrolls (see loadMorePreview in
+   * app.js); `key` names the version of the table the rows were cut from, and
+   * `proposed` says it is the held change rather than the stored table.
+   */
   preview: null,
+  /** A page of preview rows is on its way. */
+  previewLoading: false,
+  /** Why the last page failed, shown under the grid with a retry. */
+  previewError: null,
   /** The open session's title, as the server has it. */
   title: '',
   /**
@@ -54,6 +64,13 @@ export const state = {
   settingsDraft: {},
   /** Result of the last connection test: { ok, reply | error } */
   settingsTest: null,
+  /** Which settings tab is open: 'model' | 'chat'. */
+  settingsTab: 'model',
+  /**
+   * Outcome of the last save or clear on this visit, shown beside the save
+   * button: { tone: 'ok' | 'err', text }. Cleared on opening and leaving.
+   */
+  settingsNotice: null,
 
   /**
    * Whether the session list is folded down to a narrow strip. A property of
@@ -65,7 +82,7 @@ export const state = {
   /** Which surface is showing: 'chat' | 'settings'. */
   view: 'chat',
   /** Busy flags so buttons can disable and show a spinner. */
-  busy: { boot: false, sessions: false, turn: false, apply: false, settings: false, create: false, attach: false },
+  busy: { sessions: false, turn: false, apply: false, settings: false, create: false, attach: false },
   /** Free-form status line. */
   status: '就绪',
   /** Last error message, for the banner and toasts. */
@@ -89,15 +106,14 @@ export function subscribe(fn) {
   return () => listeners.delete(fn);
 }
 
-export function emit() {
+function emit() {
   for (const fn of listeners) {
-    try { fn(state); } catch (err) { console.error('[render]', err); }
+    try {
+      fn(state);
+    } catch (err) {
+      console.error('[render]', err);
+    }
   }
-}
-
-/** The sidebar entry for the open session, if it is still listed. */
-export function activeSummary() {
-  return state.sessions.find((s) => s.id === state.activeId) || null;
 }
 
 /** True when a model is configured; nothing works without one. */

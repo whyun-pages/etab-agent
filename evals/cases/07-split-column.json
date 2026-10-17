@@ -1,0 +1,51 @@
+{
+  "id": "split-column",
+  "title": "分列：把“姓名-部门-城市”拆成三列",
+  "source": [
+    {
+      "name": "帆软 — Excel 分列：按分隔符拆分“张三-销售部-北京”这类字段",
+      "url": "https://www.fanruan.com/blog/article/852354/"
+    },
+    {
+      "name": "ExcelDemy — Excel Practice Test for Employment, Exercise 03（Split Full Names）",
+      "url": "https://exceldemy.com/?p=293888"
+    }
+  ],
+  "tags": ["add_columns", "compute_column", "remove_columns"],
+  "given": {
+    "title": "员工信息",
+    "sheets": [
+      {
+        "name": "员工",
+        "columns": [{ "header": "员工信息", "type": "text" }],
+        "rows": [
+          ["张三-销售部-北京"],
+          ["李四-技术部-上海"],
+          ["王五-财务部-深圳"],
+          ["赵六-人事部-广州"],
+          ["欧阳娜娜-市场部-成都"]
+        ]
+      }
+    ]
+  },
+  "turns": [
+    {
+      "message": "把员工信息这一列按“-”拆成姓名、部门、城市三列，拆完把原来的员工信息列删掉。",
+      "expect": {
+        "intent": "action",
+        "guarded": false,
+        "rowCount": 5,
+        "columns": ["^姓名$", "^部门$", "^城市$"],
+        "noColumns": ["员工信息"],
+        "cells": [
+          { "row": 1, "column": "^姓名$", "equals": "张三" },
+          { "row": 1, "column": "^部门$", "equals": "销售部" },
+          { "row": 1, "column": "^城市$", "equals": "北京" },
+          { "row": 2, "column": "^部门$", "equals": "技术部" },
+          { "row": 5, "column": "^姓名$", "equals": "欧阳娜娜" },
+          { "row": 5, "column": "^城市$", "equals": "成都" }
+        ]
+      }
+    }
+  ]
+}

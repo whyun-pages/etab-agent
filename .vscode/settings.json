@@ -1,0 +1,14 @@
+{
+  // Biome formats on save, with the project's own @biomejs/biome from
+  // node_modules, so the editor, `pnpm format` and CI agree byte for byte.
+  // Set per language: Markdown and YAML keep whatever formatter you use.
+  "editor.formatOnSave": true,
+  "[javascript]": { "editor.defaultFormatter": "biomejs.biome" },
+  "[typescript]": { "editor.defaultFormatter": "biomejs.biome" },
+  "[json]": { "editor.defaultFormatter": "biomejs.biome" },
+  "[jsonc]": { "editor.defaultFormatter": "biomejs.biome" },
+  "editor.codeActionsOnSave": {
+    // Safe fixes only, e.g. dropping an unused import.
+    "source.fixAll.biome": "explicit"
+  }
+}

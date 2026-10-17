@@ -22,7 +22,11 @@ async function parse(res) {
   const text = await res.text();
   let data = null;
   if (text) {
-    try { data = JSON.parse(text); } catch { data = { ok: false, error: text.slice(0, 300) }; }
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = { ok: false, error: text.slice(0, 300) };
+    }
   }
   if (!res.ok) {
     throw new ApiError((data && data.error) || `HTTP ${res.status}`, data);
@@ -63,30 +67,60 @@ export const api = {
   /** One conversation turn. Returns the intent plus, when it changed something, a preview. */
   turn: (id, message) => req('POST', `/api/sessions/${q(id)}/turn`, { body: { message } }),
 
+  /**
+   * More preview rows, from sheet row `from`. `key` is the one the preview
+   * came with; a changed table answers `{ stale: true }` instead of rows.
+   * `proposed` pages the change held for confirmation.
+   */
+  previewRows: (id, { key, from, count, proposed }) => {
+    const query = new URLSearchParams({ key: key || '', from: String(from), count: String(count) });
+    if (proposed) query.set('proposed', '1');
+    return req('GET', `/api/sessions/${q(id)}/preview?${query}`);
+  },
+
+  /**
+   * Save one column's width (Excel units) from a drag in the preview. The
+   * column is named by position and header, which must both still match.
+   * Answers the preview's new `key` and `cols`; the rows are unchanged.
+   */
+  columnWidth: (id, { sheet, index, header, width }) =>
+    req('POST', `/api/sessions/${q(id)}/column-width`, { body: { sheet, index, header, width } }),
+
   /** Accept (or discard) a proposal that was held for confirmation. */
   applyTurn: (id, accept = true) => req('POST', `/api/sessions/${q(id)}/apply`, { body: { accept } }),
 
-  /** The workbook as bytes, derived from the stored spec. */
-  async workbook(id) {
-    const res = await fetch(`/api/sessions/${q(id)}/workbook.xlsx`);
+  /**
+   * The workbook as bytes, derived from the stored spec. CSV holds one table,
+   * so it takes the sheet to export; the server defaults to the first.
+   */
+  async workbook(id, format = 'xlsx', sheet = null) {
+    const query = sheet && format === 'csv' ? `?sheet=${q(sheet)}` : '';
+    const res = await fetch(`/api/sessions/${q(id)}/workbook.${format}${query}`);
     if (!res.ok) {
       let msg = `HTTP ${res.status}`;
-      try { msg = (await res.json()).error || msg; } catch { /* keep the status text */ }
+      try {
+        msg = (await res.json()).error || msg;
+      } catch {
+        /* keep the status text */
+      }
       throw new ApiError(msg);
     }
     const blob = await res.blob();
-    return { blob, name: filenameOf(res.headers.get('content-disposition')) || '工作簿.xlsx' };
+    return { blob, name: filenameOf(res.headers.get('content-disposition')) || `工作簿.${format}` };
   },
 
   // ── attachments ───────────────────────────────────────────────────
-  listAttachments: () => req('GET', '/api/attachments'),
-  clearAttachments: () => req('DELETE', '/api/attachments'),
+  // Per session: a file is context for one conversation, not for the app.
+  listAttachments: (id) => req('GET', `/api/sessions/${q(id)}/attachments`),
+  clearAttachments: (id) => req('DELETE', `/api/sessions/${q(id)}/attachments`),
+  /** Open one attachment with this computer's default program (a copy of it). */
+  openAttachment: (id, attId) => req('POST', `/api/sessions/${q(id)}/attachments/${q(attId)}/open`),
 
   /** Upload files as multipart/form-data under the `files` field. */
-  attach(files) {
+  attach(id, files) {
     const fd = new FormData();
     for (const f of files) fd.append('files', f, f.name);
-    return req('POST', '/api/attachments', { formData: fd });
+    return req('POST', `/api/sessions/${q(id)}/attachments`, { formData: fd });
   },
 };
 
@@ -95,7 +129,11 @@ function filenameOf(header) {
   if (!header) return null;
   const star = /filename\*=UTF-8''([^;]+)/i.exec(header);
   if (star) {
-    try { return decodeURIComponent(star[1]); } catch { /* fall through */ }
+    try {
+      return decodeURIComponent(star[1]);
+    } catch {
+      /* fall through */
+    }
   }
   const plain = /filename="([^"]+)"/i.exec(header);
   return plain ? plain[1] : null;

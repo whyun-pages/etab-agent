@@ -10,38 +10,196 @@
    ════════════════════════════════════════════════════════════════════ */
 
 import { el } from '../dom.js';
-import { colName } from '../colname.js';
+import { colIndex, colName } from '../colname.js';
+
+/**
+ * The grid last built, so a page of rows arriving at the bottom is appended to
+ * it instead of rebuilding every row above. Every state change repaints the
+ * preview pane; with a few thousand rows loaded, rebuilding them each time
+ * would be the slowest thing on screen. Keyed by the table version, whether it
+ * is the stored table or the proposed one, and the width: any change there
+ * starts over.
+ */
+let memo = null;
+
+// ── column widths ─────────────────────────────────────────────────────
+// The grid draws each column at the width the FILE gives it, so dragging an
+// edge here is the same as dragging it in Excel, and what is saved is what the
+// download will have. Widths are in Excel's unit, characters of the default
+// font; Excel itself draws a character as 7px plus 5px of padding at 100%,
+// and the grid's 11.5px monospace is close enough to that for the same rule.
+
+const PX_PER_CHAR = 7;
+const PX_PAD = 5;
+/** The bounds the spec clamps a declared width to (4..80 characters). */
+const MIN_CHARS = 4;
+const MAX_CHARS = 80;
+/** A column the file gives no width: Excel's default, near enough. */
+const DEFAULT_CHARS = 10;
+const ROWNUM_PX = 44;
+
+const charsToPx = (w) => Math.round(w * PX_PER_CHAR + PX_PAD);
+/** To a tenth of a character: finer than that is noise no one can see. */
+const pxToChars = (px) => Math.round(((px - PX_PAD) / PX_PER_CHAR) * 10) / 10;
+
+/** A column's width in characters, from the `cols` ranges of the preview. */
+function charsFor(cols, c) {
+  const hit = (cols || []).find((r) => r.min <= c && c <= r.max && r.width);
+  return hit ? hit.width : DEFAULT_CHARS;
+}
 
 /**
  * @param {{name?:string, rows:Array<Array<*>>, merged?:string[],
- *          formats?:Array<Array<string|null>>, cols?:Array, truncated?:boolean}} sheet
+ *          formats?:Array<Array<string|null>>, cols?:Array, startRow?:number,
+ *          key?:string, view?:string, proposed?:boolean}} sheet
+ * @param {{onResize?:(index:number, chars:number) => void}} [opts]
+ *   `onResize` makes the column edges draggable; it is called once per drag,
+ *   on release, with the zero-based column and its new width in characters.
  * @returns {HTMLElement}
  */
-export function sheetView(sheet) {
+export function sheetView(sheet, opts = {}) {
   const rows = (sheet && sheet.rows) || [];
-  const formats = (sheet && sheet.formats) || [];
   const width = rows.reduce((m, r) => Math.max(m, r.length), 0);
+  // `view` outlives a width change: saving one gives the table a new `key`
+  // (the bytes changed) without changing a single row, so the loaded rows,
+  // and the scroll position over them, carry on.
+  const view = sheet && (sheet.view || sheet.key);
+  const id = view ? `${view}:${sheet.proposed ? 1 : 0}:${width}` : null;
 
-  // Track which cells open a merged range so the span can be emitted once.
-  const spans = parseMerges((sheet && sheet.merged) || []);
+  if (id && memo && memo.id === id && rows.length >= memo.rendered) {
+    appendRows(memo, sheet, memo.rendered, rows.length);
+    memo.rendered = rows.length;
+    memo.onResize = opts.onResize || null;
+    setWidths(memo, sheet.cols);
+    return memo.node;
+  }
 
   const table = el('table', { class: 'grid' });
+
+  // Fixed layout: a column is exactly as wide as its <col>, whatever is in
+  // it, which is how a spreadsheet behaves and what makes a drag predictable.
+  const colgroup = el('colgroup');
+  colgroup.append(el('col', { style: `width:${ROWNUM_PX}px` }));
+  const cols = [];
+  for (let c = 0; c < width; c++) {
+    const col = el('col');
+    cols.push(col);
+    colgroup.append(col);
+  }
+  table.append(colgroup);
 
   // ── header: column letters ────────────────────────────────────────
   const thead = el('thead');
   const headRow = el('tr');
   headRow.append(el('th', { class: 'rownum', text: '' }));
-  for (let c = 0; c < width; c++) headRow.append(el('th', { text: colName(c + 1) }));
   thead.append(headRow);
   table.append(thead);
 
   const tbody = el('tbody');
-  rows.forEach((row, r) => {
+  table.append(tbody);
+
+  const grid = {
+    table,
+    tbody,
+    width,
+    cols,
+    px: [],
+    dragging: null,
+    onResize: opts.onResize || null,
+    // Track which cells open a merged range so the span can be emitted once.
+    spans: parseMerges((sheet && sheet.merged) || []),
+  };
+  for (let c = 0; c < width; c++) {
+    headRow.append(el('th', {}, [colName(c + 1), resizer(grid, c)]));
+  }
+  setWidths(grid, sheet && sheet.cols);
+  appendRows(grid, sheet, 0, rows.length);
+
+  const node = el('div', { class: 'grid-wrap' }, [table]);
+  // The memo IS the grid, not a copy: the drag handles hold `grid`, and a
+  // copy would leave them reading a stale `onResize` after the next repaint.
+  memo = id ? Object.assign(grid, { id, node, rendered: rows.length }) : null;
+  return node;
+}
+
+/** Size every column from the preview's `cols`, except one being dragged. */
+function setWidths(grid, ranges) {
+  for (let c = 0; c < grid.width; c++) {
+    if (grid.dragging === c) continue;
+    setColPx(grid, c, charsToPx(charsFor(ranges, c + 1)));
+  }
+}
+
+function setColPx(grid, c, px) {
+  grid.px[c] = px;
+  grid.cols[c].style.width = `${px}px`;
+  // A fixed-layout table needs its own width, or the browser shares the
+  // container's width out between the columns and ignores the <col>s.
+  grid.table.style.width = `${ROWNUM_PX + grid.px.reduce((a, b) => a + (b || 0), 0)}px`;
+}
+
+/**
+ * The drag handle on a column letter's right edge.
+ *
+ * The grid is resized live while dragging; the width is reported once, on
+ * release, so a drag is one save rather than one per pixel. The handle reads
+ * `grid.onResize` at the moment of the drag: the grid is reused across
+ * repaints, and the callback (or its absence, for a proposal) can change.
+ */
+function resizer(grid, c) {
+  const handle = el('span', { class: 'grid__resize', title: '拖动调整列宽' });
+  let start = null;
+
+  handle.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 || !grid.onResize) return;
+    start = { x: e.clientX, px: grid.px[c] };
+    grid.dragging = c;
+    // Capture keeps the moves coming once the pointer leaves the 6px strip,
+    // which it does on any real drag.
+    handle.setPointerCapture(e.pointerId);
+    handle.classList.add('is-dragging');
+    document.body.classList.add('is-col-resizing');
+    e.preventDefault();
+    e.stopPropagation();
+  });
+
+  handle.addEventListener('pointermove', (e) => {
+    if (!start) return;
+    const px = Math.max(charsToPx(MIN_CHARS), Math.min(charsToPx(MAX_CHARS), start.px + e.clientX - start.x));
+    setColPx(grid, c, px);
+  });
+
+  const end = () => {
+    if (!start) return;
+    const moved = grid.px[c] !== start.px;
+    start = null;
+    grid.dragging = null;
+    handle.classList.remove('is-dragging');
+    document.body.classList.remove('is-col-resizing');
+    if (moved && grid.onResize) grid.onResize(c, pxToChars(grid.px[c]));
+  };
+  handle.addEventListener('pointerup', end);
+  handle.addEventListener('pointercancel', end);
+  handle.addEventListener('lostpointercapture', end);
+  return handle;
+}
+
+/** Draw `sheet.rows[from..to)` into the grid's body. */
+function appendRows(grid, sheet, from, to) {
+  const { tbody, width, spans } = grid;
+  const rows = sheet.rows;
+  const formats = sheet.formats || [];
+  // Row numbers are the sheet's own, so they still read right when the first
+  // window does not start at row 1, and merges (A1-style) line up with them.
+  const base = (sheet.startRow || 1) - 1;
+  for (let r = from; r < to; r++) {
+    const row = rows[r] || [];
+    const rowNo = base + r + 1;
     const tr = el('tr');
-    tr.append(el('th', { class: 'rownum', text: String(r + 1) }));
+    tr.append(el('th', { class: 'rownum', text: String(rowNo) }));
 
     for (let c = 0; c < width; c++) {
-      const span = spans.get(`${r + 1}:${c + 1}`);
+      const span = spans.get(`${rowNo}:${c + 1}`);
       if (span && span.skip) continue;
 
       const v = row[c];
@@ -61,7 +219,7 @@ export function sheetView(sheet) {
         text = String(v);
         if (text.startsWith('=')) cls.push('is-formula');
         // A row-1 value under a horizontal merge is the sheet title.
-        if (r === 0 && span && span.colSpan > 1) cls.push('is-merged');
+        if (rowNo === 1 && span && span.colSpan > 1) cls.push('is-merged');
       }
 
       const td = el('td', { class: cls.join(' '), text, title: text || undefined });
@@ -69,14 +227,7 @@ export function sheetView(sheet) {
       tr.append(td);
     }
     tbody.append(tr);
-  });
-  table.append(tbody);
-
-  const wrap = el('div', { class: 'grid-wrap' }, [table]);
-  if (sheet && sheet.truncated) {
-    wrap.append(el('p', { class: 'hint', text: '预览已截断，仅显示左上角区域。' }));
   }
-  return wrap;
 }
 
 /** Parse A1:C3 style ranges into { colSpan, rowSpan, skip } keyed by "r:c". */
@@ -103,15 +254,13 @@ function parseMerges(merges) {
   return map;
 }
 
-function colIndex(letters) {
-  let n = 0;
-  for (const ch of letters.toUpperCase()) n = n * 26 + (ch.charCodeAt(0) - 64);
-  return n;
-}
+// Built once: constructing an Intl.NumberFormat per cell is the slow part of
+// formatting, and a page of the preview formats thousands of cells.
+const INTEGER_FORMAT = new Intl.NumberFormat('zh-CN');
+const DECIMAL_FORMAT = new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 4 });
 
 function formatNumber(v) {
-  if (Number.isInteger(v)) return new Intl.NumberFormat('zh-CN').format(v);
-  return new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 4 }).format(v);
+  return (Number.isInteger(v) ? INTEGER_FORMAT : DECIMAL_FORMAT).format(v);
 }
 
 // ── number formats ────────────────────────────────────────────────────
@@ -123,10 +272,10 @@ function formatNumber(v) {
  * from ¥ to $, which sweeps in %, &, ', (, ), *, + and more — so `0.00%`
  * matched "plain number" and the percent branch below never ran.
  */
-const NON_DATE = /^[#0,.\s%¥\$€£()\-+_]*$/;
+const NON_DATE = /^[#0,.\s%¥$€£()\-+_]*$/;
 
 /** The currency token in a format code, if it has one. */
-const CURRENCY = /[¥￥\$€£]/;
+const CURRENCY = /[¥￥$€£]/;
 
 /**
  * Render one cell the way the format code asks for.
@@ -140,7 +289,7 @@ const CURRENCY = /[¥￥\$€£]/;
  * @param {string|null} fmt
  * @returns {string}
  */
-export function formatCell(v, fmt) {
+function formatCell(v, fmt) {
   if (!fmt || fmt === 'General') return formatNumber(v);
   const bare = stripLiterals(fmt);
   // Percent first: it scales the value, so it has to be decided before any
@@ -176,7 +325,7 @@ function looksLikeDate(fmt) {
   return /[yYdD]/.test(bare);
 }
 
-/** Excel serial to a Date, using the same 1899-12-30 epoch as lib/workbook.js. */
+/** Excel serial to a Date, using the same 1899-12-30 epoch as src/workbook/workbook.ts. */
 function serialToDate(serial) {
   const ms = Math.round(serial * 86400000);
   const d = new Date(Date.UTC(1899, 11, 30) + ms);
@@ -190,7 +339,7 @@ function formatDate(d, fmt) {
   const p2 = (n) => String(n).padStart(2, '0');
   const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   if (/d-?mmm/i.test(fmt)) return `${day}-${MON[m - 1]}-${String(y).slice(2)}`;
-  if (/yyyy[-\/.]mm[-\/.]dd/i.test(fmt)) return `${y}-${p2(m)}-${p2(day)}`;
+  if (/yyyy[-/.]mm[-/.]dd/i.test(fmt)) return `${y}-${p2(m)}-${p2(day)}`;
   if (/^m\/d/i.test(fmt)) return `${m}/${day}/${y}`;
   return `${y}-${p2(m)}-${p2(day)}`;
 }

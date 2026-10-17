@@ -1,0 +1,75 @@
+{
+  "id": "vlookup",
+  "title": "跨表匹配：按产品编号带出名称和单价（VLOOKUP）",
+  "source": [
+    {
+      "name": "ExcelDemy — Excel VLOOKUP Exercises, Problem 7（两张关联表按 ID 查价格）",
+      "url": "https://www.exceldemy.com/excel-vlookup-exercises/"
+    },
+    {
+      "name": "Microsoft Excel Practical Exercises Questions（按产品 ID 用 VLOOKUP 返回产品名）",
+      "url": "https://www.mcsprogram.org/index.jsp/u14A20/242460/Microsoft Excel Practical Exercises Questions.pdf"
+    },
+    {
+      "name": "人人都是产品经理 — Excel 数据处理：VLOOKUP 跨表匹配",
+      "url": "https://www.woshipm.com/data-analysis/5748189.html"
+    }
+  ],
+  "tags": ["lookup_columns", "compute_column"],
+  "given": {
+    "title": "订单与产品",
+    "sheets": [
+      {
+        "name": "订单",
+        "columns": [
+          { "header": "订单号", "type": "text" },
+          { "header": "产品编号", "type": "text" },
+          { "header": "数量", "type": "integer" }
+        ],
+        "rows": [
+          ["D1001", "A101", 3],
+          ["D1002", "A103", 1],
+          ["D1003", "A102", 5],
+          ["D1004", "A105", 2],
+          ["D1005", "A101", 1]
+        ]
+      },
+      {
+        "name": "产品",
+        "columns": [
+          { "header": "产品编号", "type": "text" },
+          { "header": "产品名称", "type": "text" },
+          { "header": "单价", "type": "currency" }
+        ],
+        "rows": [
+          ["A101", "无线鼠标", 89],
+          ["A102", "机械键盘", 399],
+          ["A103", "显示器支架", 159],
+          ["A104", "USB集线器", 69]
+        ]
+      }
+    ]
+  },
+  "turns": [
+    {
+      "message": "根据产品编号，把产品表里的产品名称和单价带到订单表，然后加一列金额＝数量×单价。产品表里找不到的留空就行。",
+      "expect": {
+        "intent": "action",
+        "guarded": false,
+        "sheetCount": 2,
+        "sheet": "订单",
+        "rowCount": 5,
+        "columns": ["产品名称", "单价", "金额"],
+        "cells": [
+          { "row": 1, "column": "产品名称", "equals": "无线鼠标" },
+          { "row": 1, "column": "单价", "equals": 89 },
+          { "row": 1, "column": "金额", "equals": 267 },
+          { "row": 2, "column": "产品名称", "equals": "显示器支架" },
+          { "row": 3, "column": "金额", "equals": 1995 },
+          { "row": 4, "column": "产品名称", "equals": null },
+          { "row": 5, "column": "金额", "equals": 89 }
+        ]
+      }
+    }
+  ]
+}

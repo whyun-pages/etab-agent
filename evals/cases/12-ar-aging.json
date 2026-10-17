@@ -1,0 +1,60 @@
+{
+  "id": "ar-aging",
+  "title": "应收账款账龄分析：逾期天数与账龄区间",
+  "source": [
+    {
+      "name": "实在智能 — 账龄分析：按时间分段评估周转健康度",
+      "url": "https://www.ai-indeed.com/encyclopedia/17061.html"
+    },
+    {
+      "name": "ExcelDemy — Excel VLOOKUP Exercises, Problem 5（Group Ages in Range：按区间分组）",
+      "url": "https://www.exceldemy.com/excel-vlookup-exercises/"
+    }
+  ],
+  "tags": ["compute_column", "date", "DATEDIFF", "IF"],
+  "given": {
+    "title": "应收账款明细",
+    "sheets": [
+      {
+        "name": "应收",
+        "columns": [
+          { "header": "客户", "type": "text" },
+          { "header": "发票号", "type": "text" },
+          { "header": "发票金额", "type": "currency" },
+          { "header": "到期日", "type": "date" }
+        ],
+        "rows": [
+          ["杭州云图科技", "INV-2601", 125000, "2026-11-15"],
+          ["上海临港数据", "INV-2602", 86000, "2026-10-01"],
+          ["深圳前海智算", "INV-2603", 88000, "2026-08-30"],
+          ["北京星河软件", "INV-2604", 42000, "2026-07-25"],
+          ["成都锦城信息", "INV-2605", 15000, "2026-05-10"]
+        ]
+      }
+    ]
+  },
+  "today": "2026-10-17",
+  "turns": [
+    {
+      "message": "按今天 2026 年 10 月 17 日算，加一列逾期天数（还没到期的记 0），再加一列账龄区间：未到期、1-30 天、31-60 天、61-90 天、90 天以上。",
+      "expect": {
+        "intent": "action",
+        "guarded": false,
+        "rowCount": 5,
+        "columns": ["逾期天数", "账龄"],
+        "cells": [
+          { "row": 1, "column": "逾期天数", "equals": 0 },
+          { "row": 2, "column": "逾期天数", "equals": 16 },
+          { "row": 3, "column": "逾期天数", "equals": 48 },
+          { "row": 4, "column": "逾期天数", "equals": 84 },
+          { "row": 5, "column": "逾期天数", "equals": 160 },
+          { "row": 1, "column": "账龄", "matches": "未到期" },
+          { "row": 2, "column": "账龄", "matches": "1\\s*-\\s*30" },
+          { "row": 3, "column": "账龄", "matches": "31\\s*-\\s*60" },
+          { "row": 4, "column": "账龄", "matches": "61\\s*-\\s*90" },
+          { "row": 5, "column": "账龄", "matches": "90" }
+        ]
+      }
+    }
+  ]
+}

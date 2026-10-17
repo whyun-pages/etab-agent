@@ -1,0 +1,79 @@
+{
+  "id": "grades",
+  "title": "学生成绩表：总分、平均分、等级、排序与名次",
+  "source": [
+    {
+      "name": "Scribd — Grade Sheet 练习（相对/绝对引用、嵌套 IF 评等级）",
+      "url": "https://www.scribd.com/document/375396591/exer1"
+    },
+    {
+      "name": "ExcelDemy — How to Calculate Final Grade in Excel",
+      "url": "https://www.exceldemy.com/calculate-final-grade-in-excel/"
+    },
+    {
+      "name": "PinoyTechnoGuide — How to Rank in Excel（RANK 排名）",
+      "url": "https://www.pinoytechnoguide.com/2012/04/ranking-in-exce.html"
+    }
+  ],
+  "tags": ["compute_column", "sort_rows", "multi-turn"],
+  "given": {
+    "title": "期中成绩表",
+    "sheets": [
+      {
+        "name": "成绩",
+        "columns": [
+          { "header": "姓名", "type": "text" },
+          { "header": "语文", "type": "number" },
+          { "header": "数学", "type": "number" },
+          { "header": "英语", "type": "number" }
+        ],
+        "rows": [
+          ["林小雨", 92, 88, 95],
+          ["陈浩", 78, 65, 70],
+          ["王思敏", 85, 90, 82],
+          ["刘子豪", 55, 48, 62],
+          ["赵雪", 90, 95, 88],
+          ["周杰", 60, 72, 58]
+        ]
+      }
+    ]
+  },
+  "turns": [
+    {
+      "message": "加总分、平均分（保留一位小数）和等级三列：平均分 90 及以上是优秀，80 到 89 是良好，60 到 79 是及格，60 以下是不及格。",
+      "expect": {
+        "intent": "action",
+        "guarded": false,
+        "rowCount": 6,
+        "columns": ["总分", "平均分", "等级"],
+        "cells": [
+          { "row": 1, "column": "总分", "equals": 275 },
+          { "row": 1, "column": "平均分", "approx": 91.7, "tolerance": 0.05 },
+          { "row": 1, "column": "等级", "equals": "优秀" },
+          { "row": 2, "column": "等级", "equals": "及格" },
+          { "row": 3, "column": "等级", "equals": "良好" },
+          { "row": 4, "column": "总分", "equals": 165 },
+          { "row": 4, "column": "等级", "equals": "不及格" },
+          { "row": 6, "column": "平均分", "approx": 63.3, "tolerance": 0.05 }
+        ]
+      }
+    },
+    {
+      "message": "按总分从高到低排序，并在最前面加一列名次。",
+      "expect": {
+        "intent": "action",
+        "guarded": false,
+        "rowCount": 6,
+        "firstColumn": "名次|排名",
+        "sortedBy": { "column": "总分", "order": "desc" },
+        "cells": [
+          { "row": 1, "column": "姓名", "equals": "林小雨" },
+          { "row": 1, "column": "名次|排名", "equals": 1 },
+          { "row": 2, "column": "姓名", "equals": "赵雪" },
+          { "row": 6, "column": "姓名", "equals": "刘子豪" },
+          { "row": 6, "column": "名次|排名", "equals": 6 }
+        ]
+      }
+    }
+  ]
+}

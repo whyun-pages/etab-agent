@@ -1,0 +1,57 @@
+{
+  "id": "budget-actual",
+  "title": "预算与实际：差异、完成率（分母为 0 留空）与合计行",
+  "source": [
+    {
+      "name": "人人都是产品经理 — Excel 数据处理：IF（分母大于 0 时算比值）、IFERROR、条件格式",
+      "url": "https://www.woshipm.com/data-analysis/5748189.html"
+    },
+    {
+      "name": "清华大学出版社《Excel 数据处理与分析》— 销售业绩分析",
+      "url": "https://www.tup.tsinghua.edu.cn/upload/books/yz/076116-02.pdf"
+    }
+  ],
+  "tags": ["compute_column", "percent", "set_totals", "IF"],
+  "given": {
+    "title": "部门预算执行表",
+    "sheets": [
+      {
+        "name": "预算执行",
+        "columns": [
+          { "header": "部门", "type": "text" },
+          { "header": "预算", "type": "currency" },
+          { "header": "实际", "type": "currency" }
+        ],
+        "rows": [
+          ["销售部", 500000, 560000],
+          ["市场部", 300000, 240000],
+          ["技术部", 800000, 800000],
+          ["行政部", 120000, 150000],
+          ["新业务部", 0, 35000]
+        ]
+      }
+    ]
+  },
+  "turns": [
+    {
+      "message": "加一列差异＝实际-预算，再加一列完成率＝实际÷预算，用百分比类型，预算为 0 的那行完成率留空；最后给预算和实际加合计行。",
+      "expect": {
+        "intent": "action",
+        "guarded": false,
+        "rowCount": 5,
+        "columns": ["差异", "完成率"],
+        "columnTypes": { "完成率": "percent" },
+        "totals": true,
+        "cells": [
+          { "row": 1, "column": "差异", "equals": 60000 },
+          { "row": 2, "column": "差异", "equals": -60000 },
+          { "row": 3, "column": "差异", "equals": 0 },
+          { "row": 1, "column": "完成率", "approx": 1.12, "tolerance": 0.001 },
+          { "row": 2, "column": "完成率", "approx": 0.8, "tolerance": 0.001 },
+          { "row": 4, "column": "完成率", "approx": 1.25, "tolerance": 0.001 },
+          { "row": 5, "column": "完成率", "equals": null }
+        ]
+      }
+    }
+  ]
+}

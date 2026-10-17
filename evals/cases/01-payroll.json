@@ -1,0 +1,59 @@
+{
+  "id": "payroll",
+  "title": "工资表：应发、实发与合计行",
+  "source": [
+    {
+      "name": "清华大学出版社《新编 Excel 在财务中的应用》— 企业工资数据核算与汇总",
+      "url": "https://www.tup.tsinghua.edu.cn/upload/books/yz/076002-01.pdf"
+    },
+    {
+      "name": "ExcelDemy — Excel VLOOKUP Exercises（员工工资查找）",
+      "url": "https://www.exceldemy.com/excel-vlookup-exercises/"
+    }
+  ],
+  "tags": ["compute_column", "set_totals"],
+  "given": {
+    "title": "员工工资表",
+    "sheets": [
+      {
+        "name": "工资表",
+        "columns": [
+          { "header": "工号", "type": "text" },
+          { "header": "姓名", "type": "text" },
+          { "header": "部门", "type": "text" },
+          { "header": "基本工资", "type": "currency" },
+          { "header": "绩效奖金", "type": "currency" },
+          { "header": "加班费", "type": "currency" },
+          { "header": "社保扣款", "type": "currency" },
+          { "header": "个税", "type": "currency" }
+        ],
+        "rows": [
+          ["E001", "张伟", "销售部", 8000, 3000, 500, 920, 145],
+          ["E002", "李娜", "技术部", 12000, 2000, 0, 1380, 390],
+          ["E003", "王芳", "财务部", 9000, 1500, 300, 1035, 115],
+          ["E004", "赵强", "销售部", 7500, 4200, 800, 870, 190],
+          ["E005", "刘洋", "技术部", 15000, 1000, 0, 1725, 790]
+        ]
+      }
+    ]
+  },
+  "turns": [
+    {
+      "message": "加一列应发工资＝基本工资+绩效奖金+加班费，再加一列实发工资＝应发工资-社保扣款-个税，最后给应发工资和实发工资加合计行。",
+      "expect": {
+        "intent": "action",
+        "guarded": false,
+        "rowCount": 5,
+        "columns": ["应发", "实发"],
+        "totals": true,
+        "cells": [
+          { "row": 1, "column": "应发", "equals": 11500 },
+          { "row": 5, "column": "应发", "equals": 16000 },
+          { "row": 1, "column": "实发", "equals": 10435 },
+          { "row": 3, "column": "实发", "equals": 9650 },
+          { "row": 5, "column": "实发", "equals": 13485 }
+        ]
+      }
+    }
+  ]
+}

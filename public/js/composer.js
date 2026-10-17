@@ -30,9 +30,6 @@ let composing = false;
 /** The live textarea, or null before a composer has been built. */
 export const composer = () => node;
 
-/** True while the composer has an open IME composition. */
-export const isComposing = () => composing;
-
 /**
  * The composer for this session, built on first use.
  *
@@ -41,7 +38,8 @@ export const isComposing = () => composing;
  * sessions clear the box.
  *
  * @param {string|null} sessionId
- * @param {{ placeholder: string, onInput: (v: string) => void, onSend: () => void }} hooks
+ * @param {{ placeholder: string, onInput: (v: string) => void, onSend: () => void,
+ *           onPasteFiles?: (files: File[]) => void }} hooks
  * @returns {HTMLTextAreaElement}
  */
 export function prepareComposer(sessionId, hooks) {
@@ -63,12 +61,30 @@ export function prepareComposer(sessionId, hooks) {
 
   // The IME owns the value between these two events. Reverting mid-word would
   // corrupt the composition, so only the flag is touched.
-  ta.addEventListener('compositionstart', () => { composing = true; });
-  ta.addEventListener('compositionend', () => { composing = false; });
+  ta.addEventListener('compositionstart', () => {
+    composing = true;
+  });
+  ta.addEventListener('compositionend', () => {
+    composing = false;
+  });
 
   ta.addEventListener('input', () => {
     autoGrow(ta);
     ta.__hooks.onInput(ta.value);
+  });
+
+  // Ctrl+V with files on the clipboard — a screenshot, or files copied in
+  // Explorer — attaches them, the same as dropping them on the window.
+  //
+  // Only when the clipboard has no text. Copying cells in Excel puts the text
+  // AND a picture of the cells on the clipboard; that paste means the text,
+  // and uploading the picture instead would be a surprise.
+  ta.addEventListener('paste', (e) => {
+    const data = e.clipboardData;
+    const files = data ? [...data.files] : [];
+    if (!files.length || data.types.includes('text/plain') || !ta.__hooks.onPasteFiles) return;
+    e.preventDefault();
+    ta.__hooks.onPasteFiles(files);
   });
 
   ta.addEventListener('keydown', (e) => {
@@ -109,13 +125,13 @@ export function fillComposer(text) {
   if (!ta) return false;
   ta.value = text;
   ta.focus();
-  try { ta.setSelectionRange(text.length, text.length); } catch { /* not focusable */ }
+  try {
+    ta.setSelectionRange(text.length, text.length);
+  } catch {
+    /* not focusable */
+  }
   autoGrow(ta);
   return true;
-}
-
-export function setComposing(v) {
-  composing = Boolean(v);
 }
 
 /**

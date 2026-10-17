@@ -1,0 +1,60 @@
+{
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  // Respect .gitignore: node_modules, .build, dist and .verify/out stay out.
+  "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+  "files": {
+    "includes": ["src/**", "tests/**", "public/js/**", "tools/**", ".verify/**", "evals/**", "*.json", "*.jsonc"]
+  },
+  // Matches the code as it was written by hand before the formatter arrived,
+  // so the first format is a reflow, not a restyle.
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 120
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "single",
+      "semicolons": "always",
+      "trailingCommas": "all",
+      "arrowParentheses": "always"
+    }
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended",
+      // Off because the recommended default fights a deliberate idiom here, or
+      // would rewrite hundreds of lines for taste rather than correctness.
+      "style": {
+        "useTemplate": "off", // concatenation is fine, and often clearer across lines
+        "noNonNullAssertion": "off" // `!` after a check tsc cannot see through
+      },
+      "suspicious": {
+        "noRedundantUseStrict": "off", // every module opens with 'use strict' by convention
+        "noAssignInExpressions": "off", // `while ((m = re.exec(s)))`
+        "noControlCharactersInRegex": "off", // stripping control characters is the point
+        "noImplicitAnyLet": "off", // tsc checks src/ under strict; tests are not typed yet
+        "noExplicitAny": "off" // the few `any`s sit at untyped pi / Koa boundaries
+      },
+      "complexity": {
+        "useOptionalChain": "off", // `a && a.b` reads fine; rewriting 110 sites is churn
+        "useSimpleNumberKeys": "off" // BIFF record ids are written in hex, as the spec gives them
+      },
+      "correctness": {
+        "noUnusedFunctionParameters": "off" // positional callbacks: (req, res), (m, name)
+      }
+    }
+  },
+  "overrides": [
+    {
+      // A port of pi's tools, kept close to upstream on purpose (see its header).
+      "includes": ["src/agent/tools/pi-tools/**"],
+      "linter": { "rules": { "suspicious": { "noConfusingVoidType": "off" } } }
+    }
+  ],
+  // Off for now: sorting imports reorders every file's header for no change in
+  // behaviour. Turn it on in its own commit if wanted.
+  "assist": { "enabled": true, "actions": { "source": { "organizeImports": "off" } } }
+}

@@ -1,0 +1,95 @@
+{
+  "id": "reconcile",
+  "title": "两个文件对账：财务表与业务系统导出按发票号核对",
+  "source": [
+    {
+      "name": "Chandoo — How to compare two Excel sheets using VLOOKUP（按唯一键核对，标记一致 / 不符 / 缺失）",
+      "url": "https://chandoo.org/wp/compare-two-excel-sheets-using-vlookup"
+    },
+    {
+      "name": "ExcelDemy — How to Do Reconciliation in Excel（VLOOKUP 精确匹配后求差异）",
+      "url": "https://www.exceldemy.com/how-to-do-reconciliation-in-excel/"
+    },
+    {
+      "name": "WPS — 两列数据比对找出不匹配值（IFERROR 区分“引用缺失”与“金额不符”）",
+      "url": "https://www.wps.com/office-quick-solution/excel-data-problems/how-to-compare-two-columns-in-excel-and-find-mismatched-values/"
+    }
+  ],
+  "tags": ["attachments", "read_attachment", "lookup_columns", "compute_column", "query_table", "multi-turn"],
+  "given": {
+    "title": "三季度收款核对",
+    "sheets": [
+      {
+        "name": "财务收款",
+        "columns": [
+          { "header": "发票号", "type": "text" },
+          { "header": "客户", "type": "text" },
+          { "header": "金额", "type": "currency" }
+        ],
+        "rows": [
+          ["INV-001", "杭州云图科技", 12500],
+          ["INV-002", "上海临港数据", 8600],
+          ["INV-003", "深圳前海智算", 8800],
+          ["INV-004", "北京星河软件", 4200],
+          ["INV-005", "成都锦城信息", 1500],
+          ["INV-006", "广州珠江物流", 9900]
+        ]
+      }
+    ]
+  },
+  "attachments": [
+    {
+      "filename": "业务系统导出.xlsx",
+      "spec": {
+        "title": "业务系统导出",
+        "sheets": [
+          {
+            "name": "回款",
+            "columns": [
+              { "header": "发票号", "type": "text" },
+              { "header": "客户", "type": "text" },
+              { "header": "金额", "type": "currency" }
+            ],
+            "rows": [
+              ["INV-001", "杭州云图科技", 12500],
+              ["INV-002", "上海临港数据", 8600],
+              ["INV-003", "深圳前海智算", 8000],
+              ["INV-004", "北京星河软件", 4200],
+              ["INV-006", "广州珠江物流", 9900],
+              ["INV-007", "武汉光谷电子", 3300]
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "turns": [
+    {
+      "message": "把附件「业务系统导出.xlsx」导入成一张新工作表，然后在财务收款表里按发票号和它核对，加一列核对结果：金额一致写“一致”，金额不同写“金额不符”，附件里找不到这张发票的写“附件缺失”。",
+      "expect": {
+        "intent": "action",
+        "guarded": false,
+        "sheetCount": 2,
+        "sheet": "财务",
+        "rowCount": 6,
+        "columns": ["核对"],
+        "cells": [
+          { "row": 1, "column": "核对", "matches": "^一致$" },
+          { "row": 2, "column": "核对", "matches": "^一致$" },
+          { "row": 3, "column": "核对", "matches": "不符" },
+          { "row": 4, "column": "核对", "matches": "^一致$" },
+          { "row": 5, "column": "核对", "matches": "缺失" },
+          { "row": 6, "column": "核对", "matches": "^一致$" }
+        ]
+      }
+    },
+    {
+      "message": "反过来，附件里有、财务收款表里没有的发票是哪些？",
+      "expect": {
+        "intent": "answer",
+        "ops": "none",
+        "reply": ["INV-007"]
+      }
+    }
+  ]
+}

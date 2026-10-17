@@ -9,19 +9,46 @@
    it produced, side by side. There is no template to pick and no plan to
    approve — the spec IS the document, and it changes only when the user says
    it should.
+
+   This file is the boot, the conversation, the render pass and the handlers
+   the views call. The rest is one module per area, none importing this one:
+   controllers/sessions.js, attachments.js, preview.js and settings.js, with
+   feedback.js for the failure toast they all use.
    ════════════════════════════════════════════════════════════════════ */
 
-import { api, ApiError, saveBlob } from './api.js';
+import { api, saveBlob } from './api.js';
 import { hydrateIcons, icon } from './icons.js';
 import { $, el, mount, beginRender, endRender } from './dom.js';
 import { state, set, setBusy, subscribe, ready } from './state.js';
-import { toast, openModal, closeModal, initModal, initDragDrop } from './ui.js';
-import { resetComposer, fillComposer } from './composer.js';
+import { toast, initModal, initDragDrop } from './ui.js';
+import { fillComposer } from './composer.js';
 import { initSplitters } from './splitters.js';
 import { chatView } from './views/chat.js';
+import { captureChatScroll, restoreChatScroll, stickChat } from './chat-scroll.js';
 import { previewView } from './views/preview.js';
 import { sessionsView } from './views/sessions.js';
 import { settingsView } from './views/settings.js';
+import { errText, fail } from './feedback.js';
+import { refreshSessions, openSession, createSession, confirmRemoveSession } from './controllers/sessions.js';
+import {
+  bindFileInput,
+  pasteFiles,
+  pickFiles,
+  pickFolder,
+  handleFiles,
+  clearAttachments,
+  openAttachment,
+} from './controllers/attachments.js';
+import { loadMorePreview, setColumnWidth } from './controllers/preview.js';
+import {
+  toggleSettings,
+  openSettings,
+  closeSettings,
+  refreshSettings,
+  saveSettings,
+  clearSettingsKey,
+  testSettings,
+} from './controllers/settings.js';
 
 // ── boot ────────────────────────────────────────────────────────────
 
@@ -39,7 +66,8 @@ async function boot() {
   subscribe(render);
   render();
 
-  await Promise.all([refreshSettings(), refreshSessions(), refreshAttachments()]);
+  // No attachments here: they belong to a session, and openSession reads them.
+  await Promise.all([refreshSettings(), refreshSessions()]);
   checkHealth();
 
   if (!ready()) {
@@ -68,8 +96,11 @@ function bindKeyboard() {
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
       const modal = $('#modal');
-      if (modal && !modal.hidden) { modal.hidden = true; return; }
-      if (state.view === 'settings') set({ view: 'chat' });
+      if (modal && !modal.hidden) {
+        modal.hidden = true;
+        return;
+      }
+      if (state.view === 'settings') closeSettings();
       return;
     }
     if (!(e.ctrlKey || e.metaKey)) return;
@@ -83,207 +114,6 @@ function bindKeyboard() {
       toggleRail();
     }
   });
-}
-
-// ── sessions ────────────────────────────────────────────────────────
-
-async function refreshSessions() {
-  try {
-    const res = await api.listSessions();
-    set({ sessions: res.sessions || [] });
-  } catch (err) {
-    console.warn('session list failed', err);
-  }
-}
-
-/** Open a session: its transcript, its workbook, and clear any held proposal. */
-async function openSession(id) {
-  if (!id || state.busy.sessions) return;
-  setBusy('sessions', true);
-  try {
-    const res = await api.getSession(id);
-    // A different conversation means a different message box. The cached node
-    // is keyed by session id, so this also clears the half-typed text.
-    if (state.activeId !== id) resetComposer();
-    set({
-      activeId: id,
-      title: res.session.title || '',
-      messages: res.session.messages || [],
-      preview: res.preview || null,
-      pending: null,
-      draft: '',
-      view: 'chat',
-      error: null,
-      status: res.preview ? '已载入会话' : '新会话',
-    });
-  } catch (err) {
-    fail('打开会话失败', err);
-  } finally {
-    setBusy('sessions', false);
-  }
-}
-
-/**
- * Create a session and open it.
- *
- * Created eagerly rather than held until the first message: the user asked for
- * a new conversation, and a session that exists on the server is one they can
- * come back to even if they never type anything.
- */
-async function createSession() {
-  if (state.busy.create) return;
-  setBusy('create', true);
-  try {
-    const res = await api.createSession('');
-    await refreshSessions();
-    resetComposer();
-    set({
-      activeId: res.session.id,
-      title: '',
-      messages: [],
-      preview: null,
-      pending: null,
-      draft: '',
-      view: 'chat',
-      error: null,
-      status: '新会话',
-    });
-    setBusy('sessions', false);
-  } catch (err) {
-    fail('新建会话失败', err);
-  } finally {
-    setBusy('create', false);
-  }
-}
-
-function confirmRemoveSession(session) {
-  const cancel = el('button', { class: 'btn', type: 'button', text: '取消' });
-  const del = el('button', { class: 'btn btn--danger', type: 'button', text: '删除' });
-  const close = openModal({
-    title: '删除会话',
-    body: el('p', {
-      class: 'hint',
-      text: `删除「${session.title || '未命名会话'}」？对话和表格一起删掉，不可撤销。`,
-    }),
-    footer: [cancel, del],
-  });
-  cancel.addEventListener('click', closeModal);
-  del.addEventListener('click', async () => {
-    close();
-    try {
-      await api.removeSession(session.id);
-      const wasActive = state.activeId === session.id;
-      await refreshSessions();
-      if (wasActive) {
-        resetComposer();
-        set({ activeId: null, title: '', messages: [], preview: null, pending: null, draft: '' });
-        const next = state.sessions[0];
-        if (next) await openSession(next.id);
-      }
-      toast('已删除会话', 'ok');
-    } catch (err) {
-      fail('删除失败', err);
-    }
-  });
-}
-
-// ── attachments ─────────────────────────────────────────────────────
-
-/** The hidden file input the paperclip clicks; created once, reused. */
-let fileInput = null;
-
-/**
- * Wire the paperclip to a file picker.
- *
- * The input is created lazily on the document rather than living in the chat
- * view: the view is rebuilt on every repaint, and a picker whose `<input>` is
- * swapped mid-flow loses the selection the user just made.
- */
-function bindFileInput() {
-  fileInput = el('input', {
-    type: 'file', id: 'file-input', multiple: true,
-    accept: '.csv,.tsv,.txt,.json,.md,.xlsx,.xls,.png,.jpg,.jpeg,.webp,.gif,.docx,.pdf',
-  });
-  fileInput.style.display = 'none';
-  fileInput.addEventListener('change', () => {
-    if (fileInput.files && fileInput.files.length) handleFiles(fileInput.files);
-    // Reset so picking the SAME file twice still fires `change`.
-    fileInput.value = '';
-  });
-  document.body.append(fileInput);
-}
-
-function pickFiles() {
-  if (!state.activeId) {
-    toast({ tone: 'warn', title: '先新建一个会话', body: '附件会跟着这次对话走。', ms: 4000 });
-    return;
-  }
-  if (fileInput) fileInput.click();
-}
-
-/**
- * Upload dropped or picked files and mirror the server's view of them.
- *
- * The server is the source of truth for what an attachment IS (kind, parsed
- * columns, preview). We refetch the list after uploading rather than trusting
- * the POST response's shape alone, so a partial failure (one file of several)
- * is reflected exactly.
- */
-async function handleFiles(files) {
-  if (!state.activeId) {
-    toast({ tone: 'warn', title: '先新建一个会话', body: '附件会跟着这次对话走。', ms: 4000 });
-    return;
-  }
-  const list = [...files];
-  if (!list.length) return;
-  setBusy('attach', true);
-  set({ attaching: true, status: `正在读取 ${list.length} 个文件…` });
-  try {
-    const res = await api.attach(list);
-    if (res.modelNotes && res.modelNotes.length) {
-      toast({ tone: 'warn', title: '模型读取失败', body: res.modelNotes.map((n) => n.error).join('；'), ms: 8000 });
-    }
-    await refreshAttachments();
-    const bad = (res.attachments || []).filter((a) => a.kind === 'error');
-    set({ status: bad.length ? `${bad.length} 个文件读不了` : `已添加 ${list.length} 个文件` });
-    if (bad.length) toast({ tone: 'err', title: '有一部文件读不了', body: bad.map((a) => `${a.name}：${a.error || '不支持'}`).join('\n'), ms: 8000 });
-  } catch (err) {
-    fail('上传失败', err);
-  } finally {
-    setBusy('attach', false);
-    set({ attaching: false });
-  }
-}
-
-/** Pull the server's current attachment list into state. */
-async function refreshAttachments() {
-  try {
-    const res = await api.listAttachments();
-    set({ attachments: res.attachments || [] });
-  } catch (err) {
-    console.warn('attachments read failed', err);
-  }
-}
-
-/**
- * Remove one file.
- *
- * The server offers only clear-all, and the bytes live only in this process,
- * so dropping one file means clearing and re-sending the survivors. We no
- * longer hold the File objects for those survivors, so the honest move is to
- * clear and say so — silently keeping a file the user removed would be worse.
- */
-async function removeAttachment(index) {
-  setBusy('attach', true);
-  try {
-    await api.clearAttachments();
-    set({ attachments: [], status: '已清空附件' });
-    void index;
-  } catch (err) {
-    fail('移除失败', err);
-  } finally {
-    setBusy('attach', false);
-  }
 }
 
 // ── conversation ────────────────────────────────────────────────────
@@ -306,6 +136,18 @@ async function useIdea(text) {
   }
   set({ draft: text });
   fillComposer(text);
+}
+
+/**
+ * Create a session from the composer's mask and put the caret in the box.
+ *
+ * The click landed where the user meant to type, so the focus goes there; an
+ * empty fill is how the composer module focuses its own node.
+ */
+async function startSession() {
+  if (state.activeId) return;
+  await createSession();
+  if (state.activeId) fillComposer('');
 }
 
 /**
@@ -332,6 +174,9 @@ async function send(text) {
   const ta = state.draftNode;
   if (ta) ta.value = '';
 
+  // Sending is a request to see the answer: follow it even if the transcript
+  // was scrolled up. Before setBusy, whose repaint is the first to show it.
+  stickChat();
   setBusy('turn', true);
   // Show the user's own message immediately; a turn is a model call and can
   // take seconds, and a box that empties with nothing appearing reads as a
@@ -339,12 +184,15 @@ async function send(text) {
   set({
     // The server folds attachment content into the model's message itself and
     // stores only the names; the optimistic bubble shows the same names.
-    messages: [...state.messages, {
-      role: 'user',
-      content: message,
-      attachments: attachedNames(),
-      at: new Date().toISOString(),
-    }],
+    messages: [
+      ...state.messages,
+      {
+        role: 'user',
+        content: message,
+        attachments: attachedNames(),
+        at: new Date().toISOString(),
+      },
+    ],
     error: null,
     status: '正在想…',
   });
@@ -367,17 +215,17 @@ async function send(text) {
 
     set({
       messages: res.messages || state.messages,
-      preview: preview || state.preview,
+      // Marked so the pager asks for the held change's rows, not the stored ones.
+      preview: preview ? { ...preview, proposed: preview === res.proposed?.preview } : state.preview,
+      previewError: null,
       pending: res.pending ? { rows: res.proposed?.rows, reply: res.reply } : null,
-      status: res.pending
-        ? '改好了，等你确认'
-        : res.applied ? '已改' : '已回复',
+      status: res.pending ? '改好了，等你确认' : res.applied ? '已改' : '已回复',
     });
 
     // A rename lands on the first change, so the list needs refreshing.
     if (res.applied) refreshSessions();
   } catch (err) {
-    restoreDraft(message, err instanceof ApiError ? err.message : String(err?.message || err));
+    restoreDraft(message, errText(err));
   } finally {
     setBusy('turn', false);
     focusComposer();
@@ -401,7 +249,11 @@ function restoreDraft(text, why) {
   const ta = state.draftNode;
   if (ta) {
     ta.value = text;
-    try { ta.focus(); } catch { /* not focusable yet */ }
+    try {
+      ta.focus();
+    } catch {
+      /* not focusable yet */
+    }
   }
   toast({ tone: 'err', title: '对话失败', body: why, ms: 7000 });
 }
@@ -418,8 +270,13 @@ async function applyPending() {
     }
     await openSession(state.activeId);
     await refreshSessions();
-    set({ pending: null, status: '已写进表格' });
-    toast('已写进表格', 'ok');
+    // A save the turn asked for happens here, once the change has landed, and
+    // the apply response is the only place its outcome is reported.
+    const saved = res.saved || [];
+    set({ pending: null, status: saved.length ? `已写进表格，已保存 ${saved.length} 个文件` : '已写进表格' });
+    if (saved.length) toast({ tone: 'ok', title: '已写进表格并保存', body: saved.join('\n'), ms: 7000 });
+    else toast('已写进表格', 'ok');
+    if (res.saveError) toast({ tone: 'err', title: '保存文件失败', body: res.saveError, ms: 7000 });
   } catch (err) {
     fail('应用失败', err);
   } finally {
@@ -443,96 +300,14 @@ async function dismissPending() {
   }
 }
 
-async function downloadWorkbook() {
+async function downloadWorkbook(format = 'xlsx', sheet = null) {
   if (!state.activeId) return;
   try {
-    const { blob, name } = await api.workbook(state.activeId);
+    const { blob, name } = await api.workbook(state.activeId, format, sheet);
     saveBlob(blob, name);
     set({ status: `已下载 ${name}` });
   } catch (err) {
     fail('下载失败', err);
-  }
-}
-
-// ── model settings ───────────────────────────────────────────────────
-
-function toggleSettings() {
-  set({ view: state.view === 'settings' ? 'chat' : 'settings', settingsTest: null });
-}
-
-async function refreshSettings() {
-  try {
-    const res = await api.getSettings();
-    set({ settings: res.settings || null });
-  } catch (err) {
-    console.warn('settings read failed', err);
-  }
-}
-
-/**
- * Save the settings form.
- *
- * An empty key field means "leave it alone" — the server can never send the
- * existing key back to pre-fill a box, so treating blank as "clear" would wipe
- * the key every time the user changed an unrelated field.
- */
-async function saveSettings(draft) {
-  setBusy('settings', true);
-  try {
-    const patch = {};
-    for (const k of ['baseUrl', 'model', 'useForAttachments', 'chatCanEdit', 'chatConfirmEdits']) {
-      if (k in draft) patch[k] = draft[k];
-    }
-    if (draft.apiKey) patch.apiKey = draft.apiKey;
-
-    const res = await api.saveSettings(patch);
-    set({
-      settings: res.settings,
-      settingsDraft: {},
-      settingsTest: null,
-      status: '设置已保存',
-      view: ready() && !state.activeId ? 'chat' : state.view,
-    });
-    toast('设置已保存', 'ok');
-    // The first save is what makes the app usable; go find the work.
-    if (!state.sessions.length) await refreshSessions();
-  } catch (err) {
-    fail('保存失败', err);
-  } finally {
-    setBusy('settings', false);
-  }
-}
-
-async function clearSettingsKey() {
-  setBusy('settings', true);
-  try {
-    const res = await api.saveSettings({ apiKey: '' });
-    set({ settings: res.settings, settingsDraft: {}, settingsTest: null, status: '已清除 API key' });
-    toast('已清除 API key', 'ok');
-  } catch (err) {
-    fail('清除失败', err);
-  } finally {
-    setBusy('settings', false);
-  }
-}
-
-/**
- * Test the connection.
- *
- * The provider's own error text is shown verbatim: a wrong key, a wrong model
- * name and an unreachable host are three different fixes, and a generic "测试
- * 失败" would hide which one applies.
- */
-async function testSettings() {
-  setBusy('settings', true);
-  set({ settingsTest: null });
-  try {
-    const res = await api.testSettings();
-    set({ settingsTest: res.ok ? { ok: true, reply: res.reply } : { ok: false, error: res.error } });
-  } catch (err) {
-    set({ settingsTest: { ok: false, error: err.message } });
-  } finally {
-    setBusy('settings', false);
   }
 }
 
@@ -550,16 +325,18 @@ async function checkHealth() {
   }
 }
 
-function fail(title, err) {
-  const msg = err instanceof ApiError ? err.message : String(err?.message || err);
-  set({ error: msg, status: msg });
-  toast({ tone: 'err', title, body: msg, ms: 7000 });
-}
-
 function focusComposer() {
   const ta = state.draftNode;
   if (!ta) return;
-  try { ta.focus({ preventScroll: true }); } catch { try { ta.focus(); } catch { /* ignore */ } }
+  try {
+    ta.focus({ preventScroll: true });
+  } catch {
+    try {
+      ta.focus();
+    } catch {
+      /* ignore */
+    }
+  }
 }
 
 // ── render ──────────────────────────────────────────────────────────
@@ -571,6 +348,10 @@ function render() {
   const pass = beginRender();
   try {
     renderTitlebar();
+    if (renderSettings()) {
+      renderStatusbar();
+      return;
+    }
     renderError();
     renderRail();
     renderPane();
@@ -583,7 +364,7 @@ function render() {
 
 function renderTitlebar() {
   const node = $('#titlebar-title');
-  node.textContent = state.view === 'settings' ? '模型设置' : (state.title || '');
+  node.textContent = state.view === 'settings' ? '设置' : state.title || '';
 }
 
 function renderError() {
@@ -596,7 +377,10 @@ function renderError() {
   mount(banner, [
     el('span', { class: 'pane__errortext', text: state.error }),
     el('button', {
-      class: 'iconbtn', type: 'button', title: '关闭', html: icon('x'),
+      class: 'iconbtn',
+      type: 'button',
+      title: '关闭',
+      html: icon('x'),
       onclick: () => set({ error: null }),
     }),
   ]);
@@ -606,12 +390,15 @@ function renderRail() {
   // The grid track is set by a class on the shell, not by the rail itself: the
   // column width belongs to the layout, and the splitter beside it has to go too.
   $('#shell').classList.toggle('is-rail-collapsed', state.railCollapsed);
-  mount($('#rail'), sessionsView(state, {
-    onOpen: openSession,
-    onRemove: confirmRemoveSession,
-    onCreate: createSession,
-    onToggle: toggleRail,
-  }));
+  mount(
+    $('#rail'),
+    sessionsView(state, {
+      onOpen: openSession,
+      onRemove: confirmRemoveSession,
+      onCreate: createSession,
+      onToggle: toggleRail,
+    }),
+  );
 }
 
 // ── rail folding ────────────────────────────────────────────────────
@@ -622,32 +409,87 @@ function renderRail() {
 const RAIL_KEY = 'tab-agent:rail-collapsed';
 
 function readRailCollapsed() {
-  try { return localStorage.getItem(RAIL_KEY) === '1'; } catch { return false; }
+  try {
+    return localStorage.getItem(RAIL_KEY) === '1';
+  } catch {
+    return false;
+  }
 }
 
 function toggleRail() {
   const railCollapsed = !state.railCollapsed;
-  try { localStorage.setItem(RAIL_KEY, railCollapsed ? '1' : '0'); } catch { /* not fatal */ }
+  try {
+    localStorage.setItem(RAIL_KEY, railCollapsed ? '1' : '0');
+  } catch {
+    /* not fatal */
+  }
   set({ railCollapsed });
 }
 
-function renderPane() {
-  const body = $('#pane-body');
-  if (state.view === 'settings') {
-    mount(body, [el('div', { class: 'pane__scroll' }, [settingsView({ state, handlers })])]);
-    return;
+/**
+ * The settings page replaces the three-column shell; it is not a panel in it.
+ *
+ * Returns true when the page is showing, so the shell is not repainted behind
+ * it: those panes are hidden, and keeping their last paint means coming back
+ * shows the conversation exactly as it was left, scroll position included.
+ */
+function renderSettings() {
+  const page = $('#settings-page');
+  const on = state.view === 'settings';
+  $('#shell').hidden = on;
+  page.hidden = !on;
+  if (!on) {
+    page.replaceChildren();
+    return false;
   }
-  mount(body, [chatView(state, handlers)]);
+  // Every repaint rebuilds the page — pressing 保存 alone repaints twice — so
+  // the scroll offset is carried over by hand, or the form would jump to the
+  // top under the user. A different tab is a different page and starts at 0.
+  const prev = page.querySelector('.settings__main');
+  const keep = prev && page.dataset.tab === state.settingsTab ? prev.scrollTop : 0;
+  mount(page, [settingsView({ state, handlers })]);
+  page.dataset.tab = state.settingsTab;
+  const next = page.querySelector('.settings__main');
+  if (next) next.scrollTop = keep;
+  return true;
 }
 
+/** Repaint the conversation; chat-scroll.js decides where it ends up scrolled. */
+function renderPane() {
+  const body = $('#pane-body');
+  const before = captureChatScroll(body, state.activeId);
+  mount(body, [chatView(state, handlers)]);
+  restoreChatScroll(body, before);
+}
+
+/**
+ * Repaint the preview, keeping its scroll position while it shows the same
+ * table. Every state change repaints, and a page arriving at the bottom must
+ * not throw the user back to row 1; a different table starts at the top.
+ */
 function renderPreview() {
-  mount($('#preview-pane'), previewView(state, handlers));
+  const pane = $('#preview-pane');
+  const p = state.preview;
+  // `view` rather than `key` when there is one: a saved column width changes
+  // the key but not the table, and must not throw the user back to row 1.
+  const identity = p ? `${p.view || p.key || ''}:${p.proposed ? 1 : 0}` : '';
+  const prev = pane.querySelector('.preview__body');
+  const keep = prev && pane.dataset.preview === identity ? { top: prev.scrollTop, left: prev.scrollLeft } : null;
+  mount(pane, previewView(state, handlers));
+  pane.dataset.preview = identity;
+  const next = pane.querySelector('.preview__body');
+  if (keep && next) {
+    next.scrollTop = keep.top;
+    next.scrollLeft = keep.left;
+  }
 }
 
 function renderStatusbar() {
   $('#status-msg').textContent = state.status || '就绪';
 
-  const busy = Object.entries(state.busy).filter(([, v]) => v).map(([k]) => k);
+  const busy = Object.entries(state.busy)
+    .filter(([, v]) => v)
+    .map(([k]) => k);
   $('#status-busy').textContent = busy.length ? `进行中：${busy.join(' / ')}` : '';
 }
 
@@ -663,18 +505,32 @@ const handlers = {
     // node from here — that is what a repaint would trample.
     state.draft = v;
   },
-  onDraftNode: (node) => { state.draftNode = node; },
-  onIdea: (text) => { useIdea(text); },
+  onDraftNode: (node) => {
+    state.draftNode = node;
+  },
+  onIdea: (text) => {
+    useIdea(text);
+  },
+  onStartSession: () => {
+    startSession();
+  },
   onPickFiles: pickFiles,
-  onRemoveAttachment: removeAttachment,
+  onPickFolder: pickFolder,
+  onPasteFiles: pasteFiles,
+  onClearAttachments: clearAttachments,
+  onOpenAttachment: openAttachment,
   onApply: applyPending,
   onDismiss: dismissPending,
   onDownload: downloadWorkbook,
+  onMorePreview: loadMorePreview,
+  onColumnWidth: setColumnWidth,
 
   // ── settings ──────────────────────────────────────────────────────
   onSaveSettings: saveSettings,
   onTestSettings: testSettings,
   onClearSettingsKey: clearSettingsKey,
+  onSettingsTab: (tab) => openSettings(tab),
+  onCloseSettings: closeSettings,
 };
 
 boot();

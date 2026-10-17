@@ -1,0 +1,116 @@
+{
+  "id": "consolidate",
+  "title": "多文件合并：三个月的销售表合成一张明细，再按销售员汇总",
+  "source": [
+    {
+      "name": "IT之家 — 用 Power Query 合并多个工作簿（从工作簿导入、展开、去掉重复表头）",
+      "url": "https://www.ithome.com/0/675/883.htm"
+    },
+    {
+      "name": "Microsoft 支持 — Learn to combine multiple data sources (Power Query)",
+      "url": "https://support.microsoft.com/en-US/Excel/learn-to-combine-multiple-data-sources-power-query"
+    },
+    {
+      "name": "ExcelDemy — Excel Practice Test for Employment, Exercise 06（PivotTable 按员工汇总销售）",
+      "url": "https://exceldemy.com/?p=293888"
+    }
+  ],
+  "tags": ["attachments", "read_attachment", "add_rows", "query_table", "saveAs", "no-given"],
+  "given": null,
+  "attachments": [
+    {
+      "filename": "1月销售.xlsx",
+      "spec": {
+        "title": "1月销售",
+        "sheets": [
+          {
+            "name": "销售",
+            "columns": [
+              { "header": "日期", "type": "date" },
+              { "header": "销售员", "type": "text" },
+              { "header": "产品", "type": "text" },
+              { "header": "金额", "type": "currency" }
+            ],
+            "rows": [
+              ["2026-01-05", "张伟", "打印机", 3000],
+              ["2026-01-12", "李娜", "显示器", 6000],
+              ["2026-01-20", "王芳", "打印机", 1500]
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "filename": "2月销售.xlsx",
+      "spec": {
+        "title": "2月销售",
+        "sheets": [
+          {
+            "name": "销售",
+            "columns": [
+              { "header": "日期", "type": "date" },
+              { "header": "销售员", "type": "text" },
+              { "header": "产品", "type": "text" },
+              { "header": "金额", "type": "currency" }
+            ],
+            "rows": [
+              ["2026-02-03", "张伟", "笔记本", 15000],
+              ["2026-02-11", "李娜", "打印机", 6000],
+              ["2026-02-18", "赵强", "显示器", 2400],
+              ["2026-02-25", "王芳", "笔记本", 5000]
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "filename": "3月销售.xlsx",
+      "spec": {
+        "title": "3月销售",
+        "sheets": [
+          {
+            "name": "销售",
+            "columns": [
+              { "header": "日期", "type": "date" },
+              { "header": "销售员", "type": "text" },
+              { "header": "产品", "type": "text" },
+              { "header": "金额", "type": "currency" }
+            ],
+            "rows": [
+              ["2026-03-02", "张伟", "显示器", 7200],
+              ["2026-03-09", "赵强", "笔记本", 10000],
+              ["2026-03-15", "李娜", "笔记本", 5000],
+              ["2026-03-21", "王芳", "显示器", 3600],
+              ["2026-03-28", "赵强", "打印机", 3000]
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "turns": [
+    {
+      "message": "把三个附件合并成一张工作表“一季度明细”，列和附件一样，再加一列月份写明每行来自几月；然后按销售员汇总金额做成第二张表“销售员汇总”，按金额从高到低。",
+      "expect": {
+        "intent": "action",
+        "guarded": false,
+        "sheetCount": 2,
+        "sheet": "明细",
+        "rowCount": 12,
+        "columns": ["日期", "销售员", "金额", "月"],
+        "cells": [
+          { "row": 1, "column": "销售员", "equals": "张伟" },
+          { "row": 1, "column": "月", "matches": "1" },
+          { "row": 4, "column": "月", "matches": "2" },
+          { "row": 12, "column": "销售员", "equals": "赵强" },
+          { "row": 12, "column": "月", "matches": "3" },
+          { "sheet": "汇总", "row": 1, "column": "销售员", "equals": "张伟" },
+          { "sheet": "汇总", "row": 1, "column": "金额|销售额|合计", "equals": 25200 },
+          { "sheet": "汇总", "row": 2, "column": "金额|销售额|合计", "equals": 17000 },
+          { "sheet": "汇总", "row": 3, "column": "金额|销售额|合计", "equals": 15400 },
+          { "sheet": "汇总", "row": 4, "column": "金额|销售额|合计", "equals": 10100 }
+        ]
+      }
+    }
+  ]
+}

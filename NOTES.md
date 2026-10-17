@@ -19,17 +19,15 @@
 ## 已完成的验证状态
 
 ```
-node --test "tests/*.test.js"      # 401 pass, 0 fail
-node .verify/live-ui.js            # 12 passed, 0 failed（真模型 + 真浏览器）
-node .verify/live-session-api.js   # 29 passed, 0 failed（真模型，纯 API）
-node .verify/live-agent.js         # 24 passed, 0 failed（真模型，决策层）
-node .verify/workbook-verify.js    # 32 passed, 0 failed（exceljs 对照）
-node .verify/probe-ui-turn.js      # 12 passed, 0 failed（假模型，验 UI 接线）
-node .verify/probe-sheet-render.js # 12 passed, 0 failed（真 Edge 渲染网格）
-cd .verify && node verify.js       # ALL EXTERNAL CHECKS PASSED（exceljs 对照）
+pnpm test                          # 432 pass, 0 fail
+node .verify/model/live-ui.js            # 12 passed, 0 failed（真模型 + 真浏览器）
+node .verify/model/live-session-api.js   # 29 passed, 0 failed（真模型，纯 API）
+node .verify/model/live-agent.js         # 24 passed, 0 failed（真模型，决策层）
+node .verify/browser/probe-ui-turn.js      # 12 passed, 0 failed（假模型，验 UI 接线）
+node .verify/browser/probe-sheet-render.js # 12 passed, 0 failed（真 Edge 渲染网格）
 ```
 
-> Windows 注意：`node --test tests/` 不认目录，必须写 glob `"tests/*.test.js"`。
+> Windows 注意：`node --test tests/` 不认目录，必须写 glob `"tests/**/*.test.ts"`。
 
 启动服务：`node server.js --port 3179`
 
@@ -44,24 +42,34 @@ cd .verify && node verify.js       # ALL EXTERNAL CHECKS PASSED（exceljs 对照
 | `lib/extract.js` | 中文取值抽取（金额、日期、布尔、枚举归一化） | 无 |
 | `lib/workbook.js` | workbook spec 层（归一化、校验、落笔、日期序列号、样式） | extract, xlsx |
 | `lib/workbook-preview.js` | 字节/内存 → 可绘制的网格（值 + 格式两条平行网格） | workbook, xlsx |
-| `lib/agent.js` | 对话轮决策（三道闸：预筛、intent、guardChange） | llm, workbook |
+| `lib/agent.js` | 对话轮（pi-agent 工具循环；三道闸：预筛、意图由结构推出、guardChange；`save_file` 只登记、`fetch_url` 导入记为编辑操作） | llm, workbook, spec-ops, export, fetch-url, pi, model |
+| `lib/spec-ops.js` | 编辑工具背后的纯函数操作（按行号 + 列名定位；可重放） | workbook |
+| `lib/export.js` | 导出 xlsx / CSV / JSON（纯函数、确定性；CSV 防公式注入）+ 不覆盖地写入导出目录 | workbook |
+| `lib/fetch-url.js` | `fetch_url` 的抓取（SSRF 防护：连接时校验地址、逐跳校验重定向、黑名单、限时限量）与读取 | attachments, workbook |
+| `lib/pi.js` | pi-agent 的唯一加载点（纯 ESM 依赖，经 `import()` 加载） | pi-ai, pi-agent-core |
+| `lib/model.js` | 设置 → pi-ai `Model`（三种协议、保守的 OpenAI 兼容设置） | 无 |
 | `lib/session-store.js` | 会话持久化（存 spec 不存 bytes，原子写，读取时归一化） | workbook |
 | `lib/skills.js` | 技能保存与回放（**暂未接 UI**） | 无 |
 | `lib/settings.js` | BYOK 设置存储（key 不回传、只回掩码） | 无 |
-| `lib/llm.js` | 模型调用（stripReasoning、balancedObjects、超时） | 无（内置 fetch） |
+| `lib/llm.js` | 单次模型调用（基于 pi-ai；空闲/总时长/取消三路计时、错误原文透出、stripReasoning） | pi, model |
 | `lib/server.js` | HTTP API + 静态资源 | 全部 |
 | `public/` | 前端（原生 ES 模块，无构建步骤） | 无 |
 
 ## 关键设计决定
 
-- **零运行时依赖。** XLSX 层手写。理由是确定性：同一输入必须产出字节相同的文件，且不引入供应链。
+- **XLSX 层手写。** 理由是确定性：同一输入必须产出字节相同的文件。（运行时曾经零依赖；
+  对话轮改用 pi-agent 后，模型调用这一层引入了 pi-ai / pi-agent-core，XLSX 层仍不依赖任何包。）
 - **exceljs 仅作开发期验证。** `.verify/` 下，用于交叉核对样式、数字格式、公式。
 - **会话即文档。** `{id, title, messages, spec}`，工作簿由 spec 按需派生。
   不存 bytes——bytes 是 spec 的纯函数，存两份就会出现「文件和 spec 不一致」。
-- **模型只提整份 spec，代码校验落笔。** 模型可以说得天花乱坠，但一个解析
-  不出来的回复改不了任何一个单元格。
-- **三道闸。** ① `looksLikeWork` 预筛；② intent 字段显式声明 `action` 才可带
-  spec；③ `guardChange` 确定性校验——你没要求删行，行数就不能少。
+- **模型通过工具改表，代码校验落笔。** 模型可以说得天花乱坠，但不调用工具的回复
+  改不了任何一个单元格；每次工具调用的结果都过 `normalizeSpec` + `validateSpec`。
+  （早期是每轮输出整份 spec；改成增量工具后，按行号 + 列名定位，不做内容匹配。）
+- **三道闸。** ① `looksLikeWork` 预筛；② 意图由结构推出——编辑工具成功执行才是
+  `action`，不再信任模型自报的 intent；③ `guardChange` 对本轮累计结果做确定性校验——
+  你没要求删行，行数就不能少。
+- **落盘重放操作，不写回快照。** 服务端在会话存储的队列槽里把本轮操作重放到最新的
+  spec 上，并发的两轮修改都不会丢；行号对不上时本轮不落盘。
 - **改动的确认是两次调用。** `POST /turn` 返回提案，`POST /apply` 才落笔。
   一个 flag 的解析失误不该变成数据丢失。
 - **预览用两条平行网格。** 值一条、格式一条，格式只在非 General 时写。
@@ -138,7 +146,7 @@ cd .verify && node verify.js       # ALL EXTERNAL CHECKS PASSED（exceljs 对照
     交给已有实例后**几百毫秒就退出**。而 `desktop.js` 把 `child.on('exit')` 当成
     「用户关窗了」，于是 `server.close()` —— 窗口还在，服务没了。
 
-    实测证据（`.verify/probe-edge-single-instance.js`）：同 profile 二次启动
+    实测证据（`.verify/probe-edge-single-instance.js`，已删除，原文见 `d59c834`）：同 profile 二次启动
     `EXITED after 172ms (code 0)`，首次启动活到 6000ms+。
 
     修法不是猜退出码，而是**不制造这个局面**：数据目录里记一个 `instance.json`
@@ -150,7 +158,7 @@ cd .verify && node verify.js       # ALL EXTERNAL CHECKS PASSED（exceljs 对照
     照常启动。一个会堵死后续启动的锁文件比没有锁更糟。
 
     修完后我再次复验时发现一个**孤立的验证缺口**：单实例脚本里 A 用的是显式
-    `--port 3231`，而双击走的是默认路径（不指定端口）。补了 `.verify/double-click.js`
+    `--port 3231`，而双击走的是默认路径（不指定端口）。补了 `.verify/exe/double-click.js`
     专门测那条路 —— 结果下面第 24 条就是在那儿绊出来的。
 24. **修补分支自己又埋了个洞：交接分支开的窗口活不下来。** 修法让第二次启动去
     「只开窗、不起服务」，而那时父进程 spawn 完就立刻退出了。Edge 是 `detached: false`
@@ -159,7 +167,7 @@ cd .verify && node verify.js       # ALL EXTERNAL CHECKS PASSED（exceljs 对照
     症状比原 bug 更阴：原来的失败是「页面打不开」，这个的失败是
     **控制台打印了「已把窗口指向该实例」，却没有窗口** —— 看起来像成了。
 
-    对照组实测（`.verify/probe-edge-detach.js` + `.verify/watch-edge.js`）：
+    对照组实测（`.verify/probe-edge-detach.js` + `.verify/watch-edge.js`，已删除，原文见 `d59c834`）：
 
     | detached | 父进程退出后 Edge 进程数 |
     |---|---|
@@ -170,7 +178,7 @@ cd .verify && node verify.js       # ALL EXTERNAL CHECKS PASSED（exceljs 对照
     `openWindow` 默认 `detached: true`，交接分支照旧 `.unref()`；主路径显式传
     `false`，因为它需要靠 `child.on('exit')` 判断用户是不是关了窗。
 
-    顺带：这个洞是 `.verify/window-opened.js` 扫出来的。之前 `double-click.js` 的
+    顺带：这个洞是 `.verify/exe/window-opened.js` 扫出来的。之前 `double-click.js` 的
     收尾报告「killed: 0」，我当时想当噪音放过 —— **“没报错”不是“开好了”**。
     去盯了一眼进程表才发现一个都没有。
 23. **控制台中文乱码是读取端的问题，不是程序写错了。** 先前看到 `数据目录` 变成
@@ -223,7 +231,7 @@ cd .verify && node verify.js       # ALL EXTERNAL CHECKS PASSED（exceljs 对照
 
     能控制的部分做到了：**key 永不通过 API 返回**。`Settings.publicSettings()`
     存在的唯一目的就是让调用方无法不小心泄露它，只回 `hasKey` + `sk-…3456` 这种
-    掩码提示。健康检查也不带它。这三条都有测试盯着（`tests/server-model.test.js`）。
+    掩码提示。健康检查也不带它。这三条都有测试盯着（`tests/http/server-model.test.ts`）。
 26. **「配置了但没有 key」和「配置了且 key 可用」是两种状态。**
     初版把这两个混在一起，结果是 key 填了但 baseUrl 空的时候 UI 显示「已配置」，
     然后每次调用都报一个看不懂的网络错。现在 `isConfigured()` 要求 key、
@@ -240,7 +248,7 @@ cd .verify && node verify.js       # ALL EXTERNAL CHECKS PASSED（exceljs 对照
 整个网格被撑到 825px——而 `html,body { overflow: hidden }` 把它剪掉。结果不只是
 设置页底部（含保存按钮）够不着，连活动栏、状态栏也一起被剪出视口。
 
-实测（`.verify/short-window.js`）：视口 900 是好的，600 及以下 `body`
+实测（`.verify/browser/short-window.js`）：视口 900 是好的，600 及以下 `body`
 `clientH 600 / scrollH 825 / overflow hidden`——内容比可视区高 225px，却无处可滚。
 
 两处修改：
@@ -256,8 +264,8 @@ cd .verify && node verify.js       # ALL EXTERNAL CHECKS PASSED（exceljs 对照
 `.modal__box`（`max-height: calc(100vh - 80px)`）和 `.palette__list`
 （`max-height: 320px`）本来就有上限 + `overflow:auto`，不受影响。
 
-验证：`.verify/short-window.js` 在 900/600/500/380 四个高度下，开发版与打包版
-均无 `CLIPPED`；`.verify/shot-settings-short.js` 实测 470px 视口下滚动到底后
+验证：`.verify/browser/short-window.js` 在 900/600/500/380 四个高度下，开发版与打包版
+均无 `CLIPPED`；`.verify/shots/shot-settings-short.js` 实测 470px 视口下滚动到底后
 保存行可达。截图 `09-settings-short-top.png`、`10-settings-short-bottom.png`。
 
 27. **思考块把 JSON 解析器坑了 —— 而且 `response_format: json_object` 正是帮凶。**
@@ -287,7 +295,7 @@ cd .verify && node verify.js       # ALL EXTERNAL CHECKS PASSED（exceljs 对照
     修法：预算提到 512；并把剥完思考块后为空的情况显式判为失败，
     带上能看懂的原因和原文。后者才是关键 —— 空回复不该读作成功。
 
-    三个回归测试盯住这三点（`tests/server-model.test.js`）。
+    三个回归测试盯住这三点（`tests/http/server-model.test.ts`）。
 
 ### 提示词输入卡顿（已修复）
 
@@ -521,7 +529,7 @@ operation 只能来自**解析成功的对象**，没解析成功的回复没有
 33. **验证脚本漏传 `staticDir`，整个 UI 404。** 症状是空白页面 + 等不到任何
     选择器，看上去像前端写崩了。`createServer` 的 `staticDir` 不是可选项。
     → 教训：一个只显示“等不到”的选择器超时，信息量几乎为零；
-    `.verify/probe-ui-boot.js` 把页面自己的 console/异常/HTTP 状态全部倒出来，
+    `.verify/probe-ui-boot.js`（已删除，原文见 `d59c834`）把页面自己的 console/异常/HTTP 状态全部倒出来，
     一次就定位了。
 34. **自己的种子用错了形状。** 截会话截图时我往 spec 里塞了 `Date` 对象，
     而真实到达服务端的是 ISO 串（模型输出的是 JSON）。图里日期渲染成 ISO 串，
@@ -586,14 +594,14 @@ operation 只能来自**解析成功的对象**，没解析成功的回复没有
     `require('./commented-out')` 和字符串里的 `require('./in-a-string')` 都会被
     `REQUIRE_RE` 命中，而 `collectModules` 遇到解析不了的 specifier 是**直接抛错
     终止构建**的。当前只有 4 处幻影，且全在**不进打包图**的文件里
-    （`tools/bundle.js` 的注释、`.verify/cdp.js`），所以还没爆。TS 化之后
+    （`tools/bundle.js` 的注释、`.verify/support/cdp.js`），所以还没爆。TS 化之后
     注释里举 `require('./x')` 的例子会变多，这个雷要顺手拆掉。
 
 45. **迁移期让新旧两种源码共存，比一次性切完安全。** `strip-types.js` 对没有
     `.ts` 来源的 `.js` 直接**原样拷贝（仍然重写扩展名）**，于是每一步都保持
     「整个项目可构建、可测试」。代价是这段 fallback 是临时代码，迁移完必须删掉
     ——静默把 `.js` 拷过去，正是旧文件在改名后存活下来的方式。
-    试点选了 `lib/zip.ts`（202 行、零内部依赖），验证手段是**新旧两份实现并排
+    试点选了 `src/formats/zip.ts`（202 行、零内部依赖），验证手段是**新旧两份实现并排
     跑、比对字节**（`.verify/pilot-zip.js`），而不只看类型检查过不过。
     → **部分仍然成立，但结论反了。** 「共存」这一步是安全的；
     留着旧 `.js` 双胞胎当**运行产物**不是（见 #46）。教训：迁移期的过渡态
@@ -617,7 +625,7 @@ operation 只能来自**解析成功的对象**，没解析成功的回复没有
     和 `.ts`（新源），而 Node 的解析器**优先 `.ts`**，于是测试一 require 就跑
     到未编译的源码上，`Cannot use import statement outside a module`。
     更阴的是 `tools/verify-bundle.js` 也踩同一个坑：它从源树收集模块，
-    于是把 `lib/xlsx.ts` 拉进了包。**修法不是改测试的 require，是删双胞胎。**
+    于是把 `src/formats/xlsx.ts` 拉进了包。**修法不是改测试的 require，是删双胞胎。**
     24 处 `require('../lib/x')` 一个字没动——测试说的本来就对，`lib/` 就是模块；
     错的是树里多了一份过期副本。用 `tools/dev-resolve.js`（Node 24 的
     `module.registerHooks`）在解析期把 `lib/*` 重定向到 `.build/js/lib/*`。
@@ -627,7 +635,7 @@ operation 只能来自**解析成功的对象**，没解析成功的回复没有
     发射 16 文件 → `verify-bundle.js` 四项全过 → 测试 231/231 → 开发服务器
     health 200 → `dist/TabAgent.exe` 89.7 MB、打包后 health 200。
 
-    **顺带炸出来一个潜伏的雷（#44 应验）：** `lib/zip.ts` 的注释里我自己写了
+    **顺带炸出来一个潜伏的雷（#44 应验）：** `src/formats/zip.ts` 的注释里我自己写了
     `require('./x.ts')` 作为反面例子，打包器的 `REQUIRE_RE` 把这个注释里的
     specifier 当真了，直接 `cannot resolve` 终止构建。**注释里的 require 也是 require**，
     改口径绕开即可（写成「裸 require 调用」）。这条 #44 早就警告过，
@@ -681,14 +689,14 @@ operation 只能来自**解析成功的对象**，没解析成功的回复没有
     `if (!settings.isConfigured()) return fail(...)` 里那个 Promise **恒为真值**，
     于是「未配置模型」的拦截全部失效，请求继续往下走。
     类型检查**通过**——因为 `!promise` 是合法的 `boolean`，只是永远是 `false`。
-    这是本轮最阴的一处：改动在 `lib/settings.ts`，报应落在 `lib/server.ts` 的
+    这是本轮最阴的一处：改动在 `src/store/settings.ts`，报应落在 `src/http/server.ts` 的
     三个 guard 上，而两者之间没有任何一条类型错误把它们连起来。
     教训：**把一个返回值的类型从 `T` 改成 `Promise<T>`，`!x`、`x ? a : b`、
     `x || fallback` 这三种写法都不会报错，但语义全变。**改完要专门 grep
     `!.*\.` 和 `\|\|` 的用法，不能只看 tsc 绿不绿。
 
 51. **改了源码不重新编译，`npm test` 会给你一个假的绿。**
-    我把 `lib/settings.ts` 从同步改成异步，`npm test` 跑出 **231/231 全过**。
+    我把 `src/store/settings.ts` 从同步改成异步，`npm test` 跑出 **231/231 全过**。
     但 `npm test` 经 `tools/dev-resolve.js` 解析到 `.build/js/`——
     而我**没有重新编译**，所以它跑的仍是旧的同步 `settings.js`。
     重新 `build:js` 之后，同一个套件立刻红 5 个（正是我改的那几个读点）。
@@ -715,10 +723,11 @@ operation 只能来自**解析成功的对象**，没解析成功的回复没有
     才看到那句 `openModal is not defined`。**前面三次都是在读代码猜，
     真正结束猜测的是让浏览器把异常说出来。**
 
-    防护：`.verify/check-imports.cjs` 静态交叉比对——某文件
-    调用了一个项目导出的名字却没导入，就报错；`.verify/check-imports-selftest.cjs`
+    防护：`tools/check-imports.cjs` 静态交叉比对——某文件
+    调用了一个项目导出的名字却没导入，就报错；`tools/check-imports-selftest.cjs`
     双向验证它真能抓到（重引入缺 import → 报错并点名 `openModal`；
-    恢复 → 通过），且已接入 `npm test` 前置。注意这个检查器
+    恢复 → 通过），且已接入 `npm test` 前置。（后来核实：接入 `npm test` 的只有检查器本身，自检脚本从没接入，
+    且早已和 app.js 的 import 行对不上、一直失败，已删除。）注意这个检查器
     我写了**三版**才干净：第一版 17 条误报、第二版 46 条——一个什么都报的
     检查器和什么都不报的一样没用，而「干净」必须拿真 bug 验过才算数。
 
@@ -735,7 +744,7 @@ operation 只能来自**解析成功的对象**，没解析成功的回复没有
     链路不落盘：模型只产 **spec**（纯 JSON）→ spec 存进 `sessions/<id>.json`
     → 点下载时路由现场 `writeSpec(spec)` 在**内存里**拼 Buffer →
     `res.end(buffer)` 推给浏览器 → **浏览器**写进下载目录。
-    实测（`.verify/probe-workbook-on-disk.cjs` 11/11）：下载前后、乃至连下三次，
+    实测（原 `.verify/` 探针，现为 `tests/http/session-api.sessions.test.ts` 的一条）：下载前后、乃至连下三次，
     data 目录里 `.xlsx` 数量恒为 **0**；唯一持久的是含 spec 的会话 JSON。
     三个后果值得记住：同 spec 反复下载字节一致（纯函数、无缓存）；
     删会话即删表（本来就没单独存过文件）；「下载」这个动作里，
@@ -770,7 +779,7 @@ operation 只能来自**解析成功的对象**，没解析成功的回复没有
     → 教训：**给一个纯函数加副作用式改写（名字→索引）时，要问它能不能跑两遍。**
     这里的两遍不是意外，是架构：入口一遍、出口一遍。新写的测试
     `normalizeTotals: normalising twice changes nothing` 直接钉住幂等。
-    `.verify/live-totals.js` 走真 HTTP + 真浏览器（15 项），并用
+    `.verify/browser/live-totals.js` 走真 HTTP + 真浏览器（15 项），并用
     **拆掉索引分支→变红、恢复→变绿**验证了它是承重的，不是摆设。
 
 56. **一个「写进去了却渲染不出来」的 bug，靠看哪一层都看不出来，只能端到端。**
@@ -808,7 +817,7 @@ operation 只能来自**解析成功的对象**，没解析成功的回复没有
     这个选择写进了代码注释——否则下一个人会问「为什么不在服务端拼」。
 
 60. **承重验证做到了「只此一条变红」。** 把 `composeMessage` 开头接上
-    `return text;`，重跑 `.verify/live-attach.js`：**20 项里只有
+    `return text;`，重跑 `.verify/browser/live-attach.js`：**20 项里只有
     「附件内容抵达模型」一项变红**，其余 19 项照绿。这比「整体 exit 1」
     强得多——它证明这条断言**精确锁定**那条链路，而不是被别处的失败带红。
     做法：破坏点选在**功能内部的单行**；不要用 `Set-Content` 重写整文件
@@ -833,7 +842,7 @@ operation 只能来自**解析成功的对象**，没解析成功的回复没有
     结果 37 文件 / 103 行，领域词零误伤。
 
     **两个手动补的漏网**：`\bExcel Agent\b` 的 `\b` 在 `Excel agent`（小写 a）
-    上不匹配，dry-run 里露出来一条（`lib/server.ts` 头注释），手动改掉。
+    上不匹配，dry-run 里露出来一条（`src/http/server.ts` 头注释），手动改掉。
     这正是 dry-run 存在的理由——`ExcelAgent` / `excel-agent` 两种形式覆盖不到它。
 
     → 教训：改名脚本的验收标准不是「改了多少处」，而是**「没改错哪一处」**。
@@ -850,7 +859,7 @@ operation 只能来自**解析成功的对象**，没解析成功的回复没有
     就把它当「用户说的话」存下来，三处代价当时没看到：聊天气泡里显示整段附件；
     附件不清空时每一轮都再存一份；历史按字符预算回放时，旧的附件文本把真正的
     对话挤出去（单条用户消息 2000 字封顶，6000 字的附件本来也只剩一截）。
-    现在 `attachmentContext`（`lib/server.ts`）每轮从 `state.uploads` 现拼，只进
+    现在 `attachmentContext`（`src/http/server.ts`）每轮从 `state.uploads` 现拼，只进
     本轮发给模型的消息，不落盘；存储的用户消息只有原文 + `attachments: [文件名]`，
     气泡显示成文件名标签，历史里写成「（附件：a.csv）」。附件发送后仍保留：
     连续对同一份数据提修改是常态，每轮都给全量，但只给一次。
@@ -883,6 +892,69 @@ operation 只能来自**解析成功的对象**，没解析成功的回复没有
       模型以为做了什么，和实际 spec 不一致过（行数守卫就是为此存在）；算出来的
       还是确定性的，同一对 spec 永远同一句话。没有用 LLM 做滚动摘要，也是同一理由。
 
+66. **`lib/` 拆成 `src/` 下的分层目录，测试改成 `.ts` 直接跑源码，`dev-resolve` 删掉。**
+    平铺的 25 个模块按依赖分成 `formats → workbook → agent/store → http`，加上 `platform`；
+    三个入口一起进 `src/`。`rootDir` 改成 `src` 之后入口仍然编译到 `.build/js/<入口>.js`，
+    `bin`、`start`、打包入口一个都不用改。
+    测试原来是 JS，靠 `tools/dev-resolve.js` 把 `require('../lib/x')` 改道到 `.build/js/`
+    （#46）：编辑器解析不了这个路径，测试也就没有跳转、没有类型；跑之前还必须先 `tsc`。
+    现在测试 `import` 的就是 `../src/**/*.ts`，经 tsx 运行。
+    - **放弃的东西：测试不再经过编译产物。** 只有产物会坏的地方（`.ts` 说明符改写、
+      `pi.ts` 的动态 `import()`、产物里缺模块）交给 `pnpm bundle`，CI 和发布都在测试后跑它。
+    - **测试的类型检查后来接进了门禁**（`pnpm typecheck` = `tsc --noEmit && tsc -p tests`，CI 的
+      Type-check 一步）。起初没接：严格模式下上千个错误。不能用宽松模式凑数——测试会把 `src/`
+      拉进同一个程序，关掉 `strictNullChecks` 后 `null` 从所有类型里消失，`src/` 自己就报错。
+      最后是严格模式只关 `noImplicitAny`（fixture 回调的参数注解不增加信息）和
+      `useUnknownInCatchVariables`；大部分错误靠给共享 helper 补类型消掉（`post`/`get` 的
+      响应体显式为 `any`，settingsStub 在构造处转一次 `Settings`），其余是
+      断言之后的 `!` 和空数组的元素类型。故意传坏输入的地方用 `@ts-expect-error` 写明理由。
+    - **`.verify/` 按用途分目录**（node / external / browser / model / exe / shots / support），
+      一次性的调试探针删掉（结论都在这份笔记里）。脚本保持 JS，要用源码的在开头 `require('tsx/cjs')`。
+    - **不需要桌面的检查并进 `tests/`，让 CI 每次都跑。** 两处并发（session-store 的 append、
+      settings 的 save）、HTTP 上一阵并发轮次不丢消息、端口变量、下载不落盘、exceljs 对照。
+      exceljs 成了根目录的 devDependency，`.verify` 不再是 workspace 子包。
+      搬的时候每个并发测试都拆掉对应的队列（或让 turn 路由写回模型调用前的快照）跑过一次，确认会红；
+      原先的 sabotage 脚本因此不再需要。也顺手收紧了两条原本恒为真的断言：
+      settings 的并发检查只看「六个键都在」，而默认值本来就有六个键；
+      session-store 的「不留临时文件」查的是数据目录根，临时文件其实写在 `sessions/` 下。
+67. **`.verify/` 改用 playwright-core，手写的 CDP 客户端删掉。**
+    `support/cdp.js` 是 378 行自写的 DevTools 客户端：spawn Edge、轮询调试端口、挑 target、
+    手发 `Input.dispatchMouseEvent`。`support/browser.js` 换成 playwright-core（锁 1.63.0，
+    不下载浏览器，`executablePath` 指向本机 msedge.exe，经管道而不是端口连接）。底下仍是 CDP，
+    只是这一层不再自己维护。返回的就是 Playwright 的 Page，另挂了脚本原来用的
+    `evaluate(字符串)`、`evaluateJson`、`requests`、`send`（原生 CDP 兜底）。
+    迁移前后 14 个脚本各跑一遍对照，迁移过程中暴露了三件事：
+    - **旧选项会被当成参数。** 脚本的轮询助手写 `page.evaluate(expr, { awaitPromise: false })`，
+      Playwright 把第二个参数当页面函数的实参，字符串表达式拒收；助手的 catch 把拒收吞成
+      「还没好」，于是一直等到超时。`browser.js` 对字符串表达式丢掉第二个参数。
+    - **双击靠 clickCount。** 批量把按下/抬起对换成 `mouse.click` 时丢了 `clickCount: n`，
+      双击复位变成两次单击（#36 那条的另一面）。改用 `mouse.dblclick`：一次移动，
+      两次按下的 clickCount 分别是 1 和 2。
+    - **快了就会撞上中间态。** `live-attach` 在标签出现后立刻读文件名，Playwright 比旧客户端快，
+      读到的是「正在读取…」。断言的本意是最终的名字，所以改成等名字出现再读。
+    `short-window.js` 迁移前就一直失败：等的 `.editor__body` 是旧界面的类名，每次都报「没渲染」；
+    而且它假设启动后在工作区，实际上没配模型时应用直接打开设置页。改成新界面的滚动容器，
+    按当前视图决定点不点齿轮，配置目录用完即丢（残留的折叠状态会让 `.rail__head` 不可见）。
+    改完拿 `.settings__main { overflow: hidden }` 反向验证，能报出 CLIPPED。
+    旧版异常退出时不关自己 detached 的 Edge，残留实例会占住配置目录，新启动的 Edge 把请求
+    交给它就退出——Playwright 报的是「browser has been closed」，看不出是这个原因。
+    第二步迁了 exe/（3 个）、shots/（6 个）和 model/live-ui，`support/cdp.js` 和 shots 里
+    另外三份手写客户端一起删掉；「只杀探针自己的 Edge」并进 `support/kill-leftovers.js`。
+    迁之前同样先跑基准，又是几个早就坏了的：
+    - **`live-delete-exe` 8 项失败，不是删除坏了。** 全新数据目录没配模型，应用直接开在设置页，
+      会话栏隐藏，每一行量出来都是 0×0，点击全落在标题栏上。开发版 `live-delete.js` 先往
+      数据目录写了一份带占位 key 的 settings.json，所以一直绿；打包版没写。现在打包版
+      像用户一样点齿轮离开设置页。另一项查 `app.js` 里的 openModal 导入——拆 app.js 之后
+      导入在 `controllers/sessions.js`，这项从那以后每次打包都红。
+    - **`shot-settings` / `shot-settings-short` 对着旧界面**（activity bar、单面板、表单底部的保存行），
+      一个第一下点击就抛错，一个两张截图一模一样却报「仍被裁切」。按现在的两个标签页重写。
+    - **`shot-ui` 的「空状态」截的其实是设置页**，同一个原因。
+    - **用代码滚动证明不了能滚动。** `overflow: hidden` 的盒子照样可以 `scrollTop = …`，
+      短窗口探针因此对裁切的表单报「可达」；拿 `overflow: hidden` 反向验证才发现。改成真的滚轮。
+    - **`--window-size` 不等于视口。** 旧客户端 1440×900 实际渲染 1396×798；`browser.js` 设的是
+      视口本身。所有测量类探针在两种尺寸下结果一致。
+    `model/live-ui.js` 要用用户本机的真实模型和 key，迁完没有在这里跑。
+
 - **探测正则要用归一化后的文本。** 单行提示词那次我拿全角原文试，误判成正则写错了。
 - **自读自写不能证明兼容。** 这一轮又是 exceljs 对照和真文件流程抓出了盲区。
 - **测试要跑真实 HTTP。** 静态资源、multipart、下载头这些问题只有打真 socket 才暴露。
@@ -905,7 +977,7 @@ operation 只能来自**解析成功的对象**，没解析成功的回复没有
 - [x] 端口环境变量 `TAB_AGENT_PORT`（`--port` > 环境变量 > 默认）
 - [x] 三栏宽度可拖动（`public/js/splitters.js`，localStorage 记忆）
 - [x] TypeScript 迁移：`lib/` 12 模块 ESM 源 + tsc 发射（见 #46）
-- [x] 三个入口（`lib/server.ts`、`desktop.ts`、`server.ts`）转 TS，`COPY_THROUGH` 清空
+- [x] 三个入口（`src/http/server.ts`、`desktop.ts`、`server.ts`）转 TS，`COPY_THROUGH` 清空
 - [x] session-store 并发串行化 + 全异步（`update(id, mutate)` 修掉路由级丢更新，见 #49）
 - [x] settings 转异步 I/O + 串行化 + 原子写（temp+rename，见 #50/#51）
 - [x] 残留清理：`.Trash` 备份、`%APPDATA%\TabAgent\skills` 空坟
@@ -915,6 +987,7 @@ operation 只能来自**解析成功的对象**，没解析成功的回复没有
       + `live-delete-exe.js`（打包形态删除 14 项）
 - [x] 附件上传接线：前端拖拽 + 回形针 + chips + 入模型消息（`live-attach.js` 20 项、
       `live-attach-exe.js` 10 项；`composeMessage` 承重验证）
+- [x] 目录分层：`src/{formats,workbook,agent,store,platform,http}`，测试转 `.ts`，`.verify/` 按用途分目录（见 #66）
 - [ ] 真实微软拼音输入手感待用户亲手测（自动化只能验焦点与 composition）
 - [ ] 图片 vision 真实验证（待用户提供一张带文字的图）
 - [ ] PDF 解析

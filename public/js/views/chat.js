@@ -17,7 +17,7 @@
         look like it ignored the request.
    ════════════════════════════════════════════════════════════════════ */
 
-import { el, esc } from '../dom.js';
+import { el } from '../dom.js';
 import { icon } from '../icons.js';
 import { composer, prepareComposer } from '../composer.js';
 
@@ -32,7 +32,21 @@ export function chatView(state, handlers) {
   const root = el('section', { class: 'chat' });
 
   root.append(head(state));
-  root.append(stream(state, handlers));
+  // The stream sits in a wrapper so the ↓ button can float over its bottom
+  // edge. It starts hidden; chat-scroll.js shows it once output arrives below
+  // a transcript the user has scrolled up.
+  const wrap = el('div', { class: 'chat__streamwrap' });
+  wrap.append(stream(state, handlers));
+  wrap.append(
+    el('button', {
+      class: 'chat__jump',
+      type: 'button',
+      title: '有新内容，回到底部',
+      html: icon('arrowdown'),
+      hidden: true,
+    }),
+  );
+  root.append(wrap);
   root.append(composerBox(state, handlers));
   return root;
 }
@@ -94,12 +108,14 @@ function emptyChat(state, handlers) {
     // a message the user never wrote into the transcript, and the third one
     // refers to "上面这张表" — it is not a first message at all. What the user
     // needs is the text in front of them, editable, and the caret already there.
-    list.append(el('button', {
-      class: 'chat__idea',
-      type: 'button',
-      text,
-      onclick: () => handlers.onIdea(text),
-    }));
+    list.append(
+      el('button', {
+        class: 'chat__idea',
+        type: 'button',
+        text,
+        onclick: () => handlers.onIdea(text),
+      }),
+    );
   }
   box.append(list);
   return box;
@@ -110,10 +126,12 @@ function bubble(message) {
   const mine = message.role === 'user';
   const row = el('div', { class: `chat__row chat__row--${mine ? 'me' : 'bot'}` });
 
-  row.append(el('div', {
-    class: `chat__avatar chat__avatar--${mine ? 'me' : 'bot'}`,
-    html: icon(mine ? 'text' : 'sparkle'),
-  }));
+  row.append(
+    el('div', {
+      class: `chat__avatar chat__avatar--${mine ? 'me' : 'bot'}`,
+      html: icon(mine ? 'text' : 'sparkle'),
+    }),
+  );
 
   const body = el('div', { class: 'chat__body' });
 
@@ -131,10 +149,12 @@ function bubble(message) {
     for (const name of message.attachments) {
       // Not `.chip`: that class means "attached to the NEXT message, removable",
       // and the composer's code and probes count it as such.
-      files.append(el('span', { class: 'chat__file', title: name }, [
-        el('span', { class: 'chat__file-icon', html: icon('paperclip') }),
-        el('span', { class: 'chat__file-name', text: name }),
-      ]));
+      files.append(
+        el('span', { class: 'chat__file', title: name }, [
+          el('span', { class: 'chat__file-icon', html: icon('paperclip') }),
+          el('span', { class: 'chat__file-name', text: name }),
+        ]),
+      );
     }
     body.append(files);
   }
@@ -221,15 +241,33 @@ function composerBox(state, handlers) {
 
   // The paperclip opens the same file input a drag-drop lands in — one code
   // path for both, so a file that works one way works the other.
-  const clip = el('button', { class: 'iconbtn composer__clip', type: 'button', title: '添加文件（也可以直接拖进来）', html: icon('paperclip') });
+  const clip = el('button', {
+    class: 'iconbtn composer__clip',
+    type: 'button',
+    title: '添加文件（也可以拖进来，或 Ctrl+V 粘贴）',
+    html: icon('paperclip'),
+  });
   clip.disabled = Boolean(state.attaching) || !state.activeId;
   clip.addEventListener('click', handlers.onPickFiles);
   row.append(clip);
+
+  // Beside the paperclip: pick a whole folder. Its readable files go through
+  // the same upload as picked ones; see handleFolder in app.js.
+  const folder = el('button', {
+    class: 'iconbtn composer__clip',
+    type: 'button',
+    title: '添加文件夹（只读取其中支持的文件）',
+    html: icon('folder'),
+  });
+  folder.disabled = clip.disabled;
+  folder.addEventListener('click', handlers.onPickFolder);
+  row.append(folder);
 
   const ta = prepareComposer(state.activeId, {
     placeholder: PLACEHOLDER,
     onInput: handlers.onDraft,
     onSend: handlers.onSend,
+    onPasteFiles: handlers.onPasteFiles,
   });
   // Hand the live node back so the controller can read it without re-querying
   // the DOM, and so a repaint does not lose track of it.
@@ -245,9 +283,7 @@ function composerBox(state, handlers) {
   row.append(ta);
 
   const send = el('button', { class: 'btn btn--primary composer__send', type: 'button' });
-  send.innerHTML = state.busy.turn
-    ? '<span class="spinner"></span>'
-    : icon('play');
+  send.innerHTML = state.busy.turn ? '<span class="spinner"></span>' : icon('play');
   send.title = '发送（Enter）';
   send.disabled = state.busy.turn || !state.settings?.hasKey || !state.activeId;
   send.addEventListener('click', handlers.onSend);
@@ -255,8 +291,19 @@ function composerBox(state, handlers) {
 
   box.append(row);
 
+  // With no session the composer is masked. The mask is a button rather than a
+  // notice: clicking where you would type is the most direct way to say "I want
+  // to start", so it creates the session and hands the focus to the input.
   if (!state.activeId) {
-    box.append(el('div', { class: 'composer__mask', text: '先新建一个会话' }));
+    box.append(
+      el('button', {
+        class: 'composer__mask',
+        type: 'button',
+        text: '点击新建会话',
+        disabled: Boolean(state.busy.create),
+        onclick: handlers.onStartSession,
+      }),
+    );
   }
 
   return box;
@@ -277,19 +324,41 @@ function chipsRow(state, handlers) {
   list.forEach((a, i) => {
     const chip = el('div', { class: `chip chip--${a.kind || 'unknown'}`, title: a.note || a.name });
     chip.append(el('span', { class: 'chip__icon', html: icon(kindGlyph(a)) }));
-    chip.append(el('span', { class: 'chip__name', text: a.name }));
+    // An openable file's name is a button: it opens the file with this
+    // computer's default program. The tooltip says it is a copy, because edits
+    // made there do not come back into the conversation.
+    chip.append(
+      a.openable && a.id
+        ? el('button', {
+            class: 'chip__name chip__open',
+            type: 'button',
+            text: a.name,
+            title: `用电脑上的默认程序打开（打开的是副本，修改不会回到对话里）\n${a.note || a.name}`,
+            onclick: () => handlers.onOpenAttachment(a),
+          })
+        : el('span', { class: 'chip__name', text: a.name }),
+    );
     if (a.kind === 'error') chip.classList.add('chip--err');
-    chip.append(el('button', {
-      class: 'chip__x', type: 'button', title: '移除', html: icon('x'),
-      onclick: () => handlers.onRemoveAttachment(i),
-    }));
+    chip.append(
+      el('button', {
+        class: 'chip__x',
+        type: 'button',
+        // Every chip's x clears them all: the server can only clear a
+        // session's attachments, and the bytes to re-send the rest are gone.
+        title: '清空全部附件',
+        html: icon('x'),
+        onclick: () => handlers.onClearAttachments(),
+      }),
+    );
     wrap.append(chip);
   });
   if (state.attaching) {
-    wrap.append(el('div', { class: 'chip chip--busy' }, [
-      el('span', { class: 'spinner' }),
-      el('span', { class: 'chip__name', text: '正在读取…' }),
-    ]));
+    wrap.append(
+      el('div', { class: 'chip chip--busy' }, [
+        el('span', { class: 'spinner' }),
+        el('span', { class: 'chip__name', text: '正在读取…' }),
+      ]),
+    );
   }
   return wrap;
 }
@@ -297,12 +366,20 @@ function chipsRow(state, handlers) {
 /** A single glyph for a chip, keyed on the parsed kind. */
 function kindGlyph(a) {
   switch (a.kind) {
-    case 'table': return 'table';
-    case 'sheet': return 'sheet';
-    case 'image': return 'image';
-    case 'error': return 'alert';
-    case 'text': case 'docx': case 'json': return 'text';
-    default: return 'paperclip';
+    case 'table':
+      return 'table';
+    case 'sheet':
+      return 'sheet';
+    case 'image':
+      return 'image';
+    case 'error':
+      return 'alert';
+    case 'text':
+    case 'docx':
+    case 'json':
+      return 'text';
+    default:
+      return 'paperclip';
   }
 }
 
