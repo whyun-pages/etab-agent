@@ -30,7 +30,7 @@ const OUT = path.join(__dirname, '..', 'out');
 const { createServer } = require(path.join(ROOT, 'src', 'http', 'server.ts'));
 const { Settings } = require(path.join(ROOT, 'src', 'store', 'settings.ts'));
 const { modelFromTransport } = require('../support/transport-model');
-const { openPage, closePage, findEdge, sleep } = require('../support/cdp.js');
+const { openPage, closePage, sleep } = require('../support/browser.js');
 
 let passed = 0;
 let failed = 0;
@@ -84,37 +84,16 @@ async function main() {
   let page = null;
   try {
     page = await openPage({
-      edge: findEdge(),
       profile: path.join(OUT, 'save-fetch-profile'),
       url: base,
-      port: 9763,
       window: '1440,1000',
       waitForSelector: '.rail',
     });
     await sleep(600);
 
     const clickAt = async (box) => {
-      await page.send('Input.dispatchMouseEvent', {
-        type: 'mouseMoved',
-        x: box.x,
-        y: box.y,
-        button: 'none',
-        clickCount: 0,
-      });
-      await page.send('Input.dispatchMouseEvent', {
-        type: 'mousePressed',
-        x: box.x,
-        y: box.y,
-        button: 'left',
-        clickCount: 1,
-      });
-      await page.send('Input.dispatchMouseEvent', {
-        type: 'mouseReleased',
-        x: box.x,
-        y: box.y,
-        button: 'left',
-        clickCount: 1,
-      });
+      await page.mouse.move(box.x, box.y);
+      await page.mouse.click(box.x, box.y);
       await sleep(300);
     };
     /** Scroll an element into view and return its centre, found by a JS expression. */
@@ -165,8 +144,7 @@ async function main() {
       `(() => { const f = ${fieldNamed('禁止抓取的网站')}; return f ? getComputedStyle(f).display : 'missing'; })()`,
     );
     check('switching fetching on shows the blocklist', shownAfter !== 'none' && shownAfter !== 'missing', shownAfter);
-    const formShot = await page.send('Page.captureScreenshot', { format: 'png' });
-    fs.writeFileSync(path.join(OUT, 'save-fetch-settings.png'), Buffer.from(formShot.data, 'base64'));
+    await page.screenshot({ path: path.join(OUT, 'save-fetch-settings.png') });
 
     // ── 3. type, save, read back ──────────────────────────────────────
     await page.evaluate(`(() => {
@@ -248,14 +226,13 @@ async function main() {
       if (format === 'csv')
         check(
           'the CSV request names the sheet on screen',
-          asked.some((m) => /sheet=S\b/.test(m.params.request.url)),
-          asked.map((m) => m.params.request.url).join(' '),
+          asked.some((u) => /sheet=S\b/.test(u)),
+          asked.join(' '),
         );
     }
     const status = await page.evaluate('(document.querySelector("#status-msg") || {}).textContent || ""');
     check('the status names the downloaded file', /格式探针表\.json/.test(status), status);
-    const shot = await page.send('Page.captureScreenshot', { format: 'png' });
-    fs.writeFileSync(path.join(OUT, 'save-fetch-preview.png'), Buffer.from(shot.data, 'base64'));
+    await page.screenshot({ path: path.join(OUT, 'save-fetch-preview.png') });
   } finally {
     if (page) {
       try {

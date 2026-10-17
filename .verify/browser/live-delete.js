@@ -26,7 +26,7 @@ const path = require('node:path');
 const ROOT = path.join(__dirname, '..', '..');
 const OUT = path.join(__dirname, '..', 'out');
 const { createServer } = require(path.join(ROOT, 'src', 'http', 'server.ts'));
-const { openPage, closePage, findEdge, sleep } = require('../support/cdp.js');
+const { openPage, closePage, sleep } = require('../support/browser.js');
 
 const DEFAULT_SETTINGS = {
   baseUrl: 'https://api.example.invalid/v1',
@@ -70,10 +70,8 @@ async function main() {
   console.log(`  (seeded ${idA}, ${idB})`);
 
   const page = await openPage({
-    edge: findEdge(),
     profile: path.join(OUT, 'delete-profile'),
     url: base,
-    port: 9753,
     window: '1440,900',
   });
   await sleep(1000);
@@ -89,13 +87,12 @@ async function main() {
       .then((s) => (s ? JSON.parse(s) : null));
 
   async function moveTo(x, y) {
-    await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, button: 'none', clickCount: 0 });
+    await page.mouse.move(x, y);
     await sleep(120);
   }
   async function clickAt(x, y) {
     await moveTo(x, y);
-    await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 });
-    await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 });
+    await page.mouse.click(x, y);
     await sleep(300);
   }
   /** What the browser would actually hit at (x,y) — the real hit test. */

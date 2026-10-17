@@ -27,7 +27,7 @@ const { createServer } = require(path.join(ROOT, 'src', 'http', 'server.ts'));
 const { modelFromTransport } = require('../support/transport-model');
 const { SessionStore } = require(path.join(ROOT, 'src', 'store', 'session-store.ts'));
 const { Settings } = require(path.join(ROOT, 'src', 'store', 'settings.ts'));
-const { openPage, closePage, findEdge } = require('../support/cdp.js');
+const { openPage, closePage } = require('../support/browser.js');
 
 const SPEC = {
   title: '销售台账',
@@ -95,19 +95,13 @@ async function main() {
   const port = server.address().port;
 
   const page = await openPage({
-    edge: findEdge(),
     profile: path.join(OUT, 'probe-turn-profile'),
     url: `http://127.0.0.1:${port}/`,
-    port: 9751,
     window: '1440,900',
     waitForSelector: '.composer',
   });
 
-  const wait = (ms) =>
-    page.send('Runtime.evaluate', {
-      expression: `new Promise(r => setTimeout(r, ${ms}))`,
-      awaitPromise: true,
-    });
+  const wait = (ms) => page.waitForTimeout(ms);
 
   await wait(1200);
 
@@ -147,8 +141,7 @@ async function main() {
   check('the header says how big it is', /行/.test(s1.stat), s1.stat);
   check('the composer cleared', s1.composerValue === '', JSON.stringify(s1.composerValue));
 
-  const shot1 = await page.send('Page.captureScreenshot', { format: 'png' });
-  fs.writeFileSync(path.join(OUT, '15-ui-pending.png'), Buffer.from(shot1.data, 'base64'));
+  await page.screenshot({ path: path.join(OUT, '15-ui-pending.png') });
 
   // ── accept it ──────────────────────────────────────────────────────
   console.log('\n--- 3) click 写进表格 ---');
@@ -184,8 +177,7 @@ async function main() {
   );
   check('the transcript has both turns', saved.messages.length === 2, `${saved.messages.length} messages`);
 
-  const shot2 = await page.send('Page.captureScreenshot', { format: 'png' });
-  fs.writeFileSync(path.join(OUT, '16-ui-applied.png'), Buffer.from(shot2.data, 'base64'));
+  await page.screenshot({ path: path.join(OUT, '16-ui-applied.png') });
 
   await closePage(page, { trashProfile: true });
   server.close();

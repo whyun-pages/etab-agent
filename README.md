@@ -348,11 +348,11 @@ Windows 注意：`node --test tests/` 不认目录，必须写 glob。
 
 | 目录 | 内容 | 需要 |
 |---|---|---|
-| `browser/` | 开发服务器 + 真 Edge，用 CDP 发真实鼠标键盘事件（不是 `element.click()`——那个跳过命中测试，有浮层盖着也发现不了）；模型是假的 | Windows + Edge |
+| `browser/` | 开发服务器 + 真 Edge，经 playwright-core 发真实鼠标键盘事件（`page.mouse` / `keyboard`，不是 `element.click()`——那个跳过命中测试，有浮层盖着也发现不了）；模型是假的 | Windows + Edge |
 | `model/` | 同上，但接用户本机配置的真实模型 | 另需已配模型 |
 | `exe/` | 针对打包好的 `dist/TabAgent.exe`：资源、窗口、单实例、生命周期 | 先 `pnpm build` |
 | `shots/` | 截图与测量，产出图片，不判对错 | Windows + Edge |
-| `support/` | 共用代码（CDP、假模型 transport）和清理残留进程 / 窗口的脚本 | — |
+| `support/` | 共用代码（`browser.js`：playwright-core 驱动本机 Edge；`cdp.js`：exe / model / shots 还在用的旧 CDP 客户端；假模型 transport）和清理残留进程 / 窗口的脚本 | — |
 
 ## 已知限制
 

@@ -21,7 +21,7 @@ const path = require('node:path');
 const ROOT = path.join(__dirname, '..', '..');
 const OUT = path.join(__dirname, '..', 'out');
 const { createServer } = require(path.join(ROOT, 'src', 'http', 'server.ts'));
-const { openPage, closePage, findEdge, sleep } = require('../support/cdp.js');
+const { openPage, closePage, sleep } = require('../support/browser.js');
 
 let failures = 0;
 function check(name, cond, extra = '') {
@@ -55,10 +55,8 @@ async function main() {
   const base = `http://127.0.0.1:${server.address().port}`;
 
   const page = await openPage({
-    edge: findEdge(),
     profile: path.join(OUT, 'fold-profile'),
     url: base,
-    port: 9757,
     window: '1440,900',
   });
   await sleep(900);
@@ -83,28 +81,15 @@ async function main() {
   async function click(sel) {
     const b = await boxOf(sel);
     if (!b) throw new Error('no element for ' + sel);
-    await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: b.x, y: b.y, button: 'none', clickCount: 0 });
-    await page.send('Input.dispatchMouseEvent', {
-      type: 'mousePressed',
-      x: b.x,
-      y: b.y,
-      button: 'left',
-      clickCount: 1,
-    });
-    await page.send('Input.dispatchMouseEvent', {
-      type: 'mouseReleased',
-      x: b.x,
-      y: b.y,
-      button: 'left',
-      clickCount: 1,
-    });
+    await page.mouse.move(b.x, b.y);
+    await page.mouse.click(b.x, b.y);
     await sleep(300);
   }
   const sessionCount = async () => (await (await fetch(`${base}/api/sessions`)).json()).sessions.length;
 
   // ── a dragged width, so unfolding has something to restore ─────────
   await page.evaluate(`localStorage.setItem('tab-agent:columns', JSON.stringify({ '--rail-w': 300 }))`);
-  await page.send('Page.reload', {});
+  await page.reload();
   await sleep(900);
   check(
     'open rail starts at the dragged width',
@@ -126,7 +111,7 @@ async function main() {
     !(await visible('.rail__list')) && !(await visible('.rail__head')),
   );
   check('the fold is persisted', (await page.evaluate(`localStorage.getItem('tab-agent:rail-collapsed')`)) === '1');
-  await page.screenshot(path.join(OUT, 'rail-folded.png'));
+  await page.screenshot({ path: path.join(OUT, 'rail-folded.png') });
 
   // ── new session from the strip ─────────────────────────────────────
   const before = await sessionCount();
@@ -135,7 +120,7 @@ async function main() {
   check('new session works from the folded strip', (await sessionCount()) === before + 1);
 
   // ── survives reload ────────────────────────────────────────────────
-  await page.send('Page.reload', {});
+  await page.reload();
   await sleep(900);
   check('a reload keeps the rail folded', (await width('#rail')) < 60, String(await width('#rail')));
 
@@ -149,16 +134,10 @@ async function main() {
   check('the splitter is back after unfolding', await visible('#split-rail'));
 
   // ── Ctrl+B ─────────────────────────────────────────────────────────
+  // KeyB, not "B": the code names the key, so `key` arrives as 'b' as a
+  // real keypress with Ctrl held gives it, not the shifted 'B'.
   const key = async () => {
-    for (const type of ['keyDown', 'keyUp']) {
-      await page.send('Input.dispatchKeyEvent', {
-        type,
-        key: 'b',
-        code: 'KeyB',
-        windowsVirtualKeyCode: 66,
-        modifiers: 2,
-      });
-    }
+    await page.keyboard.press('Control+KeyB');
     await sleep(300);
   };
   await key();

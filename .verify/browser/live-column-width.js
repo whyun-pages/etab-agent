@@ -26,7 +26,7 @@ const { createServer } = require(path.join(ROOT, 'src', 'http', 'server.ts'));
 const { Settings } = require(path.join(ROOT, 'src', 'store', 'settings.ts'));
 const { readWorkbook } = require(path.join(ROOT, 'src', 'formats', 'xlsx.ts'));
 const { modelFromTransport } = require('../support/transport-model');
-const { openPage, closePage, findEdge, sleep } = require('../support/cdp.js');
+const { openPage, closePage, sleep } = require('../support/browser.js');
 
 const ROWS = 2000;
 
@@ -96,10 +96,8 @@ async function main() {
   let page = null;
   try {
     page = await openPage({
-      edge: findEdge(),
       profile: path.join(OUT, 'colwidth-profile'),
       url: base,
-      port: 9766,
       window: '1440,900',
       waitForSelector: '.rail',
     });
@@ -147,14 +145,12 @@ async function main() {
       return JSON.stringify({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
     })()`)
       .then(JSON.parse);
-    const mouse = (type, x, buttons) =>
-      page.send('Input.dispatchMouseEvent', { type, x, y: at.y, button: 'left', buttons, clickCount: 1 });
-    await mouse('mouseMoved', at.x, 0);
-    await mouse('mousePressed', at.x, 1);
-    for (let dx = 10; dx <= 70; dx += 10) await mouse('mouseMoved', at.x + dx, 1);
+    await page.mouse.move(at.x, at.y);
+    await page.mouse.down();
+    for (let dx = 10; dx <= 70; dx += 10) await page.mouse.move(at.x + dx, at.y);
     const live = await look();
     check('the column widens while dragging', live.widths[1] === first.widths[1] + 70, JSON.stringify(live.widths));
-    await mouse('mouseReleased', at.x + 70, 0);
+    await page.mouse.up();
     await sleep(800);
 
     const after = await look();
@@ -185,8 +181,7 @@ async function main() {
     const more = await look();
     check('paging carries on after the save', more.rows > after.rows, `${after.rows} -> ${more.rows}`);
 
-    const shot = await page.send('Page.captureScreenshot', { format: 'png' });
-    fs.writeFileSync(path.join(OUT, 'column-width.png'), Buffer.from(shot.data, 'base64'));
+    await page.screenshot({ path: path.join(OUT, 'column-width.png') });
 
     await page.evaluate('location.reload()');
     await sleep(2000);

@@ -30,7 +30,7 @@ const OUT = path.join(__dirname, '..', 'out');
 const { createServer } = require(path.join(ROOT, 'src', 'http', 'server.ts'));
 const { Settings } = require(path.join(ROOT, 'src', 'store', 'settings.ts'));
 const { modelFromTransport } = require('../support/transport-model');
-const { openPage, closePage, findEdge, sleep } = require('../support/cdp.js');
+const { openPage, closePage, sleep } = require('../support/browser.js');
 
 // A 1x1 PNG, so the server parses a real image.
 const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
@@ -75,10 +75,8 @@ async function main() {
   let page = null;
   try {
     page = await openPage({
-      edge: findEdge(),
       profile: path.join(OUT, 'paste-profile'),
       url: base,
-      port: 9768,
       window: '1200,800',
       waitForSelector: '.rail',
     });

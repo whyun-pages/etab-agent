@@ -26,7 +26,7 @@ const OUT = path.join(__dirname, '..', 'out');
 const { createServer } = require(path.join(ROOT, 'src', 'http', 'server.ts'));
 const { Settings } = require(path.join(ROOT, 'src', 'store', 'settings.ts'));
 const { modelFromTransport } = require('../support/transport-model');
-const { openPage, closePage, findEdge, sleep } = require('../support/cdp.js');
+const { openPage, closePage, sleep } = require('../support/browser.js');
 
 const ROWS = 1000;
 
@@ -92,10 +92,8 @@ async function main() {
   let page = null;
   try {
     page = await openPage({
-      edge: findEdge(),
       profile: path.join(OUT, 'paging-profile'),
       url: base,
-      port: 9764,
       window: '1440,1000',
       waitForSelector: '.rail',
     });
@@ -165,8 +163,7 @@ async function main() {
     })()`);
     check('every row arrived once, in order', order === true);
 
-    const shot = await page.send('Page.captureScreenshot', { format: 'png' });
-    fs.writeFileSync(path.join(OUT, 'preview-paging.png'), Buffer.from(shot.data, 'base64'));
+    await page.screenshot({ path: path.join(OUT, 'preview-paging.png') });
   } finally {
     if (page) {
       try {

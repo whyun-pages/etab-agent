@@ -26,7 +26,7 @@ const OUT = path.join(__dirname, '..', 'out');
 const { createServer } = require(path.join(ROOT, 'src', 'http', 'server.ts'));
 const { Settings } = require(path.join(ROOT, 'src', 'store', 'settings.ts'));
 const { modelFromTransport } = require('../support/transport-model');
-const { openPage, closePage, findEdge, sleep } = require('../support/cdp.js');
+const { openPage, closePage, sleep } = require('../support/browser.js');
 
 // Long enough that a few replies overflow the pane.
 const REPLY = Array.from({ length: 8 }, (_, i) => `第 ${i + 1} 行说明`).join('\n');
@@ -82,10 +82,8 @@ async function main() {
   let page = null;
   try {
     page = await openPage({
-      edge: findEdge(),
       profile: path.join(OUT, 'chat-scroll-profile'),
       url: base,
-      port: 9765,
       window: '1200,700',
       waitForSelector: '.rail',
     });
@@ -146,8 +144,7 @@ async function main() {
     check('the reply does not move a scrolled-up transcript', kept.top === 100, JSON.stringify(kept));
     check('the ↓ button appears for output below', kept.jump, JSON.stringify(kept));
 
-    const shot = await page.send('Page.captureScreenshot', { format: 'png' });
-    fs.writeFileSync(path.join(OUT, 'chat-scroll.png'), Buffer.from(shot.data, 'base64'));
+    await page.screenshot({ path: path.join(OUT, 'chat-scroll.png') });
 
     await page.evaluate(`document.querySelector('.chat__jump').click()`);
     await sleep(200);

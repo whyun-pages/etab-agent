@@ -34,7 +34,7 @@ const ROOT = path.join(__dirname, '..', '..');
 const OUT = path.join(__dirname, '..', 'out');
 const { createServer } = require(path.join(ROOT, 'src', 'http', 'server.ts'));
 const { modelFromTransport } = require('../support/transport-model');
-const { openPage, closePage, findEdge, sleep } = require('../support/cdp.js');
+const { openPage, closePage, sleep } = require('../support/browser.js');
 
 let _passed = 0;
 let failed = 0;
@@ -119,10 +119,8 @@ async function main() {
   let page = null;
   try {
     page = await openPage({
-      edge: findEdge(),
       profile: path.join(OUT, 'controls-profile'),
       url: base,
-      port: 9762,
       window: '1440,900',
       waitForSelector: '.rail',
     });
@@ -149,28 +147,9 @@ async function main() {
     const clickSel = async (sel) => {
       const box = await boxOf(sel);
       if (!box) return false;
-      await page.send('Input.dispatchMouseEvent', {
-        type: 'mouseMoved',
-        x: box.x,
-        y: box.y,
-        button: 'none',
-        clickCount: 0,
-      });
+      await page.mouse.move(box.x, box.y);
       await sleep(80);
-      await page.send('Input.dispatchMouseEvent', {
-        type: 'mousePressed',
-        x: box.x,
-        y: box.y,
-        button: 'left',
-        clickCount: 1,
-      });
-      await page.send('Input.dispatchMouseEvent', {
-        type: 'mouseReleased',
-        x: box.x,
-        y: box.y,
-        button: 'left',
-        clickCount: 1,
-      });
+      await page.mouse.click(box.x, box.y);
       await sleep(300);
       return true;
     };
@@ -243,20 +222,7 @@ async function main() {
       .then((s) => (s ? JSON.parse(s) : null));
     check('the 保存 button exists', !!saveBox, JSON.stringify(saveBox));
     if (saveBox) {
-      await page.send('Input.dispatchMouseEvent', {
-        type: 'mousePressed',
-        x: saveBox.x,
-        y: saveBox.y,
-        button: 'left',
-        clickCount: 1,
-      });
-      await page.send('Input.dispatchMouseEvent', {
-        type: 'mouseReleased',
-        x: saveBox.x,
-        y: saveBox.y,
-        button: 'left',
-        clickCount: 1,
-      });
+      await page.mouse.click(saveBox.x, saveBox.y);
       await sleep(800);
     }
     const saved = await (await fetch(`${base}/api/settings`)).json();
@@ -346,28 +312,9 @@ async function main() {
     if (dlBox && !dlBox.disabled) {
       // The click triggers a fetch to the workbook route; watch for it rather
       // than trusting that a blob appeared in a headless window.
-      await page.send('Input.dispatchMouseEvent', {
-        type: 'mouseMoved',
-        x: dlBox.x,
-        y: dlBox.y,
-        button: 'none',
-        clickCount: 0,
-      });
+      await page.mouse.move(dlBox.x, dlBox.y);
       await sleep(80);
-      await page.send('Input.dispatchMouseEvent', {
-        type: 'mousePressed',
-        x: dlBox.x,
-        y: dlBox.y,
-        button: 'left',
-        clickCount: 1,
-      });
-      await page.send('Input.dispatchMouseEvent', {
-        type: 'mouseReleased',
-        x: dlBox.x,
-        y: dlBox.y,
-        button: 'left',
-        clickCount: 1,
-      });
+      await page.mouse.click(dlBox.x, dlBox.y);
       await sleep(900);
       const asked = page.requests('/workbook.xlsx');
       check('clicking 下载 requested the workbook bytes', asked.length >= 1, `requests=${asked.length}`);

@@ -38,7 +38,7 @@ const ROOT = path.join(__dirname, '..', '..');
 const OUT = path.join(__dirname, '..', 'out');
 const { createServer } = require(path.join(ROOT, 'src', 'http', 'server.ts'));
 const { modelFromTransport } = require('../support/transport-model');
-const { openPage, closePage, findEdge, sleep } = require('../support/cdp.js');
+const { openPage, closePage, sleep } = require('../support/browser.js');
 
 let _passed = 0;
 let failed = 0;
@@ -122,10 +122,8 @@ async function main() {
   let page = null;
   try {
     page = await openPage({
-      edge: findEdge(),
       profile: path.join(OUT, 'attach-profile'),
       url: base,
-      port: 9764,
       window: '1440,900',
       waitForSelector: '.rail',
     });
@@ -192,15 +190,18 @@ async function main() {
     })()`);
     check('the file input is queryable', injected === 'ready', injected);
 
-    // CDP DOM.setFileInputFiles is the browser-level way to fill a file input.
-    await page.send('DOM.enable');
-    const doc = await page.send('DOM.getDocument', { depth: -1 });
-    const node = await page.send('DOM.querySelector', { nodeId: doc.root.nodeId, selector: '#file-input' });
-    check('the file input has a DOM node', node.nodeId > 0, `nodeId=${node.nodeId}`);
-    await page.send('DOM.setFileInputFiles', { files: [csvPath], nodeId: node.nodeId });
+    // setInputFiles is the browser-level way to fill a file input (CDP's
+    // DOM.setFileInputFiles underneath), and it fires `change` as a picker does.
+    const fileInput = page.locator('#file-input');
+    const inputs = await fileInput.count();
+    check('the file input has a DOM node', inputs === 1, `count=${inputs}`);
+    await fileInput.setInputFiles(csvPath);
 
     const gotChip = await waitFor(page, `Boolean(document.querySelector('.chip .chip__name'))`);
     check('uploading a file renders a chip', gotChip === true);
+    // The chip appears at once, reading "正在读取…", and takes the file's name
+    // when the upload answers. Read it after that, not in between.
+    await waitFor(page, `/附件探针/.test((document.querySelector('.chip .chip__name') || {}).textContent || '')`);
     const chipName = await page.evaluate(`(() => {
       const n = document.querySelector('.chip .chip__name');
       return n ? n.textContent : '';
@@ -240,20 +241,7 @@ async function main() {
       .then((s) => (s ? JSON.parse(s) : null));
     check('the send button is enabled', sendBox && sendBox.disabled === false, JSON.stringify(sendBox));
     if (sendBox) {
-      await page.send('Input.dispatchMouseEvent', {
-        type: 'mousePressed',
-        x: sendBox.x,
-        y: sendBox.y,
-        button: 'left',
-        clickCount: 1,
-      });
-      await page.send('Input.dispatchMouseEvent', {
-        type: 'mouseReleased',
-        x: sendBox.x,
-        y: sendBox.y,
-        button: 'left',
-        clickCount: 1,
-      });
+      await page.mouse.click(sendBox.x, sendBox.y);
       // Poll for the turn to actually leave, rather than a fixed sleep. A fixed
       // wait is a timing bet: it passes alone and loses when other probes have
       // just finished and the box is still warm. The bet has no upside — the
@@ -302,20 +290,7 @@ async function main() {
       .then((s) => (s ? JSON.parse(s) : null));
     check('the chip has a remove button', !!removeX, JSON.stringify(removeX));
     if (removeX) {
-      await page.send('Input.dispatchMouseEvent', {
-        type: 'mousePressed',
-        x: removeX.x,
-        y: removeX.y,
-        button: 'left',
-        clickCount: 1,
-      });
-      await page.send('Input.dispatchMouseEvent', {
-        type: 'mouseReleased',
-        x: removeX.x,
-        y: removeX.y,
-        button: 'left',
-        clickCount: 1,
-      });
+      await page.mouse.click(removeX.x, removeX.y);
       await sleep(800);
     }
     const chipsGone = await page.evaluate('document.querySelectorAll(".chip").length');

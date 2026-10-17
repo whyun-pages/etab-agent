@@ -20,7 +20,7 @@ require('tsx/cjs');
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
-const { findEdge, openPage, closePage, sleep } = require('../support/cdp.js');
+const { openPage, closePage, sleep } = require('../support/browser.js');
 
 const ROOT = path.join(__dirname, '..', '..');
 const OUT = path.join(__dirname, '..', 'out');
@@ -113,21 +113,15 @@ async function main() {
   process.once('SIGINT', () => process.exit(130));
 
   const profile = path.join(OUT, 'sheet-render-profile');
-  const cdpPort = 9601;
   const page = await openPage({
-    edge: findEdge(),
     profile,
     url: `http://127.0.0.1:${PORT}/__sheet-render.html`,
-    port: cdpPort,
     window: '1100,700',
   });
-  await sleep(1500);
-
-  const res = await page.send('Runtime.evaluate', {
-    expression: 'JSON.stringify(window.__rendered || null)',
-    returnByValue: true,
-  });
-  const rendered = JSON.parse(res.result.value || 'null');
+  // The harness sets __rendered once the module has drawn the grid. Waited
+  // for, not slept for: a slow first import used to read as "nothing rendered".
+  await page.waitForFunction(() => window.__rendered, null, { timeout: 10000 }).catch(() => {});
+  const rendered = await page.evaluate('window.__rendered || null');
 
   console.log('rendered rows ->');
   for (const row of rendered || []) console.log('  ', JSON.stringify(row));
@@ -167,9 +161,8 @@ async function main() {
     JSON.stringify(rendered),
   );
 
-  const shot = await page.send('Page.captureScreenshot', { format: 'png' });
   const file = path.join(OUT, '11-sheet-render.png');
-  fs.writeFileSync(file, Buffer.from(shot.data, 'base64'));
+  await page.screenshot({ path: file });
   console.log('\nsaved 11-sheet-render.png (' + fs.statSync(file).size + ' bytes)');
 
   await closePage(page, { trashProfile: true });

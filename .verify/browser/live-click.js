@@ -22,7 +22,7 @@ const path = require('node:path');
 const ROOT = path.join(__dirname, '..', '..');
 const OUT = path.join(__dirname, '..', 'out');
 const { createServer } = require(path.join(ROOT, 'src', 'http', 'server.ts'));
-const { openPage, closePage, findEdge, sleep } = require('../support/cdp.js');
+const { openPage, closePage, sleep } = require('../support/browser.js');
 
 const DEFAULT_SETTINGS = {
   baseUrl: 'https://api.example.invalid/v1',
@@ -56,10 +56,8 @@ async function main() {
   const base = `http://127.0.0.1:${port}`;
 
   const page = await openPage({
-    edge: findEdge(),
     profile: path.join(OUT, 'click-profile'),
     url: base,
-    port: 9751,
     window: '1440,900',
   });
   await sleep(900);
@@ -76,9 +74,8 @@ async function main() {
       .then((s) => (s ? JSON.parse(s) : null));
 
   async function clickAt(x, y) {
-    await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, button: 'none', clickCount: 0 });
-    await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 });
-    await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 });
+    await page.mouse.move(x, y);
+    await page.mouse.click(x, y);
     await sleep(250);
   }
 
@@ -124,25 +121,13 @@ async function main() {
   // Drag 90px to the right.
   const sx = sBox.x;
   const sy = sBox.y;
-  await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: sx, y: sy, button: 'none', clickCount: 0 });
-  await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: sx, y: sy, button: 'left', clickCount: 1 });
+  await page.mouse.move(sx, sy);
+  await page.mouse.down();
   for (let i = 1; i <= 9; i++) {
-    await page.send('Input.dispatchMouseEvent', {
-      type: 'mouseMoved',
-      x: sx + i * 10,
-      y: sy,
-      button: 'left',
-      clickCount: 1,
-    });
+    await page.mouse.move(sx + i * 10, sy);
     await sleep(20);
   }
-  await page.send('Input.dispatchMouseEvent', {
-    type: 'mouseReleased',
-    x: sx + 90,
-    y: sy,
-    button: 'left',
-    clickCount: 1,
-  });
+  await page.mouse.up();
   await sleep(300);
 
   const railAfter = await page.evaluate('document.getElementById("rail").getBoundingClientRect().width');
@@ -157,22 +142,10 @@ async function main() {
 
   // ── 4. the clamp holds: drag far past the limit ────────────────────
   const shellW = await page.evaluate('document.getElementById("shell").getBoundingClientRect().width');
-  await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: sx, y: sy, button: 'none', clickCount: 0 });
-  await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: sx, y: sy, button: 'left', clickCount: 1 });
-  await page.send('Input.dispatchMouseEvent', {
-    type: 'mouseMoved',
-    x: sx + 2000,
-    y: sy,
-    button: 'left',
-    clickCount: 1,
-  });
-  await page.send('Input.dispatchMouseEvent', {
-    type: 'mouseReleased',
-    x: sx + 2000,
-    y: sy,
-    button: 'left',
-    clickCount: 1,
-  });
+  await page.mouse.move(sx, sy);
+  await page.mouse.down();
+  await page.mouse.move(sx + 2000, sy);
+  await page.mouse.up();
   await sleep(300);
   const railClamped = await page.evaluate('document.getElementById("rail").getBoundingClientRect().width');
   const paneW = await page.evaluate('document.getElementById("pane").getBoundingClientRect().width');
@@ -185,31 +158,17 @@ async function main() {
   //     into a dblclick;
   //   - re-read the handle position, because the clamp drag above moved it.
   //     Clicking the old coordinates lands inside the rail and does nothing.
+  // page.mouse.dblclick does both: one move, then presses with clickCount 1
+  // and 2 at the same point.
   const resetBox = await boxOf('#split-rail');
-  for (const n of [1, 2]) {
-    await page.send('Input.dispatchMouseEvent', {
-      type: 'mousePressed',
-      x: resetBox.x,
-      y: resetBox.y,
-      button: 'left',
-      clickCount: n,
-    });
-    await page.send('Input.dispatchMouseEvent', {
-      type: 'mouseReleased',
-      x: resetBox.x,
-      y: resetBox.y,
-      button: 'left',
-      clickCount: n,
-    });
-    await sleep(40);
-  }
+  await page.mouse.dblclick(resetBox.x, resetBox.y);
   await sleep(400);
   const railReset = await page.evaluate('document.getElementById("rail").getBoundingClientRect().width');
   check('double-click restores the default rail width', Math.abs(railReset - 244) < 2, `rail=${railReset}`);
   const storedAfterReset = await page.evaluate('localStorage.getItem("tab-agent:columns")');
   check('reset clears the persisted width', !storedAfterReset.includes('--rail-w'), String(storedAfterReset));
 
-  await page.screenshot(path.join(OUT, '19-splitters.png'));
+  await page.screenshot({ path: path.join(OUT, '19-splitters.png') });
 
   await closePage(page, { trashProfile: true });
   server.close();

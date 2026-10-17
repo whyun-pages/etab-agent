@@ -27,17 +27,16 @@ const fs = require('node:fs');
 const path = require('node:path');
 const http = require('node:http');
 const { spawn } = require('node:child_process');
+const { openPage, closePage, sleep } = require('../support/browser.js');
 
 const ROOT = path.join(__dirname, '..', '..');
 const PORT = 3202;
-const CDP_PORT = 4202;
-const EDGE = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
 const OUT = path.join(ROOT, '.verify', 'out');
 const DATA = path.join(OUT, 'short-window-data');
 const PROFILE = path.join(OUT, 'short-window-profile');
 
-// Go through the viewport rather than --window-size: Edge floors the window
-// height, and we want to get well below any floor.
+// The viewport, not the window: Edge floors a window's height, and we want to
+// get well below any floor. browser.js sets the viewport as an override.
 const heightArg = process.argv.indexOf('--height');
 const HEIGHT = Number(heightArg >= 0 ? process.argv[heightArg + 1] : 360);
 // --exe drives the packaged executable instead of a dev server. There the UI
@@ -47,10 +46,6 @@ const USE_EXE = process.argv.includes('--exe');
 const EXE = path.join(ROOT, 'dist', 'TabAgent.exe');
 
 const { createServer } = require(path.join(ROOT, 'src', 'http', 'server.ts'));
-
-function sleep(ms) {
-  return new Promise((r) => setTimeout(r, ms));
-}
 
 function get(urlPath, port = PORT) {
   return new Promise((resolve, reject) => {
@@ -64,66 +59,6 @@ function get(urlPath, port = PORT) {
   });
 }
 
-/** Minimal DevTools client over the global WebSocket (Node 22+). */
-class CDP {
-  constructor(ws) {
-    this.ws = ws;
-    this.id = 0;
-    this.pending = new Map();
-  }
-
-  static async attach(wsUrl) {
-    const ws = new WebSocket(wsUrl);
-    await new Promise((res, rej) => {
-      ws.onopen = res;
-      ws.onerror = () => rej(new Error('CDP websocket failed to open'));
-    });
-    const client = new CDP(ws);
-    ws.onmessage = (ev) => {
-      let msg;
-      try {
-        msg = JSON.parse(ev.data);
-      } catch {
-        return;
-      }
-      const slot = client.pending.get(msg.id);
-      if (!slot) return;
-      client.pending.delete(msg.id);
-      msg.error ? slot.reject(new Error(msg.error.message)) : slot.resolve(msg.result);
-    };
-    return client;
-  }
-
-  send(method, params = {}) {
-    const id = ++this.id;
-    return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        this.pending.delete(id);
-        reject(new Error(method + ' timed out'));
-      }, 20000);
-      this.pending.set(id, {
-        resolve: (r) => {
-          clearTimeout(timer);
-          resolve(r);
-        },
-        reject: (e) => {
-          clearTimeout(timer);
-          reject(e);
-        },
-      });
-      this.ws.send(JSON.stringify({ id, method, params }));
-    });
-  }
-
-  close() {
-    try {
-      this.ws.close();
-    } catch {
-      /* ignore */
-    }
-  }
-}
-
 /**
  * Every element that is, or should be, a scroll container. Reported whether or
  * not it currently overflows, so an empty result and a healthy result look
@@ -132,18 +67,19 @@ class CDP {
 const PROBE = `(() => {
   const targets = [
     ['body',            document.body],
-    ['.editor',         document.querySelector('.editor')],
-    ['.editor__body',   document.querySelector('.editor__body')],
-    ['.editor__scroll', document.querySelector('.editor__scroll')],
-    ['.settings',       document.querySelector('.settings')],
-    ['.welcome',        document.querySelector('.welcome')],
-    ['.work',           document.querySelector('.work')],
-    ['.work__main',     document.querySelector('.work__main')],
-    ['.work__aside',    document.querySelector('.work__aside')],
-    ['.sidebar',        document.querySelector('.sidebar')],
+    ['.shell',          document.querySelector('.shell')],
+    ['.rail',           document.querySelector('.rail')],
+    ['.rail__body',     document.querySelector('.rail__body')],
+    ['.pane',           document.querySelector('.pane')],
+    ['.pane__body',     document.querySelector('.pane__body')],
+    ['.chat__stream',   document.querySelector('.chat__stream')],
+    ['.preview',        document.querySelector('.preview')],
+    ['.preview__body',  document.querySelector('.preview__body')],
+    ['.setpage',        document.querySelector('.setpage')],
+    ['.settings__nav',  document.querySelector('.settings__nav')],
+    ['.settings__main', document.querySelector('.settings__main')],
     ['.modal__box',     document.querySelector('.modal__box')],
     ['.modal__body',    document.querySelector('.modal__body')],
-    ['.palette__list',  document.querySelector('.palette__list')],
   ];
   const out = [];
   for (const [sel, node] of targets) {
@@ -220,80 +156,41 @@ async function main() {
     await new Promise((r) => server.listen(PORT, '127.0.0.1', r));
   }
 
-  const edge = spawn(
-    EDGE,
-    [
-      `--remote-debugging-port=${CDP_PORT}`,
-      `--user-data-dir=${PROFILE}`,
-      '--no-first-run',
-      '--no-default-browser-check',
-      'about:blank',
-    ],
-    { stdio: 'ignore', detached: true },
-  );
-  edge.unref();
+  const page = await openPage({ profile: PROFILE, window: `1280,${HEIGHT}` });
+  await page.goto(`http://127.0.0.1:${PORT}/`);
 
-  let page = null;
-  for (let i = 0; i < 80 && !page; i++) {
-    await sleep(250);
-    try {
-      const res = await get('/json/list', CDP_PORT);
-      page = JSON.parse(res.body).find((t) => t.type === 'page') || null;
-    } catch {
-      /* not up yet */
-    }
-  }
-  if (!page) throw new Error('Edge CDP never came up');
-
-  const cdp = await CDP.attach(page.webSocketDebuggerUrl);
-  await cdp.send('Runtime.enable');
-  await cdp.send('Page.enable');
-  // The viewport is the whole point: the app lays out from it.
-  await cdp.send('Emulation.setDeviceMetricsOverride', {
-    width: 1280,
-    height: HEIGHT,
-    deviceScaleFactor: 1,
-    mobile: false,
-  });
-
-  await cdp.send('Page.navigate', { url: `http://127.0.0.1:${PORT}/` });
-
-  // Wait for the app to actually render. Evaluating too early silently measures
-  // about:blank, which looks like a healthy page with no panels in it — the most
-  // misleading possible result for this particular probe.
-  let ready = null;
-  for (let i = 0; i < 40; i++) {
-    await sleep(250);
-    const r = await cdp.send('Runtime.evaluate', {
-      expression: `JSON.stringify({ href: location.href, hasEditor: !!document.querySelector('.editor__body'), activities: document.querySelectorAll('.activity__item').length })`,
-      returnByValue: true,
-    });
-    ready = JSON.parse(r.result.value);
-    if (ready.hasEditor) break;
-  }
-  console.log('page:', ready.href, '| editor:', ready.hasEditor, '| activity items:', ready.activities);
-  if (!ready.hasEditor) throw new Error('app never rendered — measured page would be about:blank');
+  // Wait for the app to actually render. Measuring too early silently
+  // measures about:blank, which looks like a healthy page with no panels in
+  // it — the most misleading possible result for this particular probe.
+  // (The first version waited for '.editor__body', a class from an earlier
+  // UI: it timed out on every run, and the probe reported "never rendered".)
+  const rendered = await page
+    .waitForSelector('.rail__head', { state: 'attached', timeout: 10000 })
+    .then(() => true)
+    .catch(() => false);
+  console.log('page:', page.url(), '| rendered:', rendered);
+  if (!rendered) throw new Error('app never rendered — measured page would be about:blank');
 
   let failures = 0;
 
+  // Which view is up decides what can be measured: a fresh data folder has no
+  // model configured, and the app then opens on settings with the workspace
+  // hidden. So each view is reached from wherever the app is, by clicking the
+  // gear the way a user would (it toggles), rather than assumed.
+  const settingsShown = () => page.evaluate(`!document.getElementById('settings-page').hidden`);
   for (const view of ['workspace', 'settings']) {
-    if (view === 'settings') {
-      // Click the gear the way a user would, rather than setting state directly.
-      const clicked = await cdp.send('Runtime.evaluate', {
-        expression: `(() => {
-          const items = [...document.querySelectorAll('.activity__item')];
-          const gear = items.find(b => b.dataset.view === 'settings' || /设置|模型/.test(b.textContent));
-          if (gear) { gear.click(); return gear.dataset.view || gear.textContent.trim(); }
-          return 'NOT FOUND: ' + items.map(b => b.dataset.view || b.textContent.trim()).join(' | ');
-        })()`,
-        returnByValue: true,
-      });
-      console.log(`\n[${view}] gear click → ${clicked.result.value}`);
-      await sleep(700);
+    const want = view === 'settings';
+    if ((await settingsShown()) !== want) {
+      await page.click('#btn-settings');
+      await page
+        .waitForFunction((on) => !document.getElementById('settings-page').hidden === on, want, { timeout: 5000 })
+        .catch(() => {});
     }
+    const reached = (await settingsShown()) === want;
+    console.log(`\n[${view}] ${reached ? 'shown' : 'NOT reached'}`);
+    if (!reached) failures++;
 
-    const res = await cdp.send('Runtime.evaluate', { expression: PROBE, returnByValue: true });
-    const rows = JSON.parse(res.result.value);
+    const rows = JSON.parse(await page.evaluate(PROBE));
 
     console.log(`\n=== view: ${view}   viewport height: ${HEIGHT} ===`);
     console.log(
@@ -328,7 +225,9 @@ async function main() {
     }
   }
 
-  cdp.close();
+  // Trashed, so the next run starts unfolded: a profile left behind keeps the
+  // last run's splitter widths and folded rail, and the panels measure differently.
+  await closePage(page, { trashProfile: true });
   if (server) server.close();
   if (exe) {
     try {
@@ -337,13 +236,6 @@ async function main() {
       /* ignore */
     }
   }
-  try {
-    edge.kill();
-  } catch {
-    /* ignore */
-  }
-  await sleep(400);
-
   console.log('');
   if (failures) {
     console.log(`RESULT: ${failures} panel(s) clip their content with no way to scroll.`);

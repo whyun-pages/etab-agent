@@ -54,6 +54,9 @@ importers:
       exceljs:
         specifier: 4.4.0
         version: 4.4.0
+      playwright-core:
+        specifier: 1.63.0
+        version: 1.63.0
       postject:
         specifier: ^1.0.0-alpha.6
         version: 1.0.0-alpha.6
@@ -1235,6 +1238,11 @@ packages:
 
   path-to-regexp@8.4.2:
     resolution: {integrity: sha512-qRcuIdP69NPm4qbACK+aDogI5CBDMi1jKe0ry5rSQJz8JVLsC7jV8XpiJjGRLLol3N+R5ihGYcrPLTno6pAdBA==}
+
+  playwright-core@1.63.0:
+    resolution: {integrity: sha512-rYCsBF/M5HjUch52bbtVONEFjv6Xu8sm8h72dNlR5bzIE1fvC/bxgspzkjSfU+MweEMmPM8KJebG6nnyxo5mCg==}
+    engines: {node: '>=20'}
+    hasBin: true
 
   postject@1.0.0-alpha.6:
     resolution: {integrity: sha512-b9Eb8h2eVqNE8edvKdwqkrY6O7kAwmI8kcnBv1NScolYJbo59XUF0noFq+lxbC1yN20bmC0WBEbDC5H/7ASb0A==}
@@ -2645,6 +2653,8 @@ snapshots:
   path-is-absolute@1.0.1: {}
 
   path-to-regexp@8.4.2: {}
+
+  playwright-core@1.63.0: {}
 
   postject@1.0.0-alpha.6:
     dependencies:

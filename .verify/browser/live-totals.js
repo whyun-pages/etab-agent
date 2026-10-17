@@ -39,7 +39,7 @@ const ROOT = path.join(__dirname, '..', '..');
 const OUT = path.join(__dirname, '..', 'out');
 const { createServer } = require(path.join(ROOT, 'src', 'http', 'server.ts'));
 const { modelFromTransport } = require('../support/transport-model');
-const { openPage, closePage, findEdge, sleep } = require('../support/cdp.js');
+const { openPage, closePage, sleep } = require('../support/browser.js');
 
 let _passed = 0;
 let failed = 0;
@@ -231,10 +231,8 @@ async function main() {
     // Boot may not land on this session (no deep link), so open it the way a
     // person does: hover the rail row and click it, then wait for the grid.
     page = await openPage({
-      edge: findEdge(),
       profile: path.join(OUT, 'totals-profile'),
       url: base,
-      port: 9761,
       window: '1440,900',
       waitForSelector: '.rail__item',
     });

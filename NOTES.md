@@ -917,6 +917,27 @@ operation 只能来自**解析成功的对象**，没解析成功的回复没有
       原先的 sabotage 脚本因此不再需要。也顺手收紧了两条原本恒为真的断言：
       settings 的并发检查只看「六个键都在」，而默认值本来就有六个键；
       session-store 的「不留临时文件」查的是数据目录根，临时文件其实写在 `sessions/` 下。
+67. **`.verify/browser/` 改用 playwright-core，手写的 CDP 客户端退到只剩 exe/model/shots 在用。**
+    `support/cdp.js` 是 378 行自写的 DevTools 客户端：spawn Edge、轮询调试端口、挑 target、
+    手发 `Input.dispatchMouseEvent`。`support/browser.js` 换成 playwright-core（锁 1.63.0，
+    不下载浏览器，`executablePath` 指向本机 msedge.exe，经管道而不是端口连接）。底下仍是 CDP，
+    只是这一层不再自己维护。返回的就是 Playwright 的 Page，另挂了脚本原来用的
+    `evaluate(字符串)`、`evaluateJson`、`requests`、`send`（原生 CDP 兜底）。
+    迁移前后 14 个脚本各跑一遍对照，迁移过程中暴露了三件事：
+    - **旧选项会被当成参数。** 脚本的轮询助手写 `page.evaluate(expr, { awaitPromise: false })`，
+      Playwright 把第二个参数当页面函数的实参，字符串表达式拒收；助手的 catch 把拒收吞成
+      「还没好」，于是一直等到超时。`browser.js` 对字符串表达式丢掉第二个参数。
+    - **双击靠 clickCount。** 批量把按下/抬起对换成 `mouse.click` 时丢了 `clickCount: n`，
+      双击复位变成两次单击（#36 那条的另一面）。改用 `mouse.dblclick`：一次移动，
+      两次按下的 clickCount 分别是 1 和 2。
+    - **快了就会撞上中间态。** `live-attach` 在标签出现后立刻读文件名，Playwright 比旧客户端快，
+      读到的是「正在读取…」。断言的本意是最终的名字，所以改成等名字出现再读。
+    `short-window.js` 迁移前就一直失败：等的 `.editor__body` 是旧界面的类名，每次都报「没渲染」；
+    而且它假设启动后在工作区，实际上没配模型时应用直接打开设置页。改成新界面的滚动容器，
+    按当前视图决定点不点齿轮，配置目录用完即丢（残留的折叠状态会让 `.rail__head` 不可见）。
+    改完拿 `.settings__main { overflow: hidden }` 反向验证，能报出 CLIPPED。
+    旧版异常退出时不关自己 detached 的 Edge，残留实例会占住配置目录，新启动的 Edge 把请求
+    交给它就退出——Playwright 报的是「browser has been closed」，看不出是这个原因。
 
 - **探测正则要用归一化后的文本。** 单行提示词那次我拿全角原文试，误判成正则写错了。
 - **自读自写不能证明兼容。** 这一轮又是 exceljs 对照和真文件流程抓出了盲区。
