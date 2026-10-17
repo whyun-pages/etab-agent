@@ -195,7 +195,16 @@ function listen(server: http.Server, port: number, host: string): Promise<Addres
  */
 function resolvePort(args: Args): number {
   const fromEnv = process.env.TAB_AGENT_PORT;
-  if (args.port !== null) return args.port;
+  if (args.port !== null) {
+    // Checked like the variable. Unchecked, `--port abc` (or a trailing
+    // `--port` with nothing after it) handed NaN to listen(), which failed
+    // with ERR_SOCKET_BAD_PORT instead of saying which setting was wrong.
+    if (!Number.isInteger(args.port) || args.port < 0 || args.port > 65535) {
+      console.error(`--port 不是可用端口：${args.port}（需要 0–65535 的整数）`);
+      process.exit(1);
+    }
+    return args.port;
+  }
   if (fromEnv === undefined || fromEnv === '') return 0;
   const n = Number(fromEnv);
   if (!Number.isInteger(n) || n < 0 || n > 65535) {
