@@ -41,14 +41,34 @@ export function isCfb(buf: Buffer): boolean {
 }
 
 /**
- * Read every stream of a compound file, keyed by its directory name.
+ * Read the streams of a compound file, keyed by their directory name: those
+ * named in `only`, or every one.
  *
  * Names are flattened (the storage tree is not walked): an .xls keeps its
  * `Workbook` stream at the root and nothing else by that name, so a flat map
  * is enough. When two streams do share a name, the first in directory order
  * wins.
+ *
+ * Every count the header gives is checked against the file it came in. They
+ * were trusted: numFatSectors and numDifat are 32-bit, and a DIFAT sector
+ * pointing at itself kept adding FAT ids until the process ran out of memory.
+ * And streams are read only when asked for — several directory entries can
+ * name one long chain, and reading them all multiplied the file's size by the
+ * number of entries, on every upload that was sniffed.
  */
-export function readCfb(buf: Buffer): Map<string, Buffer> {
+export function readCfb(buf: Buffer, only?: readonly string[]): Map<string, Buffer> {
+  const cfb = openCfb(buf);
+  const streams = new Map<string, Buffer>();
+  for (const name of cfb.names) if (!only || only.includes(name)) streams.set(name, cfb.read(name));
+  return streams;
+}
+
+/** The stream names of a compound file, without reading any stream. */
+export function cfbStreamNames(buf: Buffer): Set<string> {
+  return openCfb(buf).names;
+}
+
+function openCfb(buf: Buffer): { names: Set<string>; read: (name: string) => Buffer } {
   if (!isCfb(buf)) throw new Error('not a compound file');
   const sectorSize = 1 << buf.readUInt16LE(0x1e);
   const miniSectorSize = 1 << buf.readUInt16LE(0x20);
@@ -59,6 +79,10 @@ export function readCfb(buf: Buffer): Map<string, Buffer> {
   const firstDifat = buf.readUInt32LE(0x44);
   const numDifat = buf.readUInt32LE(0x48);
   if (sectorSize !== 512 && sectorSize !== 4096) throw new Error('bad compound file sector size');
+  // The header takes the first sector's worth of bytes; the rest is sectors.
+  // No list of sector ids, and no chain, can be longer than that.
+  const sectorCount = Math.floor(buf.length / sectorSize) - 1;
+  if (numFatSectors > sectorCount || numDifat > sectorCount) throw new Error('bad compound file header');
 
   const sectorOffset = (id: number): number => (id + 1) * sectorSize;
   const sector = (id: number): Buffer => {
@@ -76,7 +100,10 @@ export function readCfb(buf: Buffer): Map<string, Buffer> {
   }
   let difat = firstDifat;
   const perDifat = sectorSize / 4 - 1;
+  const seenDifat = new Set<number>();
   for (let n = 0; n < numDifat && difat !== ENDOFCHAIN && difat !== FREESECT; n++) {
+    if (seenDifat.has(difat)) throw new Error('bad compound file chain');
+    seenDifat.add(difat);
     const s = sector(difat);
     for (let i = 0; i < perDifat && fatIds.length < numFatSectors; i++) {
       const id = s.readUInt32LE(i * 4);
@@ -91,16 +118,17 @@ export function readCfb(buf: Buffer): Map<string, Buffer> {
     for (let i = 0; i < sectorSize; i += 4) fat.push(s.readUInt32LE(i));
   }
 
-  // A corrupt FAT can loop; a chain can never be longer than the FAT itself.
-  const chain = (start: number, table: number[]): number[] => {
+  // A corrupt table can loop. A chain visits each of its sectors once, so it
+  // can be no longer than the number of sectors there are: `limit`.
+  const chain = (start: number, table: number[], limit: number): number[] => {
     const ids: number[] = [];
     for (let id = start; id !== ENDOFCHAIN && id !== FREESECT; id = table[id]) {
-      if (id >= table.length || ids.length > table.length) throw new Error('bad compound file chain');
+      if (id >= table.length || ids.length >= limit) throw new Error('bad compound file chain');
       ids.push(id);
     }
     return ids;
   };
-  const readChain = (start: number): Buffer => Buffer.concat(chain(start, fat).map(sector));
+  const readChain = (start: number): Buffer => Buffer.concat(chain(start, fat, sectorCount).map(sector));
 
   const dir = readChain(firstDirSector);
   interface Entry {
@@ -137,22 +165,27 @@ export function readCfb(buf: Buffer): Map<string, Buffer> {
     for (let i = 0; i + 4 <= mf.length; i += 4) miniFat.push(mf.readUInt32LE(i));
   };
 
-  const streams = new Map<string, Buffer>();
-  for (const e of entries) {
-    if (e.type !== 2 || streams.has(e.name)) continue;
+  // First entry of each name, in directory order.
+  const byName = new Map<string, Entry>();
+  for (const e of entries) if (e.type === 2 && !byName.has(e.name)) byName.set(e.name, e);
+
+  const read = (name: string): Buffer => {
+    const e = byName.get(name);
+    if (!e) throw new Error(`no stream named ${name}`);
     let data: Buffer;
     if (e.size < miniCutoff) {
       loadMini();
       const ms = miniStream as unknown as Buffer;
+      const miniCount = Math.floor(ms.length / miniSectorSize);
       data = Buffer.concat(
-        chain(e.start, miniFat).map((id) => ms.subarray(id * miniSectorSize, (id + 1) * miniSectorSize)),
+        chain(e.start, miniFat, miniCount).map((id) => ms.subarray(id * miniSectorSize, (id + 1) * miniSectorSize)),
       );
     } else {
       data = readChain(e.start);
     }
-    streams.set(e.name, data.subarray(0, e.size));
-  }
-  return streams;
+    return data.subarray(0, e.size);
+  };
+  return { names: new Set(byName.keys()), read };
 }
 
 // ------------------------------------------------------------------ BIFF8
@@ -336,12 +369,13 @@ export interface XlsWorkbook {
  * `sheetToMatrix` and everything downstream need no second code path.
  */
 export function readXls(buf: Buffer): XlsWorkbook {
-  const streams = readCfb(buf);
-  const stream = streams.get('Workbook') || streams.get('WORKBOOK');
-  if (!stream) {
-    if (streams.has('Book')) throw new Error('不支持 Excel 95 及更早的 .xls（BIFF5），请另存为 .xlsx');
+  const cfb = openCfb(buf);
+  const name = ['Workbook', 'WORKBOOK'].find((n) => cfb.names.has(n));
+  if (!name) {
+    if (cfb.names.has('Book')) throw new Error('不支持 Excel 95 及更早的 .xls（BIFF5），请另存为 .xlsx');
     throw new Error('not an xls: no Workbook stream');
   }
+  const stream = cfb.read(name);
 
   const globals = substream(stream, 0);
   const bof = globals[0];

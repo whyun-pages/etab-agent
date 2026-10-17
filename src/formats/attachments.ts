@@ -19,7 +19,7 @@
 
 import path from 'node:path';
 import * as xlsx from './xlsx.ts';
-import { isCfb, readCfb, readXls } from './xls.ts';
+import { cfbStreamNames, isCfb, readXls } from './xls.ts';
 
 /**
  * The part of `src/formats/xlsx.ts` this module calls.
@@ -251,8 +251,9 @@ export function sniffKind(buffer: Buffer, filename = ''): string {
     // OLE2 compound file: legacy .xls, .doc and .ppt all share this container.
     // Only the .xls case is read; the others fall through to their extension.
     try {
-      const streams = readCfb(buffer);
-      if (streams.has('Workbook') || streams.has('WORKBOOK') || streams.has('Book')) return 'xls';
+      // Names only: telling .xls from .doc needs the directory, not the data.
+      const names = cfbStreamNames(buffer);
+      if (names.has('Workbook') || names.has('WORKBOOK') || names.has('Book')) return 'xls';
     } catch {
       /* fall through to extension */
     }

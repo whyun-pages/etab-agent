@@ -194,6 +194,38 @@ test('a stream over the mini cutoff is read from regular sectors', () => {
   assert.strictEqual(m[499][0], 499 * 1.5);
 });
 
+/**
+ * A compound-file header with 512-byte sectors and the given counts, followed
+ * by `sectors` (each 512 bytes). Header DIFAT slots are all FREESECT.
+ */
+function cfbHeader({ numFat, firstDifat, numDifat, firstDir = 0xfffffffe }, sectors = []) {
+  const h = Buffer.alloc(512, 0);
+  Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]).copy(h, 0);
+  h.writeUInt16LE(9, 0x1e); // 512-byte sectors
+  h.writeUInt16LE(6, 0x20); // 64-byte mini sectors
+  h.writeUInt32LE(numFat, 0x2c);
+  h.writeUInt32LE(firstDir, 0x30);
+  h.writeUInt32LE(4096, 0x38);
+  h.writeUInt32LE(0xfffffffe, 0x3c);
+  h.writeUInt32LE(firstDifat, 0x44);
+  h.writeUInt32LE(numDifat, 0x48);
+  for (let i = 0; i < 109; i++) h.writeUInt32LE(0xffffffff, 0x4c + i * 4);
+  return Buffer.concat([h, ...sectors]);
+}
+
+test('a DIFAT sector that points at itself is refused, not followed', () => {
+  // Header counts were trusted: numFat 0xffffffff and a DIFAT sector whose
+  // next-pointer is itself kept adding FAT ids until the heap ran out.
+  const loop = Buffer.alloc(512, 0); // 127 FAT ids of 0, then next = 0
+  const huge = cfbHeader({ numFat: 0xffffffff, firstDifat: 0, numDifat: 0xffffffff }, [loop]);
+  const started = Date.now();
+  assert.throws(() => readXls(huge), /bad compound file/);
+  assert.ok(Date.now() - started < 1000, `took ${Date.now() - started} ms`);
+  // Counts that fit the file (two sectors), but a DIFAT chain that loops.
+  const selfLoop = cfbHeader({ numFat: 1, firstDifat: 0, numDifat: 2 }, [loop, Buffer.alloc(512, 0xff)]);
+  assert.throws(() => readXls(selfLoop), /bad compound file chain/);
+});
+
 test('MULRK, BOOLERR and formula cached results', () => {
   const mulrk = Buffer.concat([u16(0), u16(0), u16(0), u32(rk(1)), u16(0), u32(rk(2)), u16(0), u32(rk(3)), u16(2)]);
   const formula = (r, c, result) => rec(0x0006, Buffer.concat([cell(r, c), result, u16(0), u32(0), u16(0)]));
