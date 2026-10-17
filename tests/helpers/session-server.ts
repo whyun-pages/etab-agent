@@ -15,7 +15,7 @@ import { createServer } from '../../src/http/server.ts';
 import { loadPi } from '../../src/agent/pi.ts';
 import type { TestContext } from 'node:test';
 import type { Settings } from '../../src/store/settings.ts';
-import type { FetchOptions } from '../../src/agent/fetch-url.ts';
+import type { FetchOptions } from '../../src/access/fetch.ts';
 
 export const tmpdir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'sess-api-'));
 

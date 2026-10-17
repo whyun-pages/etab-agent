@@ -2,11 +2,12 @@
 /**
  * `fetch_url`: reads a web resource, or with `importAs` brings its table in
  * as a sheet. The fetching, and the rules on what may be fetched, are
- * src/agent/fetch-url.ts.
+ * src/access/fetch.ts.
  */
 
 import type { AgentTool } from '@earendil-works/pi-agent-core';
-import { fetchUrl, readFetched, describeFetched, tableForImport } from '../../fetch-url.ts';
+import { fetchUrl, readFetched } from '../../../access/fetch.ts';
+import { describeFetched, tableForImport } from '../fetched.ts';
 import { textResult } from '../tool-context.ts';
 import type { ToolContext } from '../tool-context.ts';
 

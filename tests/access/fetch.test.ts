@@ -1,6 +1,6 @@
 'use strict';
 /**
- * Tests for the agent's URL fetcher (src/agent/fetch-url.ts).
+ * Tests for the agent's URL fetcher (src/access/fetch.ts).
  *
  * What this file guards:
  *   - private, loopback, link-local and reserved addresses are refused, in
@@ -26,8 +26,6 @@ import zlib from 'node:zlib';
 import {
   fetchUrl,
   readFetched,
-  describeFetched,
-  tableForImport,
   isPublicAddress,
   parseBlocklist,
   blockedBy,
@@ -35,7 +33,8 @@ import {
   filenameFor,
   checkUrl,
   FetchError,
-} from '../../src/agent/fetch-url.ts';
+} from '../../src/access/fetch.ts';
+import { describeFetched, tableForImport } from '../../src/agent/tools/fetched.ts';
 
 function serve(handler: http.RequestListener): Promise<{ base: string; close: () => Promise<void> }> {
   return new Promise((resolve) => {

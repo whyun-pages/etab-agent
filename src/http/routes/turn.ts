@@ -10,8 +10,8 @@
  */
 
 import type { Router } from '@koa/router';
-import { isFileAccessMode, performWrite, checkPath } from '../../agent/file-access.ts';
-import type { FileAccessOptions, FileWrite } from '../../agent/file-access.ts';
+import { isFileAccessMode, performWrite, checkPath } from '../../access/file-access.ts';
+import type { FileAccessOptions, FileWrite } from '../../access/file-access.ts';
 import { resolveExportDir } from '../../store/settings.ts';
 import { runTurn as runAgentTurn, describeChange, guardChange } from '../../agent/agent.ts';
 import type { ExportRequest } from '../../agent/agent.ts';
@@ -27,7 +27,7 @@ import { fail, jsonBody, bodyOf, isLocalRequest, messageOf, sessionOr404, noSess
 import { publicAttachment, publicMessages, publicSession } from '../projections.ts';
 import type { RouteDeps } from './index.ts';
 import type { Session, ChangeRecord } from '../../store/session-store.ts';
-import type { FetchOptions } from '../../agent/fetch-url.ts';
+import type { FetchOptions } from '../../access/fetch.ts';
 
 type Settings = Awaited<ReturnType<AppState['settings']['load']>>;
 

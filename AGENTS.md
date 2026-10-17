@@ -149,13 +149,16 @@ silently went from atomic to racy.
 ```
 http/       Koa app, per-process AppState, respond.ts (the shared answers),
             projections.ts (what the client is shown), routes/
-agent/      the turn (agent.ts and its parts), model access (llm, model, pi),
-            fetch-url and file-access (the rules on what may be fetched or
-            touched on disk — routes and settings use them too);
+agent/      the turn (agent.ts and its parts), model access (llm, model, pi);
             tools/ is what the model may call: tools.ts picks the turn's
             tools, defs/ defines them (one file per tool, the edit tools in
-            one table), pi-tools/ is pi's file and shell tools
+            one table), pi-tools/ is pi's file and shell tools, and the rest
+            of tools/ is what those tools say to the model
 store/      settings, session-store — state on disk, each behind its own SerialQueue
+access/     reaching outside the app under rules: fetch (public addresses
+            only, the blocklist, limits) and file-access (what may be read or
+            written on disk, the reading, the deferred writes). No text for
+            the model here — routes and settings use these too
 workbook/   spec validation and writing, spec-ops, table-query, preview, export
 ingest/     an uploaded or fetched file -> text or rows: one module per kind
             (csv, json, markup, m3u, image, archive), ingest.ts dispatches
@@ -164,9 +167,11 @@ platform/   SEA assets, open-with-system — usable from any layer
 ```
 
 `agent/` and `store/` are one level: `store/settings` validates against the
-protocol and file-access definitions in `agent/`. `workbook/` and `ingest/` are
-one level too, and do not import each other. Nothing in `workbook/`,
-`ingest/` or `formats/` may import upward.
+protocol definitions in `agent/`. `access/` is below both (settings checks
+the file-access mode, the agent's tools run through it) and above `workbook/` and `ingest/` —
+`ingest/` reads what it fetches or opens. `workbook/` and `ingest/` are one level,
+and do not import each other. Nothing in `access/`, `workbook/`, `ingest/` or
+`formats/` may import upward.
 
 Tests mirror `src/`: the test for `src/<layer>/<module>.ts` is
 `tests/<layer>/<module>.test.ts`. A test that drives several modules goes where

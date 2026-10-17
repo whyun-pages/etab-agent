@@ -2,11 +2,11 @@
 /**
  * `import_file`: what pi has no tool for — a spreadsheet, document, archive
  * or folder on disk read into attachments, so query_table can count every row.
- * The path checks and the reading are src/agent/file-access.ts.
+ * The path checks and the reading are src/access/file-access.ts.
  */
 
 import type { AgentTool } from '@earendil-works/pi-agent-core';
-import { readPath } from '../../file-access.ts';
+import { readPath } from '../../../access/file-access.ts';
 import { resolveToCwd } from '../pi-tools/fs-tools.ts';
 import { describeLoaded } from '../attachments.ts';
 import { textResult } from '../tool-context.ts';

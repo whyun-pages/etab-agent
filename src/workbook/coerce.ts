@@ -95,7 +95,7 @@ const MAX_LINK_CHARS = 2079;
  * The hyperlink a url cell should carry, or null when it should stay text.
  *
  * An allow-list of schemes, not a block-list: tables are filled from fetched
- * web pages (src/agent/fetch-url.ts), and a `file:`, `javascript:` or UNC target in
+ * web pages (src/access/fetch.ts), and a `file:`, `javascript:` or UNC target in
  * a cell Excel will open on a click is exactly what a hostile page would put
  * there. A bare `www.` host is what people type, and gets https.
  */

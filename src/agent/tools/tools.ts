@@ -13,7 +13,7 @@
 
 import os from 'node:os';
 import type { AgentTool } from '@earendil-works/pi-agent-core';
-import { fileOperations } from '../file-access.ts';
+import { fileOperations } from './file-operations.ts';
 import type { Pi } from '../pi.ts';
 import { SHELL_TOOL } from '../prompt.ts';
 import {

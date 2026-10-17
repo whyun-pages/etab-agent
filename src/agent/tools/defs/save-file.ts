@@ -7,7 +7,7 @@
 
 import type { AgentTool } from '@earendil-works/pi-agent-core';
 import { EXPORT_FORMATS, isExportFormat, cleanBaseName } from '../../../workbook/export.ts';
-import { checkPath } from '../../file-access.ts';
+import { checkPath } from '../../../access/file-access.ts';
 import { textResult } from '../tool-context.ts';
 import type { ToolContext } from '../tool-context.ts';
 

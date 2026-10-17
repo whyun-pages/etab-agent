@@ -1,7 +1,7 @@
 'use strict';
 /**
  * Tests for pi's file and shell tools (src/agent/tools/pi-tools/) as the agent gets them:
- * through the checked, deferred operations of src/agent/file-access.ts.
+ * through the checked, deferred operations of src/access/file-access.ts.
  *
  * What this file guards:
  *   - every tool refuses what checkPath refuses, and says why
@@ -18,8 +18,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { fileOperations } from '../../../src/agent/file-access.ts';
-import type { FileWrite } from '../../../src/agent/file-access.ts';
+import { fileOperations } from '../../../src/agent/tools/file-operations.ts';
+import type { FileWrite } from '../../../src/access/file-access.ts';
 import * as tools from '../../../src/agent/tools/pi-tools/fs-tools.ts';
 import * as shell from '../../../src/agent/tools/pi-tools/shell.ts';
 import { loadPi } from '../../../src/agent/pi.ts';

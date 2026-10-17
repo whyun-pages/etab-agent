@@ -11,7 +11,7 @@
  * -------------------------
  * A CSV cell is not inert: Excel evaluates a cell that starts with `=`, `+`,
  * `-` or `@` as a formula. Tables here can be filled from fetched web pages
- * (src/agent/fetch-url.ts), so a text cell like `=HYPERLINK(...)` is a realistic
+ * (src/access/fetch.ts), so a text cell like `=HYPERLINK(...)` is a realistic
  * input, not a theoretical one. Text cells starting with one of those
  * characters (or a tab / carriage return, which some readers strip before
  * evaluating) get a leading `'`, the OWASP-recommended neutraliser. Numbers are

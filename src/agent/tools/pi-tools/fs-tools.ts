@@ -19,7 +19,7 @@
  * --------------------------
  * - Every disk access goes through the `operations` a caller passes, and there
  *   is NO default that touches the disk directly. pi's operations are an
- *   optional override; here they are where src/agent/file-access.ts puts its checks
+ *   optional override; here they are where src/access/file-access.ts puts its checks
  *   and the deferred writes, and a tool built without them could skip both.
  * - pi's `resolveReadPath` retried macOS screenshot-name variants by probing
  *   the disk with `access` BEFORE any operation ran. Dropped: a probe of

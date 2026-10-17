@@ -2,7 +2,7 @@
 /** `read_attachment`: an upload's full content, a page at a time, or its table imported as a sheet. */
 
 import type { AgentTool } from '@earendil-works/pi-agent-core';
-import { tableForImport } from '../../fetch-url.ts';
+import { tableForImport } from '../fetched.ts';
 import { findAttachment, attachmentTable, readAttachmentPart } from '../attachments.ts';
 import { textResult } from '../tool-context.ts';
 import type { ToolContext } from '../tool-context.ts';
