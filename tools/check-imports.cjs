@@ -23,8 +23,10 @@
  *   Only the real failure mode — calling a sibling module's function without
  *   importing it — fits all three conditions.
  *
- * Verified against the real bug: tools/check-imports-selftest.cjs reintroduces
- * the missing import and expects this to fail.
+ * Verified against the real bug when it was written: with the missing import
+ * put back into app.js, this fails and names openModal. The self-test that did
+ * that rewrote app.js in place, was never part of `pnpm test`, and had stopped
+ * matching app.js's import line; it was removed rather than kept failing.
  */
 const fs = require('node:fs');
 const path = require('node:path');

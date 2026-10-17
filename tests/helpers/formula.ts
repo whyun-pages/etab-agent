@@ -1,17 +1,20 @@
 'use strict';
 /**
- * Minimal formula evaluator, scoped to what a shifted totals row needs.
+ * Minimal formula evaluator: a test oracle for the totals row.
  *
  * Why this exists
  * ---------------
- * When rows are inserted above a totals footer, the footer's SUM is rewritten
- * to cover the new rows — but the cached `<v>` beside it still holds the old
- * total. Excel recalculates on open (`fullCalcOnLoad="1"` is already written),
- * yet anything reading the file *without* Excel — our own preview, a downstream
- * parser, pandas, a spreadsheet library — sees the stale number and believes it.
+ * A totals cell is written as a formula WITH a cached value. Excel
+ * recalculates on open (`fullCalcOnLoad="1"` is written), but anything reading
+ * the file without Excel — our own preview, a downstream parser, pandas — sees
+ * the cached number and believes it. So the file must agree with itself:
+ * cached value equals the formula evaluated against the cells in the sheet.
+ * tests/workbook/workbook.test.ts checks exactly that, with this evaluator as
+ * the independent second opinion.
  *
- * So the generated file must be internally consistent on its own: cached value
- * equals the formula evaluated against the cells currently in the sheet.
+ * It used to live in src/, for rewriting a template's totals footer after rows
+ * were inserted above it. Templates are gone and nothing shipped calls it any
+ * more, so it lives with the tests it serves.
  *
  * Scope, deliberately narrow
  * --------------------------
@@ -26,8 +29,8 @@
 /**
  * The part of a parsed cell this evaluator looks at.
  *
- * Structural on purpose: `src/formats/xlsx.ts` owns the full cell shape, and importing
- * it here would make the evaluator depend on the XML layer for three fields.
+ * Structural on purpose: `src/formats/xlsx.ts` owns the full cell shape, and the
+ * oracle should not depend on the XML layer it is checking for three fields.
  */
 interface FormulaCell {
   ref: string;

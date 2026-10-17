@@ -418,7 +418,7 @@ async function main(): Promise<void> {
     console.log('sea.isSea()         = ' + (sea ? sea.isSea() : 'n/a'));
     console.log('embeddedKeys()      = ' + JSON.stringify(embeddedKeys()));
     console.log('staticDir           = ' + String(isPackaged() ? undefined : DEV_STATIC_DIR));
-    for (const p of ['/', '/index.html', '/css/app.css', '/sample/contract.xlsx']) {
+    for (const p of ['/', '/index.html', '/css/app.css', '/js/app.js']) {
       console.log(`assetKeyFor(${p.padEnd(22)}) = ${JSON.stringify(assetKeyFor(p))}`);
       const a = readAsset({ dir: isPackaged() ? undefined : DEV_STATIC_DIR, pathname: p });
       console.log(`   readAsset -> ${a ? a.body.length + ' bytes (' + a.type + ')' : 'null'}`);

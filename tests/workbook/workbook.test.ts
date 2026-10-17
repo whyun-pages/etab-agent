@@ -12,7 +12,7 @@ import test from 'node:test';
 import assert from 'node:assert';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { recomputeCachedValues } from '../../src/workbook/formula.ts';
+import { recomputeCachedValues } from '../helpers/formula.ts';
 import { readZip, readWorkbook } from '../../src/formats/xlsx.ts';
 
 import {

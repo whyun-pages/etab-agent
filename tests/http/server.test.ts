@@ -148,11 +148,11 @@ test('static serving refuses anything outside its root', async (t) => {
   const base = await startUiServer(t);
 
   for (const evil of [
-    '/../lib/server.js',
-    '/js/../../lib/xlsx.js',
-    '/..%2f..%2flib/zip.js',
+    '/../src/http/server.ts',
+    '/js/../../src/formats/xlsx.ts',
+    '/..%2f..%2fsrc/formats/zip.ts',
     '/package.json',
-    '/tools/make-sample.js', // a real file, just not under public/
+    '/tools/bundle.js', // a real file, just not under public/
   ]) {
     const res = await request(base, 'GET', evil);
     assert.strictEqual(res.status, 404, `${evil} must not be served`);
