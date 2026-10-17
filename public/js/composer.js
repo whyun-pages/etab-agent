@@ -30,9 +30,6 @@ let composing = false;
 /** The live textarea, or null before a composer has been built. */
 export const composer = () => node;
 
-/** True while the composer has an open IME composition. */
-export const isComposing = () => composing;
-
 /**
  * The composer for this session, built on first use.
  *
@@ -135,10 +132,6 @@ export function fillComposer(text) {
   }
   autoGrow(ta);
   return true;
-}
-
-export function setComposing(v) {
-  composing = Boolean(v);
 }
 
 /**

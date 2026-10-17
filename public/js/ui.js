@@ -1,8 +1,8 @@
 /* ════════════════════════════════════════════════════════════════════
-   Shell chrome: toasts, modal, command palette, drag overlay.
+   Shell chrome: toasts, modal, drag overlay.
    ════════════════════════════════════════════════════════════════════ */
 
-import { el, esc, iconBox } from './dom.js';
+import { el, esc } from './dom.js';
 import { icon } from './icons.js';
 
 // ── toasts ──────────────────────────────────────────────────────────
@@ -106,83 +106,6 @@ export function initModal() {
   for (const node of root.querySelectorAll('[data-close]')) {
     node.addEventListener('click', closeModal);
   }
-}
-
-// ── command palette ─────────────────────────────────────────────────
-
-/**
- * A filterable list of actions, in the style of an editor's quick-open.
- * @param {{items: Array<{id,label,sub,icon,run}>, placeholder?: string, emptyText?: string}} opts
- */
-export function openPalette({ items, placeholder = '输入以筛选…', emptyText = '没有匹配项' }) {
-  const list = el('ul', { class: 'palette__list' });
-  const input = el('input', { class: 'palette__input', placeholder, type: 'text', spellcheck: 'false' });
-
-  const wrap = el('div', {}, [input, list]);
-  const close = openModal({ title: '快速打开', body: wrap });
-  wrap.closest('.modal__box').classList.add('modal__box--palette');
-
-  let filtered = items;
-  let cursor = 0;
-
-  const paint = () => {
-    if (!filtered.length) {
-      list.replaceChildren(el('li', { class: 'empty', text: emptyText }));
-      return;
-    }
-    list.replaceChildren(
-      ...filtered.map((it, i) => {
-        const btn = el('button', {
-          class: `palette__item${i === cursor ? ' is-cursor' : ''}`,
-          type: 'button',
-          html:
-            `${iconBox(it.icon || 'file')}<span class="row__text"><span class="row__title">${esc(it.label)}</span>` +
-            `${it.sub ? `<span class="row__sub">${esc(it.sub)}</span>` : ''}</span>`,
-        });
-        btn.addEventListener('click', () => {
-          close();
-          it.run();
-        });
-        btn.addEventListener('mousemove', () => {
-          if (cursor === i) return;
-          cursor = i;
-          paint();
-        });
-        return el('li', {}, [btn]);
-      }),
-    );
-  };
-
-  const filter = () => {
-    const q = input.value.trim().toLowerCase();
-    filtered = !q ? items : items.filter((it) => `${it.label} ${it.sub || ''}`.toLowerCase().includes(q));
-    cursor = 0;
-    paint();
-  };
-
-  input.addEventListener('input', filter);
-  input.addEventListener('keydown', (e) => {
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      cursor = Math.min(cursor + 1, filtered.length - 1);
-      paint();
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      cursor = Math.max(cursor - 1, 0);
-      paint();
-    } else if (e.key === 'Enter') {
-      e.preventDefault();
-      const it = filtered[cursor];
-      if (it) {
-        close();
-        it.run();
-      }
-    }
-  });
-
-  paint();
-  setTimeout(() => input.focus(), 0);
-  return close;
 }
 
 // ── drag overlay ────────────────────────────────────────────────────

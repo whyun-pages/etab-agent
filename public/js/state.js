@@ -82,7 +82,7 @@ export const state = {
   /** Which surface is showing: 'chat' | 'settings'. */
   view: 'chat',
   /** Busy flags so buttons can disable and show a spinner. */
-  busy: { boot: false, sessions: false, turn: false, apply: false, settings: false, create: false, attach: false },
+  busy: { sessions: false, turn: false, apply: false, settings: false, create: false, attach: false },
   /** Free-form status line. */
   status: '就绪',
   /** Last error message, for the banner and toasts. */
@@ -106,7 +106,7 @@ export function subscribe(fn) {
   return () => listeners.delete(fn);
 }
 
-export function emit() {
+function emit() {
   for (const fn of listeners) {
     try {
       fn(state);
@@ -114,11 +114,6 @@ export function emit() {
       console.error('[render]', err);
     }
   }
-}
-
-/** The sidebar entry for the open session, if it is still listed. */
-export function activeSummary() {
-  return state.sessions.find((s) => s.id === state.activeId) || null;
 }
 
 /** True when a model is configured; nothing works without one. */

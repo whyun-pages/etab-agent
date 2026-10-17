@@ -10,7 +10,7 @@
    ════════════════════════════════════════════════════════════════════ */
 
 import { el } from '../dom.js';
-import { colName } from '../colname.js';
+import { colIndex, colName } from '../colname.js';
 
 /**
  * The grid last built, so a page of rows arriving at the bottom is appended to
@@ -254,12 +254,6 @@ function parseMerges(merges) {
   return map;
 }
 
-function colIndex(letters) {
-  let n = 0;
-  for (const ch of letters.toUpperCase()) n = n * 26 + (ch.charCodeAt(0) - 64);
-  return n;
-}
-
 function formatNumber(v) {
   if (Number.isInteger(v)) return new Intl.NumberFormat('zh-CN').format(v);
   return new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 4 }).format(v);
@@ -291,7 +285,7 @@ const CURRENCY = /[¥￥$€£]/;
  * @param {string|null} fmt
  * @returns {string}
  */
-export function formatCell(v, fmt) {
+function formatCell(v, fmt) {
   if (!fmt || fmt === 'General') return formatNumber(v);
   const bare = stripLiterals(fmt);
   // Percent first: it scales the value, so it has to be decided before any
