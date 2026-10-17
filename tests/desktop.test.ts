@@ -32,9 +32,23 @@ function desktop(t, args) {
 }
 
 test('a bad --port is refused by name, before anything starts', (t) => {
-  for (const args of [['--port', 'abc'], ['--port=70000'], ['--port']]) {
+  for (const [args, said] of [
+    [['--port', 'abc'], /--port 不是可用端口：abc/],
+    [['--port=70000'], /--port 不是可用端口：70000/],
+    // No value at all is a parse error, and says which flag it was.
+    [['--port'], /参数有误：.*--port/],
+  ]) {
     const r = desktop(t, ['--headless', '--new-instance', ...args]);
     assert.notStrictEqual(r.status, 0, `${args.join(' ')} exited 0`);
-    assert.match(r.stderr, /--port 不是可用端口/, `${args.join(' ')}: ${r.stderr}`);
+    assert.match(r.stderr, said, `${args.join(' ')}: ${r.stderr}`);
   }
+});
+
+test('an unknown or misspelled flag is refused, not ignored', (t) => {
+  // The hand-written parser skipped what it did not know: `--prot 4000`
+  // started on the defaults without a word.
+  const r = desktop(t, ['--headless', '--new-instance', '--prot', '4000']);
+  assert.notStrictEqual(r.status, 0);
+  assert.match(r.stderr, /参数有误：.*--prot/);
+  assert.match(r.stderr, /可用的参数：.*--port <值>/);
 });

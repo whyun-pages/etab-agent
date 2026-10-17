@@ -32,92 +32,37 @@
 
 import path from 'node:path';
 import { createServer } from './http/server.ts';
+import { parseFlags, repoRoot, resolvePort } from './entry.ts';
 import type { AddressInfo } from 'node:net';
 
-/** The flags this entry understands, after parsing. */
-interface Args {
-  /** `null` = absent from the command line; a port of 0 is meaningful. */
-  port: number | null;
-  host: string;
-  staticDir: string | null;
-  dataDir: string | null;
-}
+const args = parseFlags(process.argv.slice(2), {
+  port: { type: 'string', short: 'p' },
+  host: { type: 'string' },
+  static: { type: 'string' },
+  'data-dir': { type: 'string' },
+});
+const host = args.host ?? '127.0.0.1';
+const root = repoRoot(__dirname);
 
-function parseArgs(argv: string[]): Args {
-  const out: Args = {
-    // null means "not given on the command line", so the environment variable
-    // gets its turn. 0 is a legitimate value (bind any free port), which is why
-    // this cannot use a truthiness test.
-    port: null,
-    host: '127.0.0.1',
-    staticDir: null,
-    dataDir: null,
-  };
-  for (let i = 0; i < argv.length; i++) {
-    const a = argv[i];
-    if (a === '--port' || a === '-p') out.port = Number(argv[++i]);
-    else if (a.startsWith('--port=')) out.port = Number(a.slice(7));
-    else if (a === '--host') out.host = argv[++i];
-    else if (a.startsWith('--host=')) out.host = a.slice(7);
-    else if (a === '--static') out.staticDir = argv[++i];
-    else if (a.startsWith('--static=')) out.staticDir = a.slice(9);
-    else if (a === '--data-dir') out.dataDir = argv[++i];
-    else if (a.startsWith('--data-dir=')) out.dataDir = a.slice(11);
-  }
-  return out;
-}
-
-const args = parseArgs(process.argv.slice(2));
-// The repository root, which is not always `__dirname`. This file runs two
-// ways: as tsc output at `.build/js/server.js` (`pnpm start`), and as source
-// at `src/server.ts` (`pnpm start:dev`, via tsx) — two levels below the root
-// in the first case, one in the second. Taking `__dirname` as-is broke the
-// build run — no `public/` there, so every page was a 404 while `/api/health`
-// still answered. Hard-coding one depth broke the other, and worse, put `data/`
-// OUTSIDE the repository. So recognise the build tree by name instead.
-const root =
-  path.basename(__dirname) === 'js' && path.basename(path.dirname(__dirname)) === '.build'
-    ? path.join(__dirname, '..', '..')
-    : path.join(__dirname, '..');
-
-/**
- * Resolve the listening port.
- *
- * Explicit flag beats the environment, which beats the default. `0` is kept as
- * "let the OS choose" rather than being treated as unset, so a port of 0 from
- * any source still means the same thing.
- *
- * A value that is present but not a usable port number is fatal. Silently
- * binding 3179 because `TAB_AGENT_PORT=abc` was set would look like the
- * variable does not work at all.
- */
-function resolvePort(): number {
-  const fromEnv = process.env.TAB_AGENT_PORT;
-  const raw = args.port !== null ? args.port : fromEnv === undefined || fromEnv === '' ? 3179 : Number(fromEnv);
-  const source = args.port !== null ? '--port' : fromEnv ? 'TAB_AGENT_PORT' : '默认值';
-  if (!Number.isInteger(raw) || raw < 0 || raw > 65535) {
-    console.error(`${source} 不是可用端口：${args.port !== null ? args.port : fromEnv}（需要 0–65535 的整数）`);
-    process.exit(1);
-  }
-  return raw;
-}
-
-const port = resolvePort();
+// Flag, then TAB_AGENT_PORT, then 3179. A value that is present but not a
+// port is fatal: silently binding 3179 because `TAB_AGENT_PORT=abc` was set
+// would look like the variable does not work at all.
+const port = resolvePort(args.port, 3179);
 
 // Precedence mirrors desktop.js: explicit flag, then the environment variable,
 // then the in-repo default.
-const dataDir = args.dataDir
-  ? path.resolve(args.dataDir)
+const dataDir = args['data-dir']
+  ? path.resolve(args['data-dir'])
   : process.env.TAB_AGENT_HOME
     ? path.resolve(process.env.TAB_AGENT_HOME)
     : path.join(root, 'data');
 
 const server = createServer({
   dataDir,
-  staticDir: args.staticDir ? path.resolve(args.staticDir) : path.join(root, 'public'),
+  staticDir: args.static ? path.resolve(args.static) : path.join(root, 'public'),
 });
 
-server.listen(port, args.host, () => {
+server.listen(port, host, () => {
   // The callback runs only once the socket is bound, so `address()` is an
   // AddressInfo and never the string/null forms its type also allows.
   const addr = server.address() as AddressInfo;

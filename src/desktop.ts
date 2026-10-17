@@ -37,25 +37,20 @@ import http from 'node:http';
 import { spawn } from 'node:child_process';
 import { createServer } from './http/server.ts';
 import { isPackaged, embeddedKeys, readAsset, assetKeyFor } from './platform/assets.ts';
+import { parseFlags, repoRoot, resolvePort } from './entry.ts';
 import type { AddressInfo } from 'node:net';
 import type { ChildProcess } from 'node:child_process';
 
-// Where a development run reads the UI from. Unpackaged, this file runs either
-// as tsc output at `.build/js/desktop.js` (`public/` two levels up) or as source
-// at `src/desktop.ts` via tsx (`public/` one level up) — the same split as
-// `root` in server.ts, and
-// recognised the same way. Only meaningful unpackaged: a SEA build reads its
-// assets from the executable, and `__dirname` there points inside the blob.
-const DEV_STATIC_DIR =
-  path.basename(__dirname) === 'js' && path.basename(path.dirname(__dirname)) === '.build'
-    ? path.join(__dirname, '..', '..', 'public')
-    : path.join(__dirname, '..', 'public');
+// Where a development run reads the UI from. Only meaningful unpackaged: a
+// SEA build reads its assets from the executable, and `__dirname` there
+// points inside the blob.
+const DEV_STATIC_DIR = path.join(repoRoot(__dirname), 'public');
 
 /** The flags this entry understands, after parsing. */
 interface Args {
   headless: boolean;
-  /** `null` = absent from the command line; a port of 0 is meaningful. */
-  port: number | null;
+  /** As given on the command line, or undefined; resolvePort checks it. */
+  port: string | undefined;
   dataDir: string | null;
   host: string;
   debugAssets: boolean;
@@ -64,34 +59,26 @@ interface Args {
   extensions: boolean;
 }
 
-/** Parse the handful of flags this entry understands. */
+/** Parse the handful of flags this entry understands; anything else is an error. */
 function parseArgs(argv: string[]): Args {
-  const out: Args = {
-    // null means "not given on the command line", so the environment variable
-    // gets its turn. 0 is meaningful (let the OS choose) and must not be
-    // confused with "unset".
-    headless: false,
-    port: null,
-    dataDir: null,
-    host: '127.0.0.1',
-    debugAssets: false,
-    newInstance: false,
-    extensions: process.env.TAB_AGENT_EXTENSIONS === '1',
+  const f = parseFlags(argv, {
+    headless: { type: 'boolean' },
+    'debug-assets': { type: 'boolean' },
+    'new-instance': { type: 'boolean' },
+    extensions: { type: 'boolean' },
+    port: { type: 'string', short: 'p' },
+    host: { type: 'string' },
+    'data-dir': { type: 'string' },
+  });
+  return {
+    headless: Boolean(f.headless),
+    port: f.port,
+    dataDir: f['data-dir'] ?? null,
+    host: f.host ?? '127.0.0.1',
+    debugAssets: Boolean(f['debug-assets']),
+    newInstance: Boolean(f['new-instance']),
+    extensions: Boolean(f.extensions) || process.env.TAB_AGENT_EXTENSIONS === '1',
   };
-  for (let i = 0; i < argv.length; i++) {
-    const a = argv[i];
-    if (a === '--headless') out.headless = true;
-    else if (a === '--debug-assets') out.debugAssets = true;
-    else if (a === '--new-instance') out.newInstance = true;
-    else if (a === '--extensions') out.extensions = true;
-    else if (a === '--port' || a === '-p') out.port = Number(argv[++i]);
-    else if (a.startsWith('--port=')) out.port = Number(a.slice(7));
-    else if (a === '--host') out.host = argv[++i];
-    else if (a.startsWith('--host=')) out.host = a.slice(7);
-    else if (a === '--data-dir') out.dataDir = argv[++i];
-    else if (a.startsWith('--data-dir=')) out.dataDir = a.slice(11);
-  }
-  return out;
 }
 
 /**
@@ -183,35 +170,6 @@ function listen(server: http.Server, port: number, host: string): Promise<Addres
     // AddressInfo here and never the string/null forms its type also allows.
     server.listen(port, host, () => resolve(server.address() as AddressInfo));
   });
-}
-
-/**
- * Resolve the listening port: flag, then environment, then 0 (OS picks).
- *
- * 0 stays meaningful throughout — it is how the app asks the OS for a free
- * port, and it must not be confused with "unset". A value that is present but
- * unusable is fatal rather than quietly ignored: binding a port nobody asked
- * for is indistinguishable from the variable not working.
- */
-function resolvePort(args: Args): number {
-  const fromEnv = process.env.TAB_AGENT_PORT;
-  if (args.port !== null) {
-    // Checked like the variable. Unchecked, `--port abc` (or a trailing
-    // `--port` with nothing after it) handed NaN to listen(), which failed
-    // with ERR_SOCKET_BAD_PORT instead of saying which setting was wrong.
-    if (!Number.isInteger(args.port) || args.port < 0 || args.port > 65535) {
-      console.error(`--port 不是可用端口：${args.port}（需要 0–65535 的整数）`);
-      process.exit(1);
-    }
-    return args.port;
-  }
-  if (fromEnv === undefined || fromEnv === '') return 0;
-  const n = Number(fromEnv);
-  if (!Number.isInteger(n) || n < 0 || n > 65535) {
-    console.error(`TAB_AGENT_PORT 不是可用端口：${fromEnv}（需要 0–65535 的整数）`);
-    process.exit(1);
-  }
-  return n;
 }
 
 // ------------------------------------------------------------ single instance
@@ -465,7 +423,8 @@ async function main(): Promise<void> {
   const staticDir = isPackaged() ? undefined : DEV_STATIC_DIR;
 
   const server = createServer({ dataDir, staticDir });
-  const addr = await listen(server, resolvePort(args), args.host);
+  // Flag, then TAB_AGENT_PORT, then 0: the OS picks a free port.
+  const addr = await listen(server, resolvePort(args.port, 0), args.host);
   const url = `http://${addr.address === '::' ? '127.0.0.1' : addr.address}:${addr.port}`;
 
   publishInstance(dataDir, addr.port);
