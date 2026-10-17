@@ -243,6 +243,52 @@ test('a slow server runs into the deadline', async () => {
   }
 });
 
+test('a compressed body that stalls half-way still runs into the deadline', async () => {
+  // The regression: the decoder was attached with `.pipe()`, which does not
+  // pass an abort on. The deadline tore the request down and the gunzip stream
+  // waited for an end that never came, so the fetch — and the turn — hung.
+  const gz = zlib.gzipSync(Buffer.alloc(50_000, 'a'));
+  let stall;
+  const srv = await serve((req, res) => {
+    res.setHeader('content-type', 'text/plain');
+    res.setHeader('content-encoding', 'gzip');
+    res.write(gz.subarray(0, gz.length >> 1));
+    stall = setTimeout(() => res.end(gz.subarray(gz.length >> 1)), 5000);
+    req.on('close', () => clearTimeout(stall));
+  });
+  try {
+    const started = Date.now();
+    await assert.rejects(fetchUrl(`${srv.base}/a.txt`, { ...open, timeoutMs: 300 }), /秒内没有完成/);
+    assert.ok(Date.now() - started < 2000, `took ${Date.now() - started} ms`);
+  } finally {
+    clearTimeout(stall);
+    await srv.close();
+  }
+});
+
+test('hitting the size cap on a compressed body closes the connection', async () => {
+  // Destroying only the decoder left the socket open, still receiving.
+  let closed;
+  const gone = new Promise((r) => {
+    closed = r;
+  });
+  const chunk = zlib.gzipSync(Buffer.alloc(1_000_000, 'a'));
+  const srv = await serve((req, res) => {
+    res.setHeader('content-type', 'text/plain');
+    res.setHeader('content-encoding', 'gzip');
+    // One gzip member, then silence: the cap is crossed inside it.
+    res.write(chunk);
+    res.on('close', closed);
+  });
+  try {
+    await assert.rejects(fetchUrl(`${srv.base}/a.txt`, { ...open, maxBytes: 100_000, timeoutMs: 5000 }), /上限/);
+    const result = await Promise.race([gone.then(() => 'closed'), new Promise((r) => setTimeout(r, 1500, 'open'))]);
+    assert.strictEqual(result, 'closed', 'the server still had the connection');
+  } finally {
+    await srv.close();
+  }
+});
+
 test('file names come from the URL, else from the Content-Type', () => {
   assert.strictEqual(
     filenameFor(new URL('https://x.com/a/%E6%8A%A5%E8%A1%A8.xlsx'), 'application/octet-stream'),

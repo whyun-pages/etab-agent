@@ -36,7 +36,9 @@ import dns from 'node:dns';
 import net from 'node:net';
 import path from 'node:path';
 import zlib from 'node:zlib';
-import type { Readable } from 'node:stream';
+import { Writable } from 'node:stream';
+import type { Readable, Transform } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import { readAttachment, TABLE_EXT, TEXT_EXT } from '../formats/attachments.ts';
 import { TYPES } from '../workbook/workbook.ts';
 import type { CellValue } from '../workbook/workbook.ts';
@@ -335,32 +337,41 @@ function request(url: URL, opts: FetchOptions, signal: AbortSignal): Promise<Hop
   });
 }
 
-function decoded(hop: Hop): Readable {
+function decoderFor(hop: Hop): Transform | null {
   const enc = String(hop.headers['content-encoding'] || '')
     .trim()
     .toLowerCase();
-  if (enc === 'gzip' || enc === 'x-gzip') return hop.body.pipe(zlib.createGunzip());
-  if (enc === 'deflate') return hop.body.pipe(zlib.createInflate());
-  if (enc === 'br') return hop.body.pipe(zlib.createBrotliDecompress());
-  return hop.body;
+  if (enc === 'gzip' || enc === 'x-gzip') return zlib.createGunzip();
+  if (enc === 'deflate') return zlib.createInflate();
+  if (enc === 'br') return zlib.createBrotliDecompress();
+  return null;
 }
 
-function readCapped(stream: Readable, max: number): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    let size = 0;
-    stream.on('data', (c: Buffer) => {
-      size += c.length;
-      if (size > max) {
-        stream.destroy();
-        reject(new FetchError(`内容超过 ${Math.round(max / 1024 / 1024)} MB 上限，没有读取。`));
-        return;
-      }
-      chunks.push(c);
-    });
-    stream.on('end', () => resolve(Buffer.concat(chunks)));
-    stream.on('error', reject);
+/**
+ * The body, decoded, up to `max` decoded bytes.
+ *
+ * `pipeline` and not `.pipe()`: `.pipe()` passes data downstream but not
+ * errors or aborts, so when the deadline fired mid-way through a compressed
+ * body the request was torn down and the decoder simply waited, forever — the
+ * tool never returned and the turn hung on it. `pipeline` destroys every stage
+ * when the signal aborts or any stage fails, which also closes the connection
+ * when the cap is hit (destroying the decoder alone left it open).
+ */
+async function readBody(hop: Hop, max: number, signal: AbortSignal): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+  let size = 0;
+  const sink = new Writable({
+    write(chunk: Buffer, _enc, done) {
+      size += chunk.length;
+      if (size > max) return done(new FetchError(`内容超过 ${Math.round(max / 1024 / 1024)} MB 上限，没有读取。`));
+      chunks.push(chunk);
+      done();
+    },
   });
+  const decoder = decoderFor(hop);
+  if (decoder) await pipeline(hop.body, decoder, sink, { signal });
+  else await pipeline(hop.body, sink, { signal });
+  return Buffer.concat(chunks);
 }
 
 /** Fetch a URL under every rule above. */
@@ -392,7 +403,7 @@ export async function fetchUrl(raw: string, opts: FetchOptions = {}): Promise<Fe
         hop.body.resume();
         throw new FetchError(`服务器返回 HTTP ${hop.status}。`);
       }
-      const bytes = await readCapped(decoded(hop), maxBytes);
+      const bytes = await readBody(hop, maxBytes, ctrl.signal);
       const contentType = String(hop.headers['content-type'] || '');
       return { url: url.href, status: hop.status, contentType, bytes, filename: filenameFor(url, contentType) };
     }
