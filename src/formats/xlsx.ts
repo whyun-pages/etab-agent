@@ -55,12 +55,6 @@ export function tagText(xml: string, tag: string): string | null {
   return m ? m[1] : null;
 }
 
-/** Read an attribute off the first occurrence of `<tag ... >`. */
-export function tagAttr(xml: string, tag: string, attr: string): string | null {
-  const m = xml.match(new RegExp('<' + tag + '\\b[^>]*\\b' + attr + '="([^"]*)"'));
-  return m ? unescapeXml(m[1]) : null;
-}
-
 // -------------------------------------------------------------- column/address
 
 export interface CellRef {

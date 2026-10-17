@@ -52,7 +52,7 @@ export const TEXT_EXT = new Set([
   '.py',
 ]);
 export const TABLE_EXT = new Set(['.xlsx', '.xlsm', '.xls', '.csv', '.tsv']);
-export const IMAGE_EXT = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.tif', '.tiff']);
+const IMAGE_EXT = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.tif', '.tiff']);
 /**
  * Everything `readAttachment` reads into something useful. Used to choose the
  * members of an archive or a folder worth reading: the rest (executables,

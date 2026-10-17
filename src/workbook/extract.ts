@@ -1,14 +1,15 @@
 'use strict';
 /**
- * Text-to-value extraction.
- *
- * Model-independent. Deterministic, auditable, and works offline. Every value
- * that lands in a cell comes from one of these paths, and the extraction
- * returns evidence for each field so the UI can show where a number came from.
+ * Reading a cell value out of text: numbers (Chinese numerals and scales
+ * included), dates and yes/no. `coerce` in workbook.ts calls these when a
+ * value arrives as text for a typed column.
  *
  * Deliberately NOT an LLM wrapper: a spreadsheet cell is a commitment. Parsing
- * numbers, dates and labels in code means the same prompt always produces the
- * same workbook, and a wrong value is traceable to a rule rather than a mood.
+ * in code means the same input always gives the same cell, and a wrong value
+ * is traceable to a rule rather than a mood.
+ *
+ * The label-driven half of this file — find the number after 合同金额：, the
+ * text after 客户： — served the template engine, and went with it.
  */
 
 // ---------------------------------------------------------------- normalise
@@ -175,59 +176,9 @@ export function parseNumber(token: string): ParsedNumber | null {
   return { value, raw: s, scale, hadCurrency, percent };
 }
 
-/**
- * Detect whether a candidate token is plausibly a number rather than a stray
- * character lifted from a name. Used to reject 三 in 张三 while keeping ¥三.
- */
-export function looksNumericToken(raw: string): boolean {
-  const s = normalizeText(raw).trim();
-  if (!s) return false;
-  // An explicit currency mark or unit makes even a bare numeral a number.
-  if (CURRENCY_MARKS.test(s) || /元|万|萬|亿|億|千|百/.test(s) || /%/.test(s)) return true;
-  // ASCII digits are always a number.
-  if (/\d/.test(s)) return true;
-  // A bare Chinese numeral is a number only if the caller asked for one; here
-  // we require at least two numeral characters to avoid name fragments.
-  return /^[零〇一二两三四五六七八九十百千壹贰叁肆伍陆柒捌玖拾佰仟]+$/.test(s) && s.length >= 2;
-}
-
-/** Find the number that appears nearest after a label occurrence. */
-export function numberNear(
-  text: string,
-  label: string,
-  { searchWindow = 60 }: { searchWindow?: number } = {},
-): ParsedNumber | null {
-  const norm = normalizeText(text);
-  const idx = norm.indexOf(normalizeText(label));
-  if (idx === -1) return null;
-
-  const after = norm.slice(idx + label.length, idx + label.length + searchWindow);
-  const m =
-    /[:=\s]*(?:金额|总价|价格|是|为|约)?\s*([¥$€£￥]?\s*-?[\d零〇一二两三四五六七八九十百千壹贰叁肆伍陆柒捌玖拾佰仟萬亿.,]+(?:\.\d+)?\s*[万亿萬千百仟]?\s*%?(?:\s*元)?)/.exec(
-      after,
-    );
-  if (m && looksNumericToken(m[1])) {
-    const parsed = parseNumber(m[1]);
-    if (parsed) return parsed;
-  }
-  // Fall back to the nearest number anywhere in the same line.
-  const lineStart = norm.lastIndexOf('\n', idx) + 1;
-  const lineEnd = norm.indexOf('\n', idx);
-  const line = norm.slice(lineStart, lineEnd === -1 ? norm.length : lineEnd);
-  const all = [...line.matchAll(/[¥$€£￥]?\s*-?\d[\d,]*(?:\.\d+)?\s*[万亿萬]?%?/g)];
-  if (all.length) {
-    // `index` is always set on matchAll results; the optional type is an
-    // artifact of the RegExpExecArray shape.
-    const best = all.find((mm) => mm.index! >= idx - lineStart) || all[all.length - 1];
-    const parsed = parseNumber(best[0]);
-    if (parsed) return parsed;
-  }
-  return null;
-}
-
 // -------------------------------------------------------------------- dates
 
-export const DATE_RE = /(\d{4})\s*[-/.年]\s*(\d{1,2})\s*(?:[-/.月]\s*(\d{1,2})\s*日?)?/g;
+const DATE_RE = /(\d{4})\s*[-/.年]\s*(\d{1,2})\s*(?:[-/.月]\s*(\d{1,2})\s*日?)?/g;
 
 /** Parse a date, tolerating 2026年3月1日 / 2026-03-01 / 2026/03/01 / 20260301. */
 export function parseDate(token: string, today?: string): Date | null {
@@ -274,78 +225,11 @@ function base(today: string | undefined): Date | undefined {
   return m ? new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))) : undefined;
 }
 
-/** A date found next to a label, with the text that produced it. */
-interface DateNear {
-  date: Date | null;
-  raw: string;
-  index: number;
-}
-
-/** Find the date nearest after a label. Returns null when the label is absent. */
-export function dateNear(text: string, label: string, window = 40): DateNear | null {
-  const norm = normalizeText(text);
-  const idx = norm.indexOf(normalizeText(label));
-  if (idx === -1) return null;
-  const scope = norm.slice(idx + String(label).length, idx + String(label).length + window);
-  const m = new RegExp(DATE_RE.source).exec(scope);
-  if (m) return { date: parseDate(m[0]), raw: m[0], index: m.index };
-  const any = /(\d{4}\s*[-/.年]\s*\d{1,2}(?:\s*[-/.月]\s*\d{1,2}\s*日?)?)/.exec(scope);
-  if (any) return { date: parseDate(any[1]), raw: any[1], index: any.index };
-  return null;
-}
-
-// -------------------------------------------------------------- text values
-
-/** Quote characters a user might wrap a value in. */
-const QUOTE_CHARS = /["'“”‘’「」『』《》]/g;
-
-/**
- * Read the value after a label: "客户：北京某某公司" → 北京某某公司.
- * Stops at a separator, a newline, or the next label-looking token.
- */
-export function textAfterLabel(
-  text: string,
-  label: string,
-  { maxLength = 80, stopWords = [] }: { maxLength?: number; stopWords?: string[] } = {},
-): string | null {
-  const norm = normalizeText(text);
-  const idx = norm.indexOf(normalizeText(label));
-  if (idx === -1) return null;
-
-  let rest = norm.slice(idx + String(label).length);
-  // Drop a leading separator.
-  rest = rest.replace(/^[\s:=\-—是为一]+/, '');
-  if (!rest) return null;
-
-  // Stop at line end or a clear field separator.
-  const stops = [rest.search(/[\n\r]/), rest.search(/[,;]/), rest.search(/\s{3,}/)];
-  const candidates = stops.filter((i) => i >= 0);
-  let end = candidates.length ? Math.min(...candidates) : rest.length;
-
-  // Also stop before a following label pattern such as "金额:" or "日期:".
-  // Run this before the trailing-punctuation strip so a bare bracketed suffix
-  // does not hide a following label.
-  const nextLabel = /[,;]?\s*[\u4e00-\u9fa5A-Za-z]{1,8}\s*[:：]/.exec(rest.slice(0, maxLength * 2));
-  if (nextLabel && nextLabel.index >= 0) end = Math.min(end, nextLabel.index);
-
-  for (const w of stopWords) {
-    // Compare on the normalised form so callers can pass full-width text.
-    const wi = rest.indexOf(normalizeText(w));
-    if (wi > 0) end = Math.min(end, wi);
-  }
-
-  let value = rest.slice(0, end).trim();
-  value = value.replace(QUOTE_CHARS, '').trim();
-  if (!value) return null;
-  if (value.length > maxLength) value = value.slice(0, maxLength).trim();
-  return value;
-}
-
-// ------------------------------------------------------------- enumerated
+// ---------------------------------------------------------------- booleans
 
 /** Decide yes/no for boolean-ish columns, honouring negatives. */
-export const AFFIRMATIVE = /^(是|对|有|要|需要|已|已完成|启用|有效|true|yes|y|1|续约|续签)$/i;
-export const NEGATIVE = /^(否|不|没有|无|未|未完成|停用|无效|false|no|n|0|不续约|不续签)$/i;
+const AFFIRMATIVE = /^(是|对|有|要|需要|已|已完成|启用|有效|true|yes|y|1|续约|续签)$/i;
+const NEGATIVE = /^(否|不|没有|无|未|未完成|停用|无效|false|no|n|0|不续约|不续签)$/i;
 
 export function parseBoolean(token: string): boolean | null {
   const s = normalizeText(token).trim();
@@ -353,28 +237,5 @@ export function parseBoolean(token: string): boolean | null {
   if (NEGATIVE.test(s)) return false;
   if (/不[续签约]|不再|停止|取消|作废/.test(s)) return false;
   if (/续[签约]|继续|保持/.test(s)) return true;
-  return null;
-}
-
-/**
- * Match free text against a column's known enum values.
- * Returns the canonical option so a written cell is consistent with the template.
- */
-export function matchEnum(token: unknown, options: string[] | null | undefined): string | null {
-  if (!token || !options || !options.length) return null;
-  const t = normalizeText(token).trim();
-  for (const opt of options) {
-    if (normalizeText(opt).trim() === t) return opt;
-  }
-  for (const opt of options) {
-    const o = normalizeText(opt).trim();
-    if (t.includes(o) || o.includes(t)) return opt;
-  }
-  const byBool = parseBoolean(t);
-  if (byBool !== null) {
-    for (const opt of options) {
-      if (parseBoolean(opt) === byBool) return opt;
-    }
-  }
   return null;
 }

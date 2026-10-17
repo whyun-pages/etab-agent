@@ -116,7 +116,7 @@ import { modelFromSecrets, MAX_OUTPUT_TOKENS } from './model.ts';
  * constructor type here.
  */
 const { stripReasoning, LlmError, createClocks, toLlmError, textOf, isEmptyReply, EMPTY_REPLY } = llm;
-const { validateSpec, specStats, MAX_ROWS, TYPES } = workbook;
+const { validateSpec, specStats, TYPES } = workbook;
 
 /** What the user's message asks for. */
 export const INTENT = {
@@ -1869,6 +1869,3 @@ export function proseReply(raw: string): ProseReply {
   ).test(text);
   return { reply: text, claimed };
 }
-
-/** Rows a spec may hold before the model is asked to trim. Exposed for the UI. */
-export const ROW_LIMIT = MAX_ROWS;

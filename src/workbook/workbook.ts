@@ -54,24 +54,10 @@
 
 import { parseNumber, parseChineseNumber, parseDate, parseBoolean } from './extract.ts';
 import { cellRef, colName } from '../formats/xlsx.ts';
-import { writeFreshWorkbook } from '../formats/xlsx-writer.ts';
-
-// Style indices are a contract with src/formats/xlsx-writer.ts's buildStylesXml().
-// Set by number here only because importing the writer from the spec layer
-// would make a pure data module depend on the XML layer.
-export const STYLE = {
-  DEFAULT: 0,
-  HEADER: 1,
-  NUMBER: 2,
-  DATE: 3,
-  CURRENCY: 4,
-  PERCENT: 5,
-  INTEGER: 6,
-  TOTAL: 7,
-  CURRENCY_TOTAL: 8,
-  PERCENT_TOTAL: 9,
-  LINK: 10,
-} as const;
+// STYLE is the writer's: the indices are a contract with its buildStylesXml().
+// This file kept a copy once, to keep the spec layer off the XML layer, but it
+// already calls the writer, and two tables can drift.
+import { STYLE, writeFreshWorkbook } from '../formats/xlsx-writer.ts';
 
 /** A style index understood by src/formats/xlsx-writer.ts. */
 export type StyleIndex = (typeof STYLE)[keyof typeof STYLE];
