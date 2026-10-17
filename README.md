@@ -18,7 +18,7 @@
 和 pnpm（版本见 `package.json` 的 `packageManager`，`corepack enable` 可自动对齐）。
 
 ```powershell
-pnpm install                    # 运行时依赖 pi-agent（pi-agent-core / pi-ai），开发依赖
+pnpm install                    # 运行时依赖 pi-agent（pi-agent-core / pi-ai）、Koa、re2js，开发依赖
                                 # typescript / tsx / esbuild / @types/node / postject，
                                 # 外加测试里做独立对照的 exceljs
 pnpm start --port 3179          # 先跑 tsc，再启动 .build/js/server.js

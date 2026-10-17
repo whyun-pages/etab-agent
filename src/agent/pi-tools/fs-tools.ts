@@ -29,6 +29,9 @@
  *   `find` always takes the caller's `glob`, and `grep` searches in-process
  *   over the files the caller's `files` yields. Neither claims to honour
  *   .gitignore any more, because neither does.
+ * - `grep` matches with RE2 (re2js), which is linear-time like ripgrep's
+ *   engine. In-process, a backtracking RegExp would let one model-chosen
+ *   pattern block the event loop for the whole server.
  * - `write` and `edit` may return a note from `writeFile`, appended to the
  *   result. A write that is only recorded, to land after the turn, must not
  *   tell the model "Successfully wrote".
@@ -40,6 +43,7 @@
 
 import nodePath from 'node:path';
 import os from 'node:os';
+import { RE2JS } from 're2js';
 import { fileURLToPath } from 'node:url';
 import type { AgentTool, AgentToolResult } from '@earendil-works/pi-agent-core';
 import type { ImageContent, TextContent } from '@earendil-works/pi-ai';
@@ -545,10 +549,14 @@ export function createGrepTool(Type: TypeBuilder, cwd: string, ops: GrepOperatio
       }
       const contextValue = p.context && p.context > 0 ? p.context : 0;
       const effectiveLimit = Math.max(1, p.limit ?? GREP_DEFAULT_LIMIT);
-      const source = p.literal ? p.pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') : p.pattern;
-      let re: RegExp;
+      // RE2, not RegExp: the pattern is the model's, and a backtracking engine
+      // on the main thread lets one pattern like (a+)+$ freeze the server for
+      // every request. RE2 runs in linear time. Like ripgrep, which pi used, it
+      // has no lookaround or backreferences, and says so.
+      const source = p.literal ? RE2JS.quote(p.pattern) : p.pattern;
+      let re: RE2JS;
       try {
-        re = new RegExp(source, p.ignoreCase ? 'i' : '');
+        re = RE2JS.compile(source, p.ignoreCase ? RE2JS.CASE_INSENSITIVE : 0);
       } catch (e) {
         throw new Error(`Invalid regex: ${(e as Error).message}`);
       }

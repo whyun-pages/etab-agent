@@ -160,6 +160,24 @@ test('grep: path:line output, glob filter, context, and the blocklist', async (t
   assert.strictEqual(await k.grep({ pattern: '.', literal: true, path: s.docs }), 'No matches found');
 });
 
+test('grep: a pathological pattern cannot stall the server', async (t) => {
+  // The pattern is the model's. With RegExp, (a+)+$ against a run of a's that
+  // ends in something else backtracks exponentially — 32 of them is minutes of
+  // a blocked event loop. RE2 answers in linear time.
+  const s = scratch(t);
+  fs.writeFileSync(path.join(s.docs, 'long.txt'), `${'a'.repeat(32)}!\n`);
+  const k = await turnTools(s);
+  const started = Date.now();
+  assert.strictEqual(await k.grep({ pattern: '(a+)+$', path: path.join(s.docs, 'long.txt') }), 'No matches found');
+  assert.ok(Date.now() - started < 1000, `took ${Date.now() - started} ms`);
+});
+
+test('grep: what RE2 cannot do is refused with a reason, not run', async (t) => {
+  const s = scratch(t);
+  const k = await turnTools(s);
+  await assert.rejects(k.grep({ pattern: '签(?=收)', path: s.docs }), /Invalid regex/);
+});
+
 test('the shell tool runs a command and reports a failing exit code', async () => {
   const { ai } = await loadPi();
   const tool =
