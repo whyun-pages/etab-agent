@@ -21,7 +21,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { writeSpec } from './workbook.ts';
+import { columnTotal, totalsLabelColumn, writeSpec } from './workbook.ts';
 import type { CellValue, SheetSpec, WorkbookSpec } from './workbook.ts';
 
 export const EXPORT_FORMATS = ['xlsx', 'csv', 'json'] as const;
@@ -108,15 +108,9 @@ function totalsRow(sheet: SheetSpec): CellValue[] | null {
   if (!t || !t.enabled || !sheet.rows.length) return null;
   const width = Math.max(1, sheet.columns.length);
   const row: CellValue[] = new Array(width).fill(null);
-  const labelAt = t.sumColumns.includes(0) ? (t.sumColumns.find((i) => i > 0) ?? 0) : 0;
-  row[labelAt] = t.label || '合计';
-  for (const i of t.sumColumns) {
-    if (i === labelAt) continue;
-    row[i] = sheet.rows.reduce((sum, r) => {
-      const v = r[i];
-      return sum + (typeof v === 'number' && Number.isFinite(v) ? v : 0);
-    }, 0);
-  }
+  const labelAt = totalsLabelColumn(t, width);
+  if (labelAt !== null) row[labelAt] = t.label || '合计';
+  for (const i of t.sumColumns) row[i] = columnTotal(sheet.rows, i);
   return row;
 }
 

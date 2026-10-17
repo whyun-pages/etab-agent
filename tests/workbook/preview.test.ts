@@ -234,3 +234,60 @@ test('specPreview: reports its size like the windowed path, and is never cut', (
   assert.strictEqual(p.totalRows, 101);
   assert.strictEqual(p.truncated, false);
 });
+
+// ── where the totals label goes ─────────────────────────────────────
+
+import { sheetToCsv } from '../../src/workbook/export.ts';
+
+/** Three columns, a and b summed — c is the first one free for the label. */
+const totalsSpec = (sumColumns) =>
+  normalizeSpec({
+    title: 't',
+    sheets: [
+      {
+        name: 'S',
+        columns: [
+          { header: 'a', type: 'number' },
+          { header: 'b', type: 'number' },
+          { header: 'c', type: 'text' },
+        ],
+        rows: [
+          [1, 2, 'x'],
+          [3, 4, 'y'],
+        ],
+        totals: { enabled: true, sumColumns },
+      },
+    ],
+  }).spec;
+
+test('the totals label takes the first column that is not summed, in every output', () => {
+  // The regression: with column A summed, all three outputs put the label on
+  // the next SUMMED column, so B's total of 6 vanished under 合计.
+  const spec = totalsSpec(['a', 'b']);
+  assert.deepStrictEqual(sheetPreview(writeSpec(spec), 'S').rows.at(-1), [4, 6, '合计'], 'xlsx');
+  assert.deepStrictEqual(specPreview(spec).rows.at(-1), [4, 6, '合计'], 'preview');
+  assert.strictEqual(sheetToCsv(spec.sheets[0]).trim().split('\r\n').at(-1), '4,6,合计', 'csv');
+});
+
+test('with every column summed, the sums stay and there is no label', () => {
+  const spec = normalizeSpec({
+    title: 't',
+    sheets: [
+      {
+        name: 'S',
+        columns: [
+          { header: 'a', type: 'number' },
+          { header: 'b', type: 'number' },
+        ],
+        rows: [
+          [1, 2],
+          [3, 4],
+        ],
+        totals: { enabled: true, sumColumns: ['a', 'b'] },
+      },
+    ],
+  }).spec;
+  assert.deepStrictEqual(sheetPreview(writeSpec(spec), 'S').rows.at(-1), [4, 6], 'xlsx');
+  assert.deepStrictEqual(specPreview(spec).rows.at(-1), [4, 6], 'preview');
+  assert.strictEqual(sheetToCsv(spec.sheets[0]).trim().split('\r\n').at(-1), '4,6', 'csv');
+});

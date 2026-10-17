@@ -796,6 +796,31 @@ export function validateSpec(spec: WorkbookSpec): ValidateResult {
   return { ok: blocking.length === 0, blocking, warnings };
 }
 
+// ------------------------------------------------------------------ totals
+
+/**
+ * Where the totals label goes: the first column that is not itself summed.
+ * `null` when every column is summed — the sums are the point of the row, so
+ * none of them gives way to the word 合计.
+ *
+ * Shared by the xlsx writer, the CSV/JSON export and the preview. They each
+ * had their own rule once, and all three were wrong the same way when column A
+ * was summed: the label landed on the next SUMMED column and its total was
+ * dropped (or, in the preview, the label was).
+ */
+export function totalsLabelColumn(totals: TotalsSpec, width: number): number | null {
+  for (let i = 0; i < width; i++) if (!totals.sumColumns.includes(i)) return i;
+  return null;
+}
+
+/** The total of column `i`: finite numbers only, anything else counts as 0. */
+export function columnTotal(rows: CellValue[][], i: number): number {
+  return rows.reduce<number>((sum, r) => {
+    const v = r[i];
+    return sum + (typeof v === 'number' && Number.isFinite(v) ? v : 0);
+  }, 0);
+}
+
 // ------------------------------------------------------------------ sheet
 
 /**
@@ -845,32 +870,27 @@ export function toSheet(sheet: SheetSpec): SheetForWriter {
   const totals = sheet.totals || { enabled: false, label: '', sumColumns: [] };
   if (totals.enabled && rows.length) {
     totalRow = rows.length + 2;
-    const labelCol = totals.sumColumns.includes(0) ? (totals.sumColumns.find((i) => i > 0) ?? 0) : 0;
-    // Label sits in the first column that is not itself summed, or column A.
-    const putLabel = totals.sumColumns.includes(0) ? labelCol : 0;
-    cells.push({
-      ref: cellRef(putLabel + 1, totalRow),
-      col: putLabel + 1,
-      row: totalRow,
-      value: totals.label || '合计',
-      styleIndex: STYLE.HEADER,
-    });
+    const labelCol = totalsLabelColumn(totals, width);
+    if (labelCol !== null) {
+      cells.push({
+        ref: cellRef(labelCol + 1, totalRow),
+        col: labelCol + 1,
+        row: totalRow,
+        value: totals.label || '合计',
+        styleIndex: STYLE.HEADER,
+      });
+    }
 
     for (const i of totals.sumColumns) {
-      if (i === putLabel) continue;
       const letter = colName(i + 1);
       const first = 2;
       const last = rows.length + 1;
       const formula = `SUM(${letter}${first}:${letter}${last})`;
-      const total = rows.reduce((sum, r) => {
-        const v = r[i];
-        return sum + (typeof v === 'number' && Number.isFinite(v) ? v : 0);
-      }, 0);
       cells.push({
         ref: cellRef(i + 1, totalRow),
         col: i + 1,
         row: totalRow,
-        value: total,
+        value: columnTotal(rows, i),
         formula,
         styleIndex: totalStyleFor(columns[i]),
       });
@@ -945,11 +965,7 @@ function columnWidths(
       widest = Math.max(widest, cellChars(r[i], c && c.type) + 2);
     }
     if (totals.enabled && totals.sumColumns.includes(i) && rows.length) {
-      const sum = rows.reduce(
-        (s, r) => s + (typeof r[i] === 'number' && Number.isFinite(r[i]) ? (r[i] as number) : 0),
-        0,
-      );
-      widest = Math.max(widest, cellChars(sum, c && c.type) + 2);
+      widest = Math.max(widest, cellChars(columnTotal(rows, i), c && c.type) + 2);
     }
     out.push({ min: i + 1, max: i + 1, width: Math.max(AUTO_MIN, Math.min(AUTO_MAX, widest)) });
   }

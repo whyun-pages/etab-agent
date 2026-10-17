@@ -17,7 +17,7 @@
  * format behind a value that renders identically either way.
  */
 
-import { dateToSerial } from './workbook.ts';
+import { columnTotal, dateToSerial, totalsLabelColumn } from './workbook.ts';
 import * as xlsx from '../formats/xlsx.ts';
 
 /**
@@ -199,15 +199,11 @@ export function specPreview(spec: WorkbookSpec | null | undefined): PreviewGrid 
   const totals = sheet.totals || { enabled: false, label: '', sumColumns: [] };
   if (totals.enabled && dataRows.length) {
     const labelRow: PreviewValue[] = cols.map(() => null);
-    const labelCol = (totals.sumColumns || []).includes(0) ? 1 : 0;
-    labelRow[labelCol] = totals.label || '合计';
+    const labelCol = totalsLabelColumn(totals, cols.length);
+    if (labelCol !== null) labelRow[labelCol] = totals.label || '合计';
     const fmtRow: Array<string | null> = cols.map(() => null);
-    for (const i of totals.sumColumns || []) {
-      const v = dataRows.reduce((sum: number, r) => {
-        const cell = r[i];
-        return sum + (typeof cell === 'number' && Number.isFinite(cell) ? cell : 0);
-      }, 0);
-      labelRow[i] = v;
+    for (const i of totals.sumColumns) {
+      labelRow[i] = columnTotal(dataRows, i);
       fmtRow[i] = numFmtForType(cols[i] && cols[i].type);
     }
     rows.push(labelRow);
