@@ -20,8 +20,8 @@ import { applyOps } from '../../workbook/spec-ops.ts';
 import { exportSpec, isExportFormat, ExportError } from '../../workbook/export.ts';
 import { PREVIEW_PAGE_ROWS, MAX_PAGE_ROWS } from '../../workbook/preview.ts';
 import { previewOf, previewSource } from '../app-state.ts';
-import { fail, jsonBody, bodyOf, contentDisposition, messageOf, sessionOr404, noSession } from './http.ts';
-import { publicSession } from './views.ts';
+import { fail, jsonBody, bodyOf, contentDisposition, messageOf, sessionOr404, noSession } from '../respond.ts';
+import { publicSession } from '../projections.ts';
 import type { RouteDeps } from './index.ts';
 
 type Session = import('../../store/session-store.ts').Session;

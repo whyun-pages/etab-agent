@@ -13,7 +13,7 @@ import { isFileAccessMode, FILE_ACCESS_MODES } from '../../agent/file-access.ts'
 import { isModelApi } from '../../agent/model.ts';
 import { parseBlocklist } from '../../agent/fetch-url.ts';
 import { chat, stripReasoning } from '../../agent/llm.ts';
-import { fail, jsonBody, bodyOf, isLocalRequest, messageOf } from './http.ts';
+import { fail, jsonBody, bodyOf, isLocalRequest, messageOf } from '../respond.ts';
 import type { RouteDeps } from './index.ts';
 
 type SettingsPatch = import('../../store/settings.ts').SettingsPatch;

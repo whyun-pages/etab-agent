@@ -147,7 +147,8 @@ silently went from atomic to racy.
 `src/` is layered; a module imports only from its own layer or below:
 
 ```
-http/       Koa app, per-process AppState, routes/
+http/       Koa app, per-process AppState, respond.ts (the shared answers),
+            projections.ts (what the client is shown), routes/
 agent/      the turn, model access (llm, model, pi), fetch, local file access, pi-tools/
 store/      settings, session-store — state on disk, each behind its own SerialQueue
 workbook/   spec validation and writing, spec-ops, table-query, preview, export

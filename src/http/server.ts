@@ -27,7 +27,7 @@ import { AppState } from './app-state.ts';
 import type { Extractor, PiModel } from './app-state.ts';
 import { createRouter } from './routes/index.ts';
 import { serveStatic } from './routes/static.ts';
-import { fail, messageOf, safeFilename } from './routes/http.ts';
+import { fail, messageOf, safeFilename } from './respond.ts';
 
 type SettingsLike = import('../store/settings.ts').Settings;
 type FetchOptions = import('../agent/fetch-url.ts').FetchOptions;

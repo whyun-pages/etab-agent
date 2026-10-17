@@ -4,12 +4,12 @@
  * something out on purpose; the comments say what and why.
  */
 
-import { specStats } from '../../workbook/workbook.ts';
-import { isOpenable } from '../../platform/open-file.ts';
-import type { Attachment, UploadedAttachment } from '../app-state.ts';
+import { specStats } from '../workbook/workbook.ts';
+import { isOpenable } from '../platform/open-file.ts';
+import type { Attachment, UploadedAttachment } from './app-state.ts';
 
-type Session = import('../../store/session-store.ts').Session;
-type StoredMessage = import('../../store/session-store.ts').StoredMessage;
+type Session = import('../store/session-store.ts').Session;
+type StoredMessage = import('../store/session-store.ts').StoredMessage;
 
 /**
  * A session as the client sees it.

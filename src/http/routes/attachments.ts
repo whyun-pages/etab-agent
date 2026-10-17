@@ -22,8 +22,8 @@ import { ingestFile } from '../../ingest/ingest.ts';
 import { isOpenable } from '../../platform/open-file.ts';
 import { safeId as safeSessionId } from '../../store/session-store.ts';
 import type { AppState, Extractor, UploadedAttachment } from '../app-state.ts';
-import { fail, isLocalRequest, safeFilename, messageOf, sessionOr404 } from './http.ts';
-import { publicUpload } from './views.ts';
+import { fail, isLocalRequest, safeFilename, messageOf, sessionOr404 } from '../respond.ts';
+import { publicUpload } from '../projections.ts';
 import type { RouteDeps } from './index.ts';
 
 /** Per request, and per file: an upload is at most this big. */

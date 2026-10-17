@@ -7,7 +7,7 @@
 
 import { bodyParser } from '@koa/bodyparser';
 import type { Context, Middleware } from 'koa';
-import type { Session } from '../../store/session-store.ts';
+import type { Session } from '../store/session-store.ts';
 
 /** Every failure answers this shape, so the UI reads one field for the reason. */
 export function fail(ctx: Context, status: number, message: string, extra?: Record<string, unknown>): void {

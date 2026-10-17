@@ -20,8 +20,8 @@ import { exportSpec, writeExports } from '../../workbook/export.ts';
 import { specStats } from '../../workbook/workbook.ts';
 import { previewOf } from '../app-state.ts';
 import type { AppState, UploadedAttachment } from '../app-state.ts';
-import { fail, jsonBody, bodyOf, isLocalRequest, messageOf, sessionOr404, noSession } from './http.ts';
-import { publicAttachment, publicMessages, publicSession } from './views.ts';
+import { fail, jsonBody, bodyOf, isLocalRequest, messageOf, sessionOr404, noSession } from '../respond.ts';
+import { publicAttachment, publicMessages, publicSession } from '../projections.ts';
 import type { RouteDeps } from './index.ts';
 
 type WorkbookSpec = import('../../workbook/workbook.ts').WorkbookSpec;
