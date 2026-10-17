@@ -4,6 +4,7 @@ import assert from 'node:assert';
 import { fixtureA } from '../helpers/fixtures.ts';
 import { readWorkbook, writeZip, readZip, escapeXml, unescapeXml, numFmtCodeFor } from '../../src/formats/xlsx.ts';
 import { writeWorkbook, writeSimpleSheet, CellBuilder, formatNumber } from '../../src/formats/xlsx-writer.ts';
+import { normalizeSpec, writeSpec } from '../../src/workbook/workbook.ts';
 
 // ------------------------------------------------------------------- builder
 test('CellBuilder emits the right cell kind for each value type', () => {
@@ -230,4 +231,27 @@ test('the workbook part is declared, or Microsoft Excel refuses the file', () =>
     types,
     /<Override PartName="\/xl\/workbook\.xml" ContentType="application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet\.main\+xml"\/>/,
   );
+});
+
+test('writing a large table of distinct strings is linear, not quadratic', () => {
+  // Each new string used to be looked up with indexOf over the whole shared
+  // table: 1,000 x 60 distinct strings took 12.6 s and 5,000 x 60 over five
+  // minutes, all of it on the event loop. With the table indexed it is about
+  // a second; the limit here only has to tell the two apart.
+  const rows = 3000;
+  const cols = 60;
+  const spec = normalizeSpec({
+    title: 't',
+    sheets: [
+      {
+        name: 'S',
+        columns: Array.from({ length: cols }, (_, c) => `c${c}`),
+        rows: Array.from({ length: rows }, (_, r) => Array.from({ length: cols }, (_, c) => `v${r}-${c}`)),
+      },
+    ],
+  }).spec;
+  const started = Date.now();
+  const bytes = writeSpec(spec);
+  assert.ok(Date.now() - started < 30_000, `took ${Date.now() - started} ms`);
+  assert.ok(bytes.length > 1_000_000);
 });

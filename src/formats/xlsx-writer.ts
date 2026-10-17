@@ -71,7 +71,14 @@ export class CellBuilder {
     this.shared = shared;
     this.styleIndex = styleIndex;
     this.reuseShared = reuseShared;
+    // Every string already in the table, at its first index (what indexOf
+    // returned). Looked up here and nowhere else: a scan of `shared` for each
+    // new string made writing quadratic — 1,000 x 60 distinct strings took
+    // 12.6 s, 2,000 x 60 took 44 s, on the event loop, every download.
     this._intern = new Map();
+    shared.forEach((s, i) => {
+      if (!this._intern.has(s)) this._intern.set(s, i);
+    });
   }
 
   /** Shared element assembly for the two structured cell kinds. */
@@ -139,11 +146,8 @@ export class CellBuilder {
     if (this.reuseShared) {
       let idx = this._intern.get(text);
       if (idx === undefined) {
-        idx = this.shared.indexOf(text);
-        if (idx === -1) {
-          idx = this.shared.length;
-          this.shared.push(text);
-        }
+        idx = this.shared.length;
+        this.shared.push(text);
         this._intern.set(text, idx);
       }
       return `<c${ref}${styleAttr} t="s">${formula}<v>${idx}</v></c>`;
@@ -761,7 +765,9 @@ export function writeSimpleSheet({
       });
     });
   });
-  const maxCol = Math.max(1, ...rows.map((r) => r.length));
+  // A loop, not Math.max(...rows): spreading every row as an argument
+  // overflows the stack once there are a few hundred thousand of them.
+  const maxCol = rows.reduce((m, r) => Math.max(m, r.length), 1);
   return writeWorkbook({
     sheets: [
       {
