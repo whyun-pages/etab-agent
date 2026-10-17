@@ -10,8 +10,10 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { writeZip } = require('../lib/zip');
-const { XML_HEADER, NS_MAIN } = require('../lib/xlsx-writer');
+// Let a plain `node` run of this script require the TypeScript source.
+require('tsx/cjs');
+const { writeZip } = require('../src/formats/zip.ts');
+const { XML_HEADER, NS_MAIN } = require('../src/formats/xlsx-writer.ts');
 
 // ── styles ──────────────────────────────────────────────────────────
 // Index map, referenced by the `s=` attributes in the sheet below.

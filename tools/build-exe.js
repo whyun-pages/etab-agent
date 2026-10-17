@@ -4,7 +4,7 @@
  *
  * Pipeline:
  *   0. compile TypeScript into .build/js/ (tsc -p tsconfig.json)
- *   1. bundle desktop.js, lib/*.js and the npm dependencies into one CommonJS
+ *   1. bundle desktop.js, the compiled src/ modules and the npm dependencies into one CommonJS
  *      script with esbuild (a packaged executable's own require resolves
  *      builtins only, so the graph must be joined before it is embedded; see
  *      tools/bundle.js)
@@ -97,7 +97,7 @@ async function main() {
   }
 
   step(1, 'bundle modules');
-  // Bundle from the COMPILED tree: lib/*.js live there, not next to the .ts.
+  // Bundle from the COMPILED tree: the .js modules live there, not next to the .ts.
   // `pnpm bundle` (tools/verify-bundle.js) checks the same bundle much harder,
   // including running it far from node_modules; this step only refuses an
   // external it cannot explain.

@@ -11,7 +11,7 @@
   分组（可按表达式分组，如 `MONTH([下单日期])`），`saveAs` 把结果做成新工作表；`delete_rows` 支持
   `where` 按条件删；新增 `update_rows`（按条件改成固定值）、`compute_column`（按表达式算一列，
   如 `[单价]*[数量]`）、`lookup_columns`（按关键列跨表带入，类似 VLOOKUP）。条件和表达式在
-  服务端重放时按存盘的表重新求值。表达式是自带的小语言（[lib/table-query.ts](lib/table-query.ts)），
+  服务端重放时按存盘的表重新求值。表达式是自带的小语言（[src/workbook/table-query.ts](src/workbook/table-query.ts)），
   不经过 `eval`，没有取当前时间的函数。
 - **附件全文**：消息里的附件仍只带预览，模型用 `read_attachment` 分页读取全部行或文本、整张导入。
   之前 910 行的表只能看到 5 行，模型会让用户把数据粘贴过来。
@@ -68,8 +68,11 @@
 - 只返回整段 JSON、不支持流式输出的接口会明确报错（以前能读这种响应；pi-ai 只读事件流）。
 - 运行时不再零依赖：新增 pi-agent 两个包。打包改用 esbuild，exe 体积基本不变（约 92 MB）。
 - HTTP 层改用 Koa（`koa`、`@koa/router`、`@koa/bodyparser`、`@koa/multer`）：原来 `lib/server.ts`
-  里一个 700 行的请求处理函数拆成 `lib/routes/` 下按领域划分的路由，手写的 multipart 解析由 multer
+  里一个 700 行的请求处理函数拆成 `src/http/routes/` 下按领域划分的路由，手写的 multipart 解析由 multer
   取代。接口路径和返回格式不变；请求体不是合法 JSON 时改为返回 400（以前是 500）。
+- 源码从平铺的 `lib/` 移到 `src/` 下的分层目录（`formats` / `workbook` / `agent` / `store` /
+  `platform` / `http`），三个入口也在 `src/` 里；编译产物的位置和 `etab` 命令不变。测试改成 TypeScript，
+  直接跑源码，不用先编译。只影响开发，不影响使用。
 
 - 默认数据目录从 `TabAgent` 改名为 `ETabAgent`（如 Windows 上的 `%APPDATA%\ETabAgent\`）。
   旧目录不会自动迁移：升级后需重新填写模型设置，历史会话留在旧目录中，可手动拷贝或删除。

@@ -14,7 +14,7 @@
 
 ## 快速开始
 
-需要 Node 24 及以上（测试用的 `tools/dev-resolve.js` 依赖 `module.registerHooks`）
+需要 Node 24 及以上
 和 pnpm（版本见 `package.json` 的 `packageManager`，`corepack enable` 可自动对齐）。
 
 ```powershell
@@ -24,12 +24,30 @@ pnpm install                    # 运行时依赖 pi-agent（pi-agent-core / pi-
 pnpm start --port 3179          # 先跑 tsc，再启动 .build/js/server.js
 ```
 
-源码是 `server.ts` / `desktop.ts` / `lib/**/*.ts`，仓库里没有可以直接 `node` 的 `.js`。
-HTTP 层是 [Koa](https://koajs.com/)：`lib/server.ts` 组装应用，接口按领域分在 `lib/routes/` 下。
+源码全部在 `src/` 下（TypeScript），仓库里没有可以直接 `node` 的 `.js`：
+
+```
+src/
+  cli.ts server.ts desktop.ts   入口：npm bin、HTTP 服务、桌面窗口
+  formats/    zip / xlsx / xlsx-writer / xls 编解码，attachments 把上传文件读成文本或行
+  workbook/   spec 校验与落笔、编辑操作（spec-ops）、表查询、预览、导出、公式
+  agent/      一轮对话（agent）、模型接入（llm / model / pi）、抓取、本机文件访问、pi-tools/
+  store/      settings、session-store：落盘的状态，各自带串行队列
+  platform/   SEA 资源读取、用系统默认程序打开文件
+  http/       Koa 应用（server）、进程内状态（app-state）、routes/
+public/       前端，原样作为静态资源（打包时嵌进 exe）
+tests/        node:test 单元与接口测试（.ts，经 tsx 直接跑源码）
+.verify/      本机才能跑的端到端检查，按用途分目录（见「验证」）
+tools/        构建、打包与静态检查脚本
+```
+
+依赖方向自上而下：`http` → `agent` / `store` → `workbook` → `formats`，`platform` 谁都可以用。
+同一层的 `agent` 和 `store` 之间有引用：`store/settings` 校验时要用 `agent/` 里协议和文件访问模式的定义。
+HTTP 层是 [Koa](https://koajs.com/)：`src/http/server.ts` 组装应用，接口按领域分在 `src/http/routes/` 下。
 `pnpm start` 和 `pnpm desktop` 启动前都会先编译（`prestart` / `predesktop`），
 跑的永远是最新代码；直接 `node .build/js/server.js` 则需要自己先 `pnpm build:js`。
 
-`pnpm start:dev` 用 tsx 直接跑 `server.ts`，省掉编译步骤。它只擦类型、不做类型检查，
+`pnpm start:dev` 用 tsx 直接跑 `src/server.ts`，省掉编译步骤。它只擦类型、不做类型检查，
 而且跑的是 esbuild 的转译结果而不是 `tsc` 的产物——出现「开发正常、打包后不对」时，
 先用 `pnpm start` 复现。
 
@@ -91,7 +109,7 @@ pnpm start
 
 | 闸 | 位置 | 作用 |
 |---|---|---|
-| `looksLikeWork` | [lib/agent.ts](lib/agent.ts) | 便宜的预筛，结果报给调用方。 |
+| `looksLikeWork` | [src/agent/agent.ts](src/agent/agent.ts) | 便宜的预筛，结果报给调用方。 |
 | 意图由结构推出 | 同上 | 不再让模型自报意图：有编辑工具成功执行才是 `action`，调用了 `ask_user` 是 `question`，其余都是 `answer`。纯文本没有任何途径改表；关闭「允许修改」时连编辑工具都不提供。 |
 | `guardChange` | 同上 | 确定性校验，在本轮结束时对**累计结果**判一次：不看模型怎么说，只看草稿和本轮开始时的表比少了多少行。十次小删除按一次大删除算。 |
 
@@ -99,7 +117,7 @@ pnpm start
 可执行的修改」）、工具参数写错（报错交回模型自己改）、改出结构性破坏（被拦下并说明原因）。
 
 落盘时也不直接写回本轮算出的 spec：服务端在会话存储的队列槽里，把本轮的操作列表
-**重放**到最新的表上（[lib/spec-ops.ts](lib/spec-ops.ts) 是纯函数，没有并发时结果完全一致）。
+**重放**到最新的表上（[src/workbook/spec-ops.ts](src/workbook/spec-ops.ts) 是纯函数，没有并发时结果完全一致）。
 两轮对话同时进行时，后完成的那轮不会抹掉先完成那轮的修改；行号已经对不上时，
 本轮修改不落盘，并在回复里说明。
 
@@ -149,7 +167,7 @@ OpenAI 兼容协议默认按保守的兼容设置发请求（系统提示用 `sy
   同名文件不覆盖，自动加 ` (1)`、` (2)`。
 - **CSV** 带 UTF-8 BOM（Excel 打开中文不乱码）、CRLF 换行；以 `=` `+` `-` `@` 开头的文本单元格
   前面加 `'`，防止 Excel 把抓来的内容当公式执行。合计行按 xlsx 的同一算法写成数值。
-- **抓取的安全限制**（[lib/fetch-url.ts](lib/fetch-url.ts)）：只允许 http/https；回环、私网、
+- **抓取的安全限制**（[src/agent/fetch-url.ts](src/agent/fetch-url.ts)）：只允许 http/https；回环、私网、
   链路本地等地址一律拒绝，检查发生在实际连接时（DNS 重绑定绕不过），每次重定向都重新检查，
   最多 5 次；20 秒超时；正文上限 5 MB（按解压后计）。不走系统代理。
 - **风险：** 抓取是黑名单模式，不限制能访问哪些网站。抓到的网页可能藏着诱导模型的文字，
@@ -168,12 +186,12 @@ OpenAI 兼容协议默认按保守的兼容设置发请求（系统提示用 `sy
 | 禁止访问的路径 | 空 | 每行一个：文件夹路径（连同里面的内容）或文件名模式（`*.bak`） |
 
 - 文件工具是 [pi](https://github.com/earendil-works/pi) 的 `read`、`write`、`edit`、`ls`、`find`、`grep`、
-  `bash`/`powershell`，源码移植在 [lib/pi-tools/](lib/pi-tools/)（MIT），每次磁盘访问都经过下面的检查。
+  `bash`/`powershell`，源码移植在 [src/agent/pi-tools/](src/agent/pi-tools/)（MIT），每次磁盘访问都经过下面的检查。
   `find`、`grep` 在进程内实现，不下载也不调用 `fd`、`ripgrep`。
 - 在对话里给出完整路径（`D:\tmp\box3.zip 统计订单状态`）即可，相对路径以用户主目录为准。`read` 读文本和图片；
   表格要统计时用 `import_file`：读文件、文件夹（最多 4 层、100 个文件、共 200 MB）或 zip，
   读到的每个文件成为会话附件，之后用 `query_table` 统计。
-- **始终禁止**（不能在设置里去掉，见 [lib/file-access.ts](lib/file-access.ts)）：`~/.ssh` 等密钥目录、
+- **始终禁止**（不能在设置里去掉，见 [src/agent/file-access.ts](src/agent/file-access.ts)）：`~/.ssh` 等密钥目录、
   浏览器配置、Windows 凭据、系统目录、本程序的数据目录（存着 API key），以及 `*.pem`、`id_rsa*`、
   `.env` 等文件名。检查在解析符号链接之后进行；`\\` 开头的网络共享路径一律拒绝（在 Windows 上
   访问它就会把当前用户的 NTLM 凭据发给对方）。
@@ -255,16 +273,16 @@ pnpm build                         # -> dist/TabAgent.exe（约 90 MB）
 **打包是怎么回事**（[tools/build-exe.js](tools/build-exe.js)）：
 
 0. **编译 TypeScript。** 直接跑 `tsc -p tsconfig.json`（和 `pnpm build:js`
-   同一条命令），把 `lib/*.ts` 和两个入口发射成 `.build/js/` 下的 CommonJS
+   同一条命令），把 `src/**/*.ts` 发射成 `.build/js/` 下的 CommonJS
    `.js`（`module: nodenext` + `package.json` 的 `type: commonjs`），顺带做一次类型检查。这一层曾经是
    `stripTypeScriptTypes`，但它只擦类型不改模块语法，`export` 会留在产物里而
    打包器把它包进函数体直接语法报错。
-1. **合并模块。** SEA 的 `require` 只认内置模块，`require('./lib/x')` 会报
+1. **合并模块。** SEA 的 `require` 只认内置模块，`require('./http/server.js')` 会报
    `ERR_UNKNOWN_BUILTIN_MODULE`。[tools/bundle.js](tools/bundle.js) 用 esbuild
    把项目模块和 npm 依赖（pi-agent 是纯 ESM，经 `import()` 加载）合并成一个
    CommonJS 文件，约 3.7 MB。pi-ai 里设置页没有开放的 provider（Bedrock、Mistral、
    Vertex 等）被替换成占位模块，不打进去。
-2. **内嵌资源。** `public/` 下 16 个文件作为 SEA assets 嵌入，`lib/assets.ts` 用
+2. **内嵌资源。** `public/` 下 16 个文件作为 SEA assets 嵌入，`src/platform/assets.ts` 用
    `sea.getAsset()` 读。
 3. 生成 manifest → 4. 生成 blob → 5. 复制 `node.exe` 并注入（postject）。
 
@@ -289,42 +307,47 @@ git push origin v0.1.0
 标签必须是 `vX.Y.Z` 格式，且和 `package.json` 的 `version` 一致，否则直接失败——
 没有别的东西在保持这两者同步。
 
-`.verify/live-*.js` 不在 CI 里：它们要开真实的 Edge 窗口、用 CDP 发真实鼠标事件，
+`.verify/` 不在 CI 里：它们要开真实的 Edge 窗口、用 CDP 发真实鼠标事件，
 还依赖 PowerShell 和已登录的桌面会话，托管 runner 都没有。
 
 ## 验证
 
 ```powershell
 pnpm typecheck                   # tsc --noEmit
-pnpm build:js                    # 先编译（测试跑在 .build/js，pnpm test 不会自动编译）
-pnpm test                        # 静态导入检查 + 341 项核心测试
+pnpm test                        # 静态导入检查 + 核心测试（tsx 直接跑 src/，不用先编译）
 pnpm bundle                      # 合并器：外部依赖只剩内置模块和已知可选包；探针包拷到没有
                                  # node_modules 的临时目录里，真跑一次请求和一轮带工具调用的对话
 pnpm verify:live                 # 先重新打包 exe，再跑真机探针子集（需要 Windows 桌面 + Edge + 已配模型）
 ```
 
-`pnpm test` 先跑 `.verify/check-imports.cjs`：前端 ES 模块如果调用了一个没导入的
+`pnpm test` 先跑 `tools/check-imports.cjs`：前端 ES 模块如果调用了一个没导入的
 名字，只有用户点到那个按钮时才会炸，这一步把它提前到测试里。
 
-`lib/` 只放 TypeScript 源，**没有 `.js` 双胞胎**。运行树是 `.build/js/`，由
-`tsc`（`pnpm build:js`）生成；`lib/*.ts` 是唯一源。测试和 `.verify/` 之所以能继续写
-`require('../lib/x')`，是因为 `tools/dev-resolve.js`（Node 24 的
-`module.registerHooks`）在解析期把它重定向到构建树——测试因此一个字都不用改，
-构建布局也不渗进测试。开发入口不需要这个钩子：编译产物之间的相对 `require`
-本来就落在 `.build/js/` 里。
+`src/` 只放 TypeScript 源，**没有 `.js` 双胞胎**。运行树是 `.build/js/`，由
+`tsc`（`pnpm build:js`）生成。测试是 `.ts`，`import` 的就是 `src/` 里的源文件，
+经 tsx 运行——编辑器里能跳转、有类型提示，改完源码不用编译就能重跑。
+`tests/tsconfig.json` 只给编辑器和手动 `tsc -p tests` 用，不是严格模式，也不卡 `pnpm test`。
+
+代价是测试不再经过编译产物。只有产物会出的问题（`.ts` → `.js` 的说明符改写、
+`src/agent/pi.ts` 里保留的动态 `import()`、产物里缺模块）由 `pnpm bundle` 兜住：
+它从 `.build/js/` 打包，再拿到没有 node_modules 的目录里真跑。CI 和发布流程都在测试后跑它。
 
 Windows 注意：`node --test tests/` 不认目录，必须写 glob。
 
 `.verify/` 是 pnpm workspace 的子包，唯一的依赖 exceljs 随根目录的 `pnpm install`
-一起装好（CI 用 `--filter tab-agent` 跳过它，因为这些探针不在 CI 里跑）。
-里面的探针分两类，都值得跑：
+一起装好（CI 用 `--filter tab-agent` 跳过它，因为这些检查不在 CI 里跑）。
+脚本直接 `node .verify/<目录>/<脚本>.js` 运行；要用源码的脚本自己在开头加载 `tsx/cjs`。
+按用途分目录：
 
-- **离线对照** — `verify.js` 用 exceljs 独立实现比对同一份输入；
-  `workbook-verify.js` 比对落笔结果。
-- **真机** — `live-agent.js` / `live-session-api.js` / `live-save-fetch-model.js` / `live-save-fetch.js` / `live-ui.js` /
-  `live-attachments.js` / `live-port.js` / `live-exe.js` / `live-click.js`。
-  这一类打的是真实 HTTP、真实进程、真实模型，用 CDP 发真实鼠标事件
-  （不是 `element.click()`——那个跳过命中测试，有浮层盖着也发现不了）。
+| 目录 | 内容 | 需要 |
+|---|---|---|
+| `node/` | 真实 HTTP / 真实进程，不开浏览器：会话路由、附件路由、端口、并发写、settings 队列（含 sabotage 反证） | 仅 Node |
+| `external/` | 用 exceljs 这个独立实现对照：`verify.js` 比对同一份输入，`workbook-verify.js` 比对落笔结果 | exceljs |
+| `browser/` | 开发服务器 + 真 Edge，用 CDP 发真实鼠标键盘事件（不是 `element.click()`——那个跳过命中测试，有浮层盖着也发现不了）；模型是假的 | Windows + Edge |
+| `model/` | 同上，但接用户本机配置的真实模型 | 另需已配模型 |
+| `exe/` | 针对打包好的 `dist/TabAgent.exe`：资源、窗口、单实例、生命周期 | 先 `pnpm build` |
+| `shots/` | 截图与测量，产出图片，不判对错 | Windows + Edge |
+| `support/` | 共用代码（CDP、假模型 transport）和清理残留进程 / 窗口的脚本 | — |
 
 ## 已知限制
 

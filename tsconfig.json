@@ -6,7 +6,7 @@
     "types": ["node"],
 
     "outDir": ".build/js",
-    "rootDir": ".",
+    "rootDir": "src",
     "allowImportingTsExtensions": true,
     "rewriteRelativeImportExtensions": true,
     "erasableSyntaxOnly": true,
@@ -23,6 +23,6 @@
 
     "resolveJsonModule": true
   },
-  "include": ["lib/**/*.ts", "cli.ts", "desktop.ts", "server.ts"],
+  "include": ["src/**/*.ts"],
   "exclude": ["node_modules", ".build", "dist", ".verify", ".Trash", "public"]
 }

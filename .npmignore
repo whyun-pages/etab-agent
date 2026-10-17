@@ -1,9 +1,6 @@
 # Source (compiled output in .build/js/ is what ships)
 *.ts
-lib/
-server.ts
-desktop.ts
-cli.ts
+src/
 tsconfig.json
 
 # Development & build tooling

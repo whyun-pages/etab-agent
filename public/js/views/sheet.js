@@ -327,7 +327,7 @@ function looksLikeDate(fmt) {
   return /[yYdD]/.test(bare);
 }
 
-/** Excel serial to a Date, using the same 1899-12-30 epoch as lib/workbook.js. */
+/** Excel serial to a Date, using the same 1899-12-30 epoch as src/workbook/workbook.ts. */
 function serialToDate(serial) {
   const ms = Math.round(serial * 86400000);
   const d = new Date(Date.UTC(1899, 11, 30) + ms);

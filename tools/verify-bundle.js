@@ -6,7 +6,7 @@
  *   1. the shipped entry bundles, and every import left for runtime is a Node
  *      builtin or a known optional package (see OPTIONAL)
  *   2. every protocol the settings panel offers has a stream implementation
- *      in lib/pi.ts
+ *      in src/agent/pi.ts
  *   3. the bundled server code RUNS somewhere with no node_modules at all: a
  *      probe bundle is copied to a temp directory outside the repository and
  *      driven in a child process — one plain call and one full agent turn
@@ -65,10 +65,10 @@ async function main() {
   for (const w of r.warnings) console.log(`     warning: ${w}`);
 
   console.log('\n===== 2) offered protocols have a stream implementation =====');
-  const { MODEL_APIS } = require(path.join(BUILT, 'lib', 'model.js'));
-  const { apis } = await require(path.join(BUILT, 'lib', 'pi.js')).loadPi();
+  const { MODEL_APIS } = require(path.join(BUILT, 'agent', 'model.js'));
+  const { apis } = await require(path.join(BUILT, 'agent', 'pi.js')).loadPi();
   for (const api of MODEL_APIS) {
-    check(`${api} is in lib/pi.ts's stream table`, apis.has(api), 'import its .lazy module in loadPi');
+    check(`${api} is in src/agent/pi.ts's stream table`, apis.has(api), 'import its .lazy module in loadPi');
   }
 
   console.log('\n===== 3) bundled server code runs with no node_modules =====');
@@ -76,11 +76,11 @@ async function main() {
   try {
     const entry = path.join(ROOT, '.build', 'bundle-probe-entry.js');
     fs.writeFileSync(entry, [
-      "exports.server = require('./js/lib/server.js');",
-      "exports.llm = require('./js/lib/llm.js');",
-      "exports.agent = require('./js/lib/agent.js');",
-      "exports.pi = require('./js/lib/pi.js');",
-      "exports.model = require('./js/lib/model.js');",
+      "exports.server = require('./js/http/server.js');",
+      "exports.llm = require('./js/agent/llm.js');",
+      "exports.agent = require('./js/agent/agent.js');",
+      "exports.pi = require('./js/agent/pi.js');",
+      "exports.model = require('./js/agent/model.js');",
       '',
     ].join('\n'));
     await bundle({ entry, outfile: path.join(dir, 'probe-bundle.js') });
@@ -123,8 +123,8 @@ const report = (label, ok, detail) => console.log((ok ? 'ok ' : 'FAIL ') + label
     report('probe bundle loads', false, e.message);
     return;
   }
-  report('lib/server exports createServer', typeof b.server.createServer === 'function');
-  report('lib/server exports AppState', typeof b.server.AppState === 'function');
+  report('src/http/server exports createServer', typeof b.server.createServer === 'function');
+  report('src/http/server exports AppState', typeof b.server.AppState === 'function');
 
   // A fake OpenAI-compatible provider: the first call of a turn asks for a
   // tool, the second answers in text.

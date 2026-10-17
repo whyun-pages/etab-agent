@@ -33,7 +33,7 @@ HTTP server with a model call in the middle of it. Model calls already take
 seconds; nothing that touches the filesystem should add to that.
 
 **The call sites are on the request path.** The sync calls that exist today are in
-`lib/settings.js`, `lib/session-store.js` and `lib/assets.js` — all of which run
+`src/store/settings.ts`, `src/store/session-store.ts` and `src/platform/assets.ts` — all of which run
 inside request handling. `settings.load()` in particular runs on nearly every
 settings read.
 
@@ -41,8 +41,8 @@ settings read.
 
 | Path | Applies? |
 |---|---|
-| `lib/**` | **Yes** — this is the server, and it is the whole point |
-| `server.ts`, `desktop.ts` | **Yes** for anything after `listen()`; startup before the server is up may use sync |
+| `src/**` (except the two entries below) | **Yes** — this is the server, and it is the whole point |
+| `src/server.ts`, `src/desktop.ts` | **Yes** for anything after `listen()`; startup before the server is up may use sync |
 | `tools/**` | No — one-shot build scripts, nothing is waiting on them |
 | `tests/**`, `.verify/**` | No — test setup and teardown may use sync; it is clearer that way |
 | `public/**` | No — browser code, no `fs` at all |
@@ -54,14 +54,14 @@ sync and add a comment saying why.
 
 **1. Module-load-time work.** A `require` cannot await. Top-level work that must
 finish before the module is usable stays sync — this is already the case in
-`lib/zip.ts` (building the CRC-32 lookup table) and is inherent, not a shortcut.
+`src/formats/zip.ts` (building the CRC-32 lookup table) and is inherent, not a shortcut.
 
 **2. Atomic replace on shutdown.** Shutdown paths that must complete before the
-process exits cannot yield to the event loop. `desktop.ts` removes its
+process exits cannot yield to the event loop. `src/desktop.ts` removes its
 `instance.json` in a `process.on('exit')` handler; an `await` there would simply
 never run.
 
-**3. `lib/assets.ts` — synchronous by API shape.** `loadSea()`, `readAsset()` and
+**3. `src/platform/assets.ts` — synchronous by API shape.** `loadSea()`, `readAsset()` and
 `isPackaged()` are synchronous, and so is everything they call: `sea.getAsset()`
 is a synchronous API, and the `try` around `require('node:sea')` is what makes
 the lookup allowed to fail (a static `import` would throw at module load and take
@@ -74,9 +74,9 @@ none. This is a decision, not an oversight.
 Everything else converts. If you believe a call site needs to stay sync and it is
 not one of the three above, say so in review rather than reaching for `*Sync`.
 
-`desktop.ts` keeps its remaining `*Sync` calls deliberately: they all run BEFORE
+`src/desktop.ts` keeps its remaining `*Sync` calls deliberately: they all run BEFORE
 `listen()` (resolving the Edge path, reading/writing `instance.json`, creating
-directories), which the table above already permits. `lib/zip.ts`'s
+directories), which the table above already permits. `src/formats/zip.ts`'s
 `inflateRawSync`/`deflateRawSync` are pure CPU on in-memory buffers — `node:zlib`'s
 sync API is the only one that fits a synchronous `readZip`/`writeZip` contract,
 and no file descriptor is involved.
@@ -102,7 +102,7 @@ the call style while quietly dropping the serialisation that `*Sync` was
 providing is a data-loss bug that will not show up in a test suite that runs
 requests one at a time.
 
-**How it is actually done here — `lib/session-store.ts`:**
+**How it is actually done here — `src/store/session-store.ts`:**
 
 - Every public method runs through `#run`, a per-instance promise queue. The
   internals (`#loadFile`, `#writeFile`, ...) are private and NEVER call back into
@@ -128,7 +128,7 @@ record from a snapshot taken before an `await`.**
 
 The turn route applies this to the workbook itself: the agent returns the list of
 edit operations it performed (`TurnResult.ops`), and the route replays them on
-`current.spec` inside `update` (`applyOps` in `lib/spec-ops.ts`, pure and
+`current.spec` inside `update` (`applyOps` in `src/workbook/spec-ops.ts`, pure and
 deterministic) instead of writing back the spec the turn computed from its
 snapshot. When the operations no longer fit the newer table, nothing lands and
 the reply says so.
@@ -137,10 +137,32 @@ the reply says so.
 changed, it is in every CALLER that did `read -> wait -> write`. Those callers
 silently went from atomic to racy.
 
+## Layout
+
+`src/` is layered; a module imports only from its own layer or below:
+
+```
+http/       Koa app, per-process AppState, routes/
+agent/      the turn, model access (llm, model, pi), fetch, local file access, pi-tools/
+store/      settings, session-store — state on disk, each behind its own queue
+workbook/   spec validation and writing, spec-ops, table-query, preview, export
+formats/    zip, xlsx, xlsx-writer, xls; attachments (uploaded file -> text/rows)
+platform/   SEA assets, open-with-system — usable from any layer
+```
+
+`agent/` and `store/` are one level: `store/settings` validates against the
+protocol and file-access definitions in `agent/`. Nothing in `workbook/` or
+`formats/` may import upward.
+
+Tests are `.ts` and import the source directly (`../src/formats/xlsx.ts`); they
+run through tsx, so they never see `.build/js/`. `pnpm bundle` is what
+exercises the compiled tree — keep it after the tests in CI. `.verify/`
+scripts stay JavaScript and load the source with `require('tsx/cjs')`.
+
 ## Other conventions
 
 - **Erasable TypeScript only.** See `tsconfig.json` (`erasableSyntaxOnly`) and the
-  notes at the top of `lib/zip.ts`. No `enum`, no `namespace`, no parameter
+  notes at the top of `src/formats/zip.ts`. No `enum`, no `namespace`, no parameter
   properties, no `export =`, no `import x = require(...)`. Node strips types; it
   does not transform them.
 - **ESM source, CommonJS emit.** Write `import`/`export` in `.ts`; `tsc`
@@ -148,11 +170,11 @@ silently went from atomic to racy.
   specifiers keep the `.ts` extension — `rewriteRelativeImportExtensions`
   rewrites them to `.js` in the emitted require. A bare `require()` call is NOT
   rewritten, so do not add new ones. The single deliberate exception is the
-  guarded `require('node:sea')` in `lib/assets.ts`, which must stay lazy so its
+  guarded `require('node:sea')` in `src/platform/assets.ts`, which must stay lazy so its
   `try/catch` still works.
 - **ESM-only dependencies load through `import()`, in one place.** pi-agent
   (`@earendil-works/pi-ai`, `@earendil-works/pi-agent-core`) ships ESM with only an
-  `import` condition, so a CommonJS `require` of it cannot resolve. `lib/pi.ts`
+  `import` condition, so a CommonJS `require` of it cannot resolve. `src/agent/pi.ts`
   loads it with a dynamic `import()` — kept verbatim in the emit because the
   module setting is `nodenext`; `module: commonjs` would rewrite it into a
   `require` and break it. Everywhere else, use `import type` for pi's types and

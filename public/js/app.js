@@ -209,7 +209,7 @@ const ATTACH_EXT = ['.csv', '.tsv', '.txt', '.json', '.md', '.xlsx', '.xls', '.p
 
 /**
  * The server takes at most this many files per request (`MAX_FILES` in
- * lib/server.ts). A folder easily holds more, so uploads go in batches of it.
+ * src/http/server.ts). A folder easily holds more, so uploads go in batches of it.
  */
 const ATTACH_BATCH = 20;
 

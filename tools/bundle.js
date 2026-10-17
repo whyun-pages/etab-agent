@@ -12,7 +12,7 @@
  * The bundler this replaced joined eleven first-party CommonJS modules and
  * refused anything else, on purpose: the runtime had no dependencies. pi-ai and
  * pi-agent-core changed that. They are ESM-only, reached through a dynamic
- * `import()` (lib/pi.ts), and they pull in the provider SDKs — a graph of
+ * `import()` (src/agent/pi.ts), and they pull in the provider SDKs — a graph of
  * mixed ESM and CommonJS that a regex over `require(...)` cannot follow.
  * esbuild resolves it, converts the ESM to CommonJS, and inlines the dynamic
  * imports, so the result still loads nothing from disk at runtime.
@@ -21,7 +21,7 @@
  * ------------------------------
  * Up to pi-ai 0.x, a global registry loaded every provider with a literal
  * `import('./x.js')`, so esbuild bundled all of them, SDKs included, and a
- * plugin here swapped the unused ones for a stub. Since 1.x, lib/pi.ts imports
+ * plugin here swapped the unused ones for a stub. Since 1.x, src/agent/pi.ts imports
  * the three protocols the settings panel offers by name, and nothing else is
  * reachable — the graph itself leaves the other SDKs out, so the stub is gone.
  */

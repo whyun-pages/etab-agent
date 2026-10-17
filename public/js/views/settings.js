@@ -25,7 +25,7 @@ import { icon } from '../icons.js';
  * The wire protocols the server accepts, in display order, with each one's
  * official endpoint and an example model name.
  *
- * Mirrors MODEL_APIS and BASE_URLS in lib/model.ts. Browser code cannot import
+ * Mirrors MODEL_APIS and BASE_URLS in src/agent/model.ts. Browser code cannot import
  * that module, and the list is three entries that change only when a protocol
  * is added — at which point the server refuses an unknown value with a 400, so
  * a drift between the two shows up the first time someone saves.
@@ -360,7 +360,7 @@ function chatTab(root, state) {
   // ── local files ────────────────────────────────────────────────────
   // A select, not a toggle: reading and writing are different risks, and
   // "read only" is the setting most people want. Read-write also hands the
-  // model a shell (lib/pi-tools/shell.ts), which the blocklist cannot narrow;
+  // model a shell (src/agent/pi-tools/shell.ts), which the blocklist cannot narrow;
   // the option says so in its own words, not only in the hint.
   const fileWrap = el('label', { class: 'settings__field' });
   fileWrap.appendChild(el('span', { class: 'settings__label', text: '允许读写本机文件' }));
