@@ -79,6 +79,15 @@ test('address classification', () => {
     '::ffff:192.168.0.1',
     '64:ff9b::a00:1',
     '2002:c0a8:101::1',
+    // These were classed public before.
+    '192.88.99.1', // 6to4 relay anycast
+    '::ffff:0:127.0.0.1', // IPv4-translated loopback
+    '::ffff:0:a00:1', // IPv4-translated 10.0.0.1
+    '100::1', // discard-only
+    '2001::1', // Teredo
+    '2001:0:4136:e378:8000:63bf:3fff:fdd2', // a real-shaped Teredo address
+    '2001:2::1', // benchmarking
+    '2001:20::1', // ORCHIDv2
     'not-an-ip',
     '1.2.3',
     '999.1.1.1',
@@ -92,6 +101,9 @@ test('address classification', () => {
     '2606:4700::1111',
     '::ffff:8.8.8.8',
     '64:ff9b::808:808',
+    '::ffff:0:808:808', // IPv4-translated 8.8.8.8
+    '2001:4860:4860::8888', // public, just past 2001::/23
+    '2001:200::1',
   ];
   for (const ip of allowed) assert.strictEqual(isPublicAddress(ip), true, ip);
 });
