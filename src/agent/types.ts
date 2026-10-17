@@ -8,10 +8,10 @@
 import type { Model } from '@earendil-works/pi-ai';
 import type { SpecOp } from '../workbook/spec-ops.ts';
 import type { ExportFormat } from '../workbook/export.ts';
-import type { FetchOptions } from './fetch-url.ts';
+import type { FetchOptions } from './tools/fetch-url.ts';
 import type { Ingested } from '../ingest/ingest.ts';
 import type { Attachment } from '../ingest/types.ts';
-import type { FileAccessMode, FileAccessOptions, FileWrite } from './file-access.ts';
+import type { FileAccessMode, FileAccessOptions, FileWrite } from './tools/file-access.ts';
 
 /** What the user's message asks for. */
 export const INTENT = {
@@ -94,7 +94,7 @@ export interface RunTurnArgs {
   canSave?: boolean;
   /** Whether `fetch_url` is offered. */
   canFetch?: boolean;
-  /** Blocklist and limits for `fetch_url`; see src/agent/fetch-url.ts. */
+  /** Blocklist and limits for `fetch_url`; see src/agent/tools/fetch-url.ts. */
   fetchOptions?: FetchOptions;
   /**
    * The session's parsed uploads. The message carries only a preview of each
@@ -112,7 +112,7 @@ export interface RunTurnArgs {
   /**
    * Local file access: off; read (pi's read, ls, find, grep, plus
    * import_file); or readwrite (also write, edit, the shell tool, and
-   * save_file into a chosen folder). See src/agent/file-access.ts.
+   * save_file into a chosen folder). See src/agent/tools/file-access.ts.
    */
   fileAccess?: FileAccessMode;
   /** The blocklist and data folder every path is checked against. */

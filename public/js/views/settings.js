@@ -444,7 +444,7 @@ function chatTab(root, state) {
   // ── local files ────────────────────────────────────────────────────
   // A select, not a toggle: reading and writing are different risks, and
   // "read only" is the setting most people want. Read-write also hands the
-  // model a shell (src/agent/pi-tools/shell.ts), which the blocklist cannot narrow;
+  // model a shell (src/agent/tools/pi-tools/shell.ts), which the blocklist cannot narrow;
   // the option says so in its own words, not only in the hint.
   const fileWrap = el('label', { class: 'settings__field' });
   fileWrap.appendChild(el('span', { class: 'settings__label', text: '允许读写本机文件' }));

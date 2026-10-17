@@ -1,6 +1,6 @@
 'use strict';
 /**
- * Tests for the agent's URL fetcher (src/agent/fetch-url.ts).
+ * Tests for the agent's URL fetcher (src/agent/tools/fetch-url.ts).
  *
  * What this file guards:
  *   - private, loopback, link-local and reserved addresses are refused, in
@@ -18,7 +18,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert';
-import { listenLocal } from '../helpers/listen.ts';
+import { listenLocal } from '../../helpers/listen.ts';
 import http from 'node:http';
 import zlib from 'node:zlib';
 
@@ -34,7 +34,7 @@ import {
   filenameFor,
   checkUrl,
   FetchError,
-} from '../../src/agent/fetch-url.ts';
+} from '../../../src/agent/tools/fetch-url.ts';
 
 function serve(handler) {
   return new Promise((resolve) => {

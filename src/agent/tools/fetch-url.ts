@@ -39,12 +39,12 @@ import zlib from 'node:zlib';
 import { Writable } from 'node:stream';
 import type { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
-import { readAttachment } from '../ingest/ingest.ts';
-import type { Attachment } from '../ingest/types.ts';
-import { TABLE_EXT, TEXT_EXT } from '../ingest/kinds.ts';
-import { TYPES } from '../workbook/workbook.ts';
-import { tsvCell } from '../workbook/table-query.ts';
-import type { CellValue } from '../workbook/workbook.ts';
+import { readAttachment } from '../../ingest/ingest.ts';
+import type { Attachment } from '../../ingest/types.ts';
+import { TABLE_EXT, TEXT_EXT } from '../../ingest/kinds.ts';
+import { TYPES } from '../../workbook/workbook.ts';
+import { tsvCell } from '../../workbook/table-query.ts';
+import type { CellValue } from '../../workbook/workbook.ts';
 
 export const FETCH_TIMEOUT_MS = 20_000;
 export const MAX_FETCH_BYTES = 5 * 1024 * 1024;

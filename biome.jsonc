@@ -50,7 +50,7 @@
   "overrides": [
     {
       // A port of pi's tools, kept close to upstream on purpose (see its header).
-      "includes": ["src/agent/pi-tools/**"],
+      "includes": ["src/agent/tools/pi-tools/**"],
       "linter": { "rules": { "suspicious": { "noConfusingVoidType": "off" } } }
     }
   ],

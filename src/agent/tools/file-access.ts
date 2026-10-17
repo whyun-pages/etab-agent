@@ -10,7 +10,7 @@
  * Whose tools
  * -----------
  * The tools the model calls are pi's — read, write, edit, ls, find, grep —
- * ported into src/agent/pi-tools/ (see the header there for why ported, not
+ * ported into src/agent/tools/pi-tools/ (see the header there for why ported, not
  * imported). pi lets a caller supply each tool's disk operations; this module
  * supplies them (`fileOperations`), and that is where the checks and the
  * deferred writes go. pi's own tools ship with no checks at all: they are
@@ -26,7 +26,7 @@
  * Reads in the same turn see the recorded content, so the model can read back
  * what it just wrote.
  *
- * The shell tools (src/agent/pi-tools/shell.ts) are NOT behind any of this. A
+ * The shell tools (src/agent/tools/pi-tools/shell.ts) are NOT behind any of this. A
  * command reaches whatever this user can, immediately. They are offered only
  * with read-write access, and the blocklist below cannot narrow them.
  *
@@ -60,10 +60,10 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { ingestFile } from '../ingest/ingest.ts';
-import { isHiddenPath } from '../ingest/archive.ts';
-import { READABLE_EXT } from '../ingest/kinds.ts';
-import type { Ingested } from '../ingest/ingest.ts';
+import { ingestFile } from '../../ingest/ingest.ts';
+import { isHiddenPath } from '../../ingest/archive.ts';
+import { READABLE_EXT } from '../../ingest/kinds.ts';
+import type { Ingested } from '../../ingest/ingest.ts';
 import { GREP_MAX_FILE_BYTES } from './pi-tools/fs-tools.ts';
 import type {
   EditOperations,

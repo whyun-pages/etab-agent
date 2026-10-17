@@ -63,7 +63,7 @@
  *   and the draft may yet be refused by gate #3, held for confirmation, or
  *   rejected by the replay because another turn changed the table meanwhile —
  *   a saved file showing a change that never happened is worse than none.
- * - `fetch_url` reads a web resource (src/agent/fetch-url.ts, which owns the SSRF
+ * - `fetch_url` reads a web resource (src/agent/tools/fetch-url.ts, which owns the SSRF
  *   rules). With `importAs` it also records an edit — `create_workbook` or
  *   `add_sheet` with the fetched rows written into the arguments — so the
  *   server's replay stays a pure function and never goes back to the network.
@@ -103,8 +103,8 @@ import {
 } from './prompt.ts';
 import { DEFAULT_ROW_BUDGET, describeChange, agentMessages } from './context.ts';
 import { looksLikeWork, guardChange, proseReply } from './gates.ts';
-import { buildTools } from './tools.ts';
-import type { TurnState } from './tools.ts';
+import { buildTools } from './tools/tools.ts';
+import type { TurnState } from './tools/tools.ts';
 import { toLlm, transcript, streamingReply } from './transcript.ts';
 
 // The public surface stays here, so callers keep importing from agent.ts.

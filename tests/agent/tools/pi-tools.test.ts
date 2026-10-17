@@ -1,7 +1,7 @@
 'use strict';
 /**
- * Tests for pi's file and shell tools (src/agent/pi-tools/) as the agent gets them:
- * through the checked, deferred operations of src/agent/file-access.ts.
+ * Tests for pi's file and shell tools (src/agent/tools/pi-tools/) as the agent gets them:
+ * through the checked, deferred operations of src/agent/tools/file-access.ts.
  *
  * What this file guards:
  *   - every tool refuses what checkPath refuses, and says why
@@ -18,10 +18,10 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { fileOperations } from '../../src/agent/file-access.ts';
-import * as tools from '../../src/agent/pi-tools/fs-tools.ts';
-import * as shell from '../../src/agent/pi-tools/shell.ts';
-import { loadPi } from '../../src/agent/pi.ts';
+import { fileOperations } from '../../../src/agent/tools/file-access.ts';
+import * as tools from '../../../src/agent/tools/pi-tools/fs-tools.ts';
+import * as shell from '../../../src/agent/tools/pi-tools/shell.ts';
+import { loadPi } from '../../../src/agent/pi.ts';
 
 /** A scratch tree: a fake home with a .ssh, a data folder, and some documents. */
 function scratch(t) {

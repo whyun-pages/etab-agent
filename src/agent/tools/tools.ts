@@ -8,12 +8,12 @@
 
 import os from 'node:os';
 import type { AgentTool } from '@earendil-works/pi-agent-core';
-import { applyOp, readRows } from '../workbook/spec-ops.ts';
-import type { SpecOp } from '../workbook/spec-ops.ts';
-import { EXPORT_FORMATS, isExportFormat, cleanBaseName } from '../workbook/export.ts';
+import { applyOp, readRows } from '../../workbook/spec-ops.ts';
+import type { SpecOp } from '../../workbook/spec-ops.ts';
+import { EXPORT_FORMATS, isExportFormat, cleanBaseName } from '../../workbook/export.ts';
 import { fetchUrl, readFetched, describeFetched, tableForImport } from './fetch-url.ts';
 import type { FetchOptions } from './fetch-url.ts';
-import type { Ingested } from '../ingest/ingest.ts';
+import type { Ingested } from '../../ingest/ingest.ts';
 import { readPath, checkPath, fileOperations } from './file-access.ts';
 import type { FileAccessMode, FileAccessOptions, FileWrite } from './file-access.ts';
 import {
@@ -35,11 +35,11 @@ import {
   METRIC_FNS,
   EXPRESSION_HELP,
   QueryError,
-} from '../workbook/table-query.ts';
-import type { Pi } from './pi.ts';
-import { TYPES } from '../workbook/workbook.ts';
-import type { ExportRequest, Attachment } from './types.ts';
-import { SHELL_TOOL } from './prompt.ts';
+} from '../../workbook/table-query.ts';
+import type { Pi } from '../pi.ts';
+import { TYPES } from '../../workbook/workbook.ts';
+import type { ExportRequest, Attachment } from '../types.ts';
+import { SHELL_TOOL } from '../prompt.ts';
 import {
   QUERY_MAX_GROUPS,
   QUERY_MAX_ROWS,
@@ -56,9 +56,9 @@ import {
 
 /** What the tools of one turn share: the draft and what was done to it. */
 export interface TurnState {
-  draft: import('../workbook/workbook.ts').WorkbookSpec | null;
+  draft: import('../../workbook/workbook.ts').WorkbookSpec | null;
   ops: SpecOp[];
-  notes: import('../workbook/workbook.ts').SpecNote[];
+  notes: import('../../workbook/workbook.ts').SpecNote[];
   summaries: string[];
   question: string | null;
   exports: ExportRequest[];

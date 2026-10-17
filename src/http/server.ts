@@ -30,7 +30,7 @@ import { serveStatic } from './routes/static.ts';
 import { fail, messageOf, safeFilename } from './respond.ts';
 
 type SettingsLike = import('../store/settings.ts').Settings;
-type FetchOptions = import('../agent/fetch-url.ts').FetchOptions;
+type FetchOptions = import('../agent/tools/fetch-url.ts').FetchOptions;
 
 /**
  * What `createServer` accepts.

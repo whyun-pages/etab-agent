@@ -8,7 +8,7 @@
  * The tool name, parameters, description, tail truncation, exit-code and
  * timeout reporting are pi's.
  *
- * These are NOT behind src/agent/file-access.ts. A command can read or write any
+ * These are NOT behind src/agent/tools/file-access.ts. A command can read or write any
  * file this user can, and it runs the moment the model calls it — there is no
  * deferring a process to the end of the turn. src/agent/agent.ts offers them only
  * with read-write file access, and says so in the prompt.
@@ -30,7 +30,7 @@ import { spawn, execFile } from 'node:child_process';
 import { constants as osConstants } from 'node:os';
 import type { ChildProcess } from 'node:child_process';
 import type { AgentTool, AgentToolResult } from '@earendil-works/pi-agent-core';
-import type { Pi } from '../pi.ts';
+import type { Pi } from '../../pi.ts';
 import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, formatSize, truncateTail } from './truncate.ts';
 import type { TruncationResult } from './truncate.ts';
 

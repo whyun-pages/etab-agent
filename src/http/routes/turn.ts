@@ -11,8 +11,8 @@
 
 import crypto from 'node:crypto';
 import type { Router } from '@koa/router';
-import { isFileAccessMode, performWrite, checkPath } from '../../agent/file-access.ts';
-import type { FileAccessOptions, FileWrite } from '../../agent/file-access.ts';
+import { isFileAccessMode, performWrite, checkPath } from '../../agent/tools/file-access.ts';
+import type { FileAccessOptions, FileWrite } from '../../agent/tools/file-access.ts';
 import { resolveExportDir } from '../../store/settings.ts';
 import { runTurn as runAgentTurn, describeChange, guardChange } from '../../agent/agent.ts';
 import { applyOps } from '../../workbook/spec-ops.ts';
@@ -30,7 +30,7 @@ type ChangeRecord = import('../../store/session-store.ts').ChangeRecord;
 type SpecOp = import('../../workbook/spec-ops.ts').SpecOp;
 type ExportRequest = import('../../agent/agent.ts').ExportRequest;
 type ExportFile = import('../../workbook/export.ts').ExportFile;
-type FetchOptions = import('../../agent/fetch-url.ts').FetchOptions;
+type FetchOptions = import('../../agent/tools/fetch-url.ts').FetchOptions;
 type Settings = Awaited<ReturnType<AppState['settings']['load']>>;
 
 /** An export file, and the folder it was asked to go to (null: the export folder). */
