@@ -128,3 +128,18 @@ test('expressions: refuse what they do not know, naming it', () => {
   assert.throws(() => compileExpression(t, '"abc'), /引号没有闭合/);
   assert.throws(() => compileExpression(t, '1 +'), /不完整/);
 });
+
+test('deep nesting is a QueryError, not a stack overflow', () => {
+  // 990 levels of brackets overflowed the parser's stack; the RangeError
+  // escaped past every handler that expected a QueryError.
+  const deep = (n) => '('.repeat(n) + '1' + ')'.repeat(n);
+  assert.throws(
+    () => compileExpression(t, deep(990)),
+    (err) => err instanceof QueryError && /嵌套太深/.test(err.message),
+  );
+  assert.throws(() => compileExpression(t, 'not '.repeat(400) + 'true'), QueryError);
+  assert.throws(() => compileExpression(t, '-'.repeat(1500) + '1'), QueryError);
+  assert.throws(() => compileExpression(t, 'ABS('.repeat(300) + '1' + ')'.repeat(300)), QueryError);
+  // Ordinary nesting is untouched.
+  assert.strictEqual(compileExpression(t, deep(20))(t.rows[0], 1), 1);
+});

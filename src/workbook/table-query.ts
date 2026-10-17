@@ -548,6 +548,14 @@ const FUNCTIONS: Record<string, { min: number; max: number }> = {
 
 /** Expressions longer than this are refused; nothing a person asks for needs more. */
 const MAX_EXPRESSION = 2000;
+/**
+ * How deep brackets, function calls and repeated `not` / `-` may nest. Each
+ * level of brackets is nine frames of the descent below; 2000 characters of
+ * "(" overflowed the stack, and the RangeError escaped as an internal error
+ * rather than a QueryError the model could read and fix. No real expression
+ * comes near this.
+ */
+const MAX_NESTING = 100;
 
 function parse(t: QueryTable, src: string): Node {
   if (src.length > MAX_EXPRESSION) throw new QueryError(`表达式太长（超过 ${MAX_EXPRESSION} 字）。`);
@@ -559,6 +567,15 @@ function parse(t: QueryTable, src: string): Node {
   const expect = (v: string) => {
     if (!isOp(v)) throw new QueryError(`表达式缺少「${v}」。`);
     p++;
+  };
+  let depth = 0;
+  const nested = <T>(f: () => T): T => {
+    if (++depth > MAX_NESTING) throw new QueryError(`表达式嵌套太深（超过 ${MAX_NESTING} 层）。`);
+    try {
+      return f();
+    } finally {
+      depth--;
+    }
   };
 
   const orExpr = (): Node => {
@@ -580,7 +597,7 @@ function parse(t: QueryTable, src: string): Node {
   const notExpr = (): Node => {
     if (isOp('!') || isWord('not')) {
       p++;
-      return { t: 'un', op: 'not', a: notExpr() };
+      return { t: 'un', op: 'not', a: nested(notExpr) };
     }
     return cmpExpr();
   };
@@ -620,11 +637,11 @@ function parse(t: QueryTable, src: string): Node {
   const unary = (): Node => {
     if (isOp('-')) {
       p++;
-      return { t: 'un', op: 'neg', a: unary() };
+      return { t: 'un', op: 'neg', a: nested(unary) };
     }
     if (isOp('+')) {
       p++;
-      return unary();
+      return nested(unary);
     }
     return primary();
   };
@@ -644,7 +661,7 @@ function parse(t: QueryTable, src: string): Node {
     }
     if (isOp('(')) {
       p++;
-      const e = orExpr();
+      const e = nested(orExpr);
       expect(')');
       return e;
     }
@@ -659,10 +676,10 @@ function parse(t: QueryTable, src: string): Node {
       expect('(');
       const args: Node[] = [];
       if (!isOp(')')) {
-        args.push(orExpr());
+        args.push(nested(orExpr));
         while (isOp(',')) {
           p++;
-          args.push(orExpr());
+          args.push(nested(orExpr));
         }
       }
       expect(')');
