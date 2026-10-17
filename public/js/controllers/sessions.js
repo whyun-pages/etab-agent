@@ -9,6 +9,15 @@ import { toast, openModal, closeModal } from '../ui.js';
 import { resetComposer } from '../composer.js';
 import { fail } from '../feedback.js';
 
+/**
+ * The state for showing one session — or none, with `activeId` null — with
+ * everything left from the previous one cleared: its draft, a held change,
+ * a preview error. Opening, creating and removing a session all go through it.
+ */
+function shown(activeId, { title = '', messages = [], attachments = [], preview = null } = {}) {
+  return { activeId, title, messages, attachments, preview, previewError: null, pending: null, draft: '' };
+}
+
 // ── sessions ────────────────────────────────────────────────────────
 
 export async function refreshSessions() {
@@ -38,14 +47,12 @@ export async function openSession(id) {
     // is keyed by session id, so this also clears the half-typed text.
     if (state.activeId !== id) resetComposer();
     set({
-      activeId: id,
-      title: res.session.title || '',
-      messages: res.session.messages || [],
-      attachments: (att && att.attachments) || [],
-      preview: res.preview || null,
-      previewError: null,
-      pending: null,
-      draft: '',
+      ...shown(id, {
+        title: res.session.title || '',
+        messages: res.session.messages || [],
+        attachments: (att && att.attachments) || [],
+        preview: res.preview || null,
+      }),
       view: 'chat',
       error: null,
       status: res.preview ? '已载入会话' : '新会话',
@@ -72,13 +79,7 @@ export async function createSession() {
     await refreshSessions();
     resetComposer();
     set({
-      activeId: res.session.id,
-      title: '',
-      messages: [],
-      attachments: [],
-      preview: null,
-      pending: null,
-      draft: '',
+      ...shown(res.session.id),
       view: 'chat',
       error: null,
       status: '新会话',
@@ -111,7 +112,7 @@ export function confirmRemoveSession(session) {
       await refreshSessions();
       if (wasActive) {
         resetComposer();
-        set({ activeId: null, title: '', messages: [], attachments: [], preview: null, pending: null, draft: '' });
+        set(shown(null));
         const next = state.sessions[0];
         if (next) await openSession(next.id);
       }

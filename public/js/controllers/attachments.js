@@ -121,19 +121,20 @@ export function pasteFiles(files) {
   handleFiles(named);
 }
 
+/** Attachments belong to a session: without one open, say so and stop. */
+function haveSession() {
+  if (state.activeId) return true;
+  toast({ tone: 'warn', title: '先新建一个会话', body: '附件会跟着这次对话走。', ms: 4000 });
+  return false;
+}
+
 export function pickFiles() {
-  if (!state.activeId) {
-    toast({ tone: 'warn', title: '先新建一个会话', body: '附件会跟着这次对话走。', ms: 4000 });
-    return;
-  }
+  if (!haveSession()) return;
   if (fileInput) fileInput.click();
 }
 
 export function pickFolder() {
-  if (!state.activeId) {
-    toast({ tone: 'warn', title: '先新建一个会话', body: '附件会跟着这次对话走。', ms: 4000 });
-    return;
-  }
+  if (!haveSession()) return;
   if (folderInput) folderInput.click();
 }
 
@@ -146,10 +147,7 @@ export function pickFolder() {
  * is reflected exactly.
  */
 export async function handleFiles(files) {
-  if (!state.activeId) {
-    toast({ tone: 'warn', title: '先新建一个会话', body: '附件会跟着这次对话走。', ms: 4000 });
-    return;
-  }
+  if (!haveSession()) return;
   const list = [...files];
   if (!list.length) return;
   // Captured now: the user can switch sessions while the upload is in flight,
