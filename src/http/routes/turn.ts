@@ -20,7 +20,7 @@ import { exportSpec, writeExports } from '../../workbook/export.ts';
 import { specStats } from '../../workbook/workbook.ts';
 import { previewOf } from '../app-state.ts';
 import type { AppState, UploadedAttachment } from '../app-state.ts';
-import { fail, jsonBody, bodyOf, isLocalRequest, messageOf } from './http.ts';
+import { fail, jsonBody, bodyOf, isLocalRequest, messageOf, sessionOr404, noSession } from './http.ts';
 import { publicAttachment, publicMessages, publicSession } from './views.ts';
 import type { RouteDeps } from './index.ts';
 
@@ -92,8 +92,8 @@ export function turnRoutes(router: Router, { state }: RouteDeps): void {
    * losing it is correct behaviour, not data loss.
    */
   router.post('/api/sessions/:id/turn', jsonBody('1mb'), async (ctx) => {
-    const session = await state.sessions.load(ctx.params.id);
-    if (!session) return fail(ctx, 404, '会话不存在');
+    const session = await sessionOr404(ctx, state.sessions);
+    if (!session) return;
     if (!(await state.settings.isConfigured())) return fail(ctx, 400, '尚未配置模型，无法对话');
 
     const message = String(bodyOf(ctx).message || '').trim();
@@ -287,7 +287,7 @@ export function turnRoutes(router: Router, { state }: RouteDeps): void {
         ],
       };
     });
-    if (!saved) return fail(ctx, 404, '会话不存在');
+    if (!saved) return noSession(ctx);
 
     // Held with the change when it waits for confirmation; otherwise now.
     const writesNow = pending ? [] : writesWanted;
@@ -324,8 +324,8 @@ export function turnRoutes(router: Router, { state }: RouteDeps): void {
 
   /** Apply a proposal that was held for confirmation, or (`accept: false`) drop it. */
   router.post('/api/sessions/:id/apply', jsonBody('64kb'), async (ctx) => {
-    const session = await state.sessions.load(ctx.params.id);
-    if (!session) return fail(ctx, 404, '会话不存在');
+    const session = await sessionOr404(ctx, state.sessions);
+    if (!session) return;
     const held = state.pending.get(session.id);
     if (!held) return fail(ctx, 409, '没有待确认的修改');
 
@@ -361,7 +361,7 @@ export function turnRoutes(router: Router, { state }: RouteDeps): void {
       };
     });
     state.pending.delete(session.id);
-    if (!saved) return fail(ctx, 404, '会话不存在');
+    if (!saved) return noSession(ctx);
     if (conflict) return fail(ctx, 409, `表格在这期间被改动过，这条修改已无法应用：${conflict}`);
     let paths: string[] = [];
     if (files.length || held.writes.length) {

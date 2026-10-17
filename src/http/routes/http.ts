@@ -7,11 +7,33 @@
 
 import { bodyParser } from '@koa/bodyparser';
 import type { Context, Middleware } from 'koa';
+import type { Session } from '../../store/session-store.ts';
 
 /** Every failure answers this shape, so the UI reads one field for the reason. */
 export function fail(ctx: Context, status: number, message: string, extra?: Record<string, unknown>): void {
   ctx.status = status;
   ctx.body = { ok: false, error: message, ...(extra || {}) };
+}
+
+/** The answer for a session id that names nothing — gone, or never there. */
+export function noSession(ctx: Context): void {
+  fail(ctx, 404, '会话不存在');
+}
+
+/**
+ * The session `:id` names, or null after answering 404. For the routes whose
+ * first step is "load it, or stop":
+ *
+ *   const session = await sessionOr404(ctx, state.sessions);
+ *   if (!session) return;
+ */
+export async function sessionOr404(
+  ctx: Context & { params: Record<string, string> },
+  sessions: { load(id: string): Promise<Session | null> },
+): Promise<Session | null> {
+  const session = await sessions.load(ctx.params.id);
+  if (!session) noSession(ctx);
+  return session;
 }
 
 /**

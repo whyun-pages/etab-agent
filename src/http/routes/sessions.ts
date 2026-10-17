@@ -20,7 +20,7 @@ import { applyOps } from '../../workbook/spec-ops.ts';
 import { exportSpec, isExportFormat, ExportError } from '../../workbook/export.ts';
 import { PREVIEW_PAGE_ROWS, MAX_PAGE_ROWS } from '../../workbook/preview.ts';
 import { previewOf, previewSource } from '../app-state.ts';
-import { fail, jsonBody, bodyOf, contentDisposition, messageOf } from './http.ts';
+import { fail, jsonBody, bodyOf, contentDisposition, messageOf, sessionOr404, noSession } from './http.ts';
 import { publicSession } from './views.ts';
 import type { RouteDeps } from './index.ts';
 
@@ -39,8 +39,8 @@ export function sessionRoutes(router: Router, { state }: RouteDeps): void {
   });
 
   router.get('/api/sessions/:id', async (ctx) => {
-    const session = await state.sessions.load(ctx.params.id);
-    if (!session) return fail(ctx, 404, '会话不存在');
+    const session = await sessionOr404(ctx, state.sessions);
+    if (!session) return;
     ctx.body = {
       ok: true,
       session: publicSession(session),
@@ -59,8 +59,8 @@ export function sessionRoutes(router: Router, { state }: RouteDeps): void {
    * proposal instead of the stored table.
    */
   router.get('/api/sessions/:id/preview', async (ctx) => {
-    const session = await state.sessions.load(ctx.params.id);
-    if (!session) return fail(ctx, 404, '会话不存在');
+    const session = await sessionOr404(ctx, state.sessions);
+    if (!session) return;
     const q = ctx.URL.searchParams;
     const spec = q.get('proposed') === '1' ? state.pending.get(session.id)?.spec : session.spec;
     if (!spec || previewSource(state, spec).key !== q.get('key')) {
@@ -120,7 +120,7 @@ export function sessionRoutes(router: Router, { state }: RouteDeps): void {
         return null;
       }
     });
-    if (!found) return fail(ctx, 404, '会话不存在');
+    if (!found) return noSession(ctx);
     if (conflict || !saved) return fail(ctx, 409, conflict || '列宽没有保存');
     const preview = saved.spec ? previewOf(state, saved.spec) : null;
     ctx.body = { ok: true, key: preview?.key ?? null, cols: preview?.cols ?? [] };
@@ -131,7 +131,7 @@ export function sessionRoutes(router: Router, { state }: RouteDeps): void {
     const ok = await state.sessions.remove(sid);
     state.dropUploads(sid);
     // A miss answers like every other failure, with an `error` to show.
-    if (!ok) return fail(ctx, 404, '会话不存在');
+    if (!ok) return noSession(ctx);
     ctx.body = { ok };
   });
 
@@ -141,8 +141,8 @@ export function sessionRoutes(router: Router, { state }: RouteDeps): void {
    * sheet is the default.
    */
   router.get('/api/sessions/:id/workbook.:format', async (ctx) => {
-    const session = await state.sessions.load(ctx.params.id);
-    if (!session) return fail(ctx, 404, '会话不存在');
+    const session = await sessionOr404(ctx, state.sessions);
+    if (!session) return;
     // Bound to a local so the narrowing survives into `exportSpec` below.
     const spec = session.spec;
     if (!spec) return fail(ctx, 404, '这个会话还没有生成表格');

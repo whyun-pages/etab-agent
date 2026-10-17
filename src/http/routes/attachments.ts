@@ -22,7 +22,7 @@ import { ingestFile } from '../../ingest/ingest.ts';
 import { isOpenable } from '../../platform/open-file.ts';
 import { safeId as safeSessionId } from '../../store/session-store.ts';
 import type { AppState, Extractor, UploadedAttachment } from '../app-state.ts';
-import { fail, isLocalRequest, safeFilename, messageOf } from './http.ts';
+import { fail, isLocalRequest, safeFilename, messageOf, sessionOr404 } from './http.ts';
 import { publicUpload } from './views.ts';
 import type { RouteDeps } from './index.ts';
 
@@ -84,20 +84,20 @@ async function readFiles(ctx: Context): Promise<{ filename: string; data: Buffer
 export function attachmentRoutes(router: Router, { state, imageExtractor, textExtractor }: RouteDeps): void {
   router.get('/api/sessions/:id/attachments', async (ctx) => {
     const sid = ctx.params.id;
-    if (!(await state.sessions.load(sid))) return fail(ctx, 404, '会话不存在');
+    if (!(await sessionOr404(ctx, state.sessions))) return;
     ctx.body = { ok: true, attachments: (state.uploads.get(sid) || []).map(publicUpload) };
   });
 
   router.delete('/api/sessions/:id/attachments', async (ctx) => {
     const sid = ctx.params.id;
-    if (!(await state.sessions.load(sid))) return fail(ctx, 404, '会话不存在');
+    if (!(await sessionOr404(ctx, state.sessions))) return;
     state.dropUploads(sid);
     ctx.body = { ok: true };
   });
 
   router.post('/api/sessions/:id/attachments', async (ctx) => {
     const sid = ctx.params.id;
-    if (!(await state.sessions.load(sid))) return fail(ctx, 404, '会话不存在');
+    if (!(await sessionOr404(ctx, state.sessions))) return;
     const files = await readFiles(ctx);
 
     // The model is opt-in: with it off, reading is fully deterministic. When it
@@ -167,7 +167,7 @@ export function attachmentRoutes(router: Router, { state, imageExtractor, textEx
   router.post('/api/sessions/:id/attachments/:aid/open', async (ctx) => {
     if (!isLocalRequest(ctx)) return fail(ctx, 403, '只能在本机打开附件');
     const sid = ctx.params.id;
-    if (!(await state.sessions.load(sid))) return fail(ctx, 404, '会话不存在');
+    if (!(await sessionOr404(ctx, state.sessions))) return;
     const u = (state.uploads.get(sid) || []).find((x) => x.id === ctx.params.aid);
     if (!u) return fail(ctx, 404, '附件不存在，可能已被清空');
     if (!isOpenable(u.filename)) return fail(ctx, 400, `出于安全考虑，不直接打开这类文件：${u.filename}`);
