@@ -13,7 +13,7 @@ import http from 'node:http';
 import { listenLocal } from '../helpers/listen.ts';
 import { INTENT } from '../../src/agent/agent.ts';
 import { applyOps } from '../../src/workbook/spec-ops.ts';
-import { readAttachment } from '../../src/formats/attachments.ts';
+import { readAttachment } from '../../src/ingest/ingest.ts';
 
 import { turnWith, specWith, rows10 } from '../helpers/agent-turn.ts';
 

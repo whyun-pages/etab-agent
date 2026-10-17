@@ -39,7 +39,9 @@ import zlib from 'node:zlib';
 import { Writable } from 'node:stream';
 import type { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
-import { readAttachment, TABLE_EXT, TEXT_EXT } from '../formats/attachments.ts';
+import { readAttachment } from '../ingest/ingest.ts';
+import type { Attachment } from '../ingest/types.ts';
+import { TABLE_EXT, TEXT_EXT } from '../ingest/kinds.ts';
 import { TYPES } from '../workbook/workbook.ts';
 import { tsvCell } from '../workbook/table-query.ts';
 import type { CellValue } from '../workbook/workbook.ts';
@@ -50,8 +52,6 @@ export const MAX_REDIRECTS = 5;
 /** What the model is shown of a fetched table or text. */
 export const PREVIEW_ROWS = 300;
 export const PREVIEW_CHARS = 20_000;
-
-type Attachment = Awaited<ReturnType<typeof readAttachment>>;
 
 export interface FetchOptions {
   /** hosts (and their subdomains) that must not be fetched */

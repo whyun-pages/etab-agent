@@ -13,7 +13,7 @@ import type { SpecOp } from '../workbook/spec-ops.ts';
 import { EXPORT_FORMATS, isExportFormat, cleanBaseName } from '../workbook/export.ts';
 import { fetchUrl, readFetched, describeFetched, tableForImport } from './fetch-url.ts';
 import type { FetchOptions } from './fetch-url.ts';
-import type { Ingested } from '../formats/attachments.ts';
+import type { Ingested } from '../ingest/ingest.ts';
 import { readPath, checkPath, fileOperations } from './file-access.ts';
 import type { FileAccessMode, FileAccessOptions, FileWrite } from './file-access.ts';
 import {

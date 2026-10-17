@@ -2,7 +2,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
 import { readCfb, readXls, decodeRk, isCfb } from '../../src/formats/xls.ts';
-import { readAttachment, sniffKind, sheetToMatrix } from '../../src/formats/attachments.ts';
+import { readAttachment } from '../../src/ingest/ingest.ts';
+import { sniffKind } from '../../src/ingest/kinds.ts';
+import { sheetToMatrix } from '../../src/ingest/grid.ts';
 
 // ------------------------------------------------------------- fixtures
 //

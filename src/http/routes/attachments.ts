@@ -18,7 +18,7 @@ import crypto from 'node:crypto';
 import multer from '@koa/multer';
 import type { Router } from '@koa/router';
 import type { Context } from 'koa';
-import { ingestFile } from '../../formats/attachments.ts';
+import { ingestFile } from '../../ingest/ingest.ts';
 import { isOpenable } from '../../platform/open-file.ts';
 import { safeId as safeSessionId } from '../../store/session-store.ts';
 import type { AppState, Extractor, UploadedAttachment } from '../app-state.ts';

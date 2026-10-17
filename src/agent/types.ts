@@ -9,7 +9,8 @@ import type { Model } from '@earendil-works/pi-ai';
 import type { SpecOp } from '../workbook/spec-ops.ts';
 import type { ExportFormat } from '../workbook/export.ts';
 import type { FetchOptions } from './fetch-url.ts';
-import type { readAttachment, Ingested } from '../formats/attachments.ts';
+import type { Ingested } from '../ingest/ingest.ts';
+import type { Attachment } from '../ingest/types.ts';
 import type { FileAccessMode, FileAccessOptions, FileWrite } from './file-access.ts';
 
 /** What the user's message asks for. */
@@ -160,6 +161,5 @@ export interface TurnResult {
   loaded?: Ingested[];
 }
 
-/** The reader's result for one upload; derived, as src/http/server.ts does. */
-export type Attachment = Awaited<ReturnType<typeof readAttachment>>;
+export type { Attachment };
 export type AttachmentTable = NonNullable<Attachment['table']>;

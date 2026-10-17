@@ -29,8 +29,9 @@ pnpm start --port 3179          # 先跑 tsc，再启动 .build/js/server.js
 ```
 src/
   cli.ts server.ts desktop.ts   入口：npm bin、HTTP 服务、桌面窗口
-  formats/    zip / xlsx / xlsx-writer / xls 编解码，attachments 把上传文件读成文本或行
-  workbook/   spec 校验与落笔、编辑操作（spec-ops）、表查询、预览、导出、公式
+  formats/    zip / xlsx / xlsx-writer / xls 编解码
+  ingest/     把上传或抓取的文件读成文本或行：每种格式一个模块，ingest.ts 负责分发
+  workbook/   spec 校验与落笔、编辑操作（spec-ops）、表查询、预览、导出
   agent/      一轮对话（agent）、模型接入（llm / model / pi）、抓取、本机文件访问、pi-tools/
   store/      settings、session-store：落盘的状态，各自带串行队列
   platform/   SEA 资源读取、用系统默认程序打开文件
@@ -42,7 +43,7 @@ tests/        node:test 测试（.ts，经 tsx 直接跑源码），子目录与
 tools/        构建、打包与静态检查脚本
 ```
 
-依赖方向自上而下：`http` → `agent` / `store` → `workbook` → `formats`，`platform` 谁都可以用。
+依赖方向自上而下：`http` → `agent` / `store` → `workbook` / `ingest` → `formats`，`platform` 谁都可以用。
 同一层的 `agent` 和 `store` 之间有引用：`store/settings` 校验时要用 `agent/` 里协议和文件访问模式的定义。
 HTTP 层是 [Koa](https://koajs.com/)：`src/http/server.ts` 组装应用，接口按领域分在 `src/http/routes/` 下。
 `pnpm start` 和 `pnpm desktop` 启动前都会先编译（`prestart` / `predesktop`），

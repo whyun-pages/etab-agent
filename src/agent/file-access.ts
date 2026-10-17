@@ -60,8 +60,10 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { ingestFile, isHiddenPath, READABLE_EXT } from '../formats/attachments.ts';
-import type { Ingested } from '../formats/attachments.ts';
+import { ingestFile } from '../ingest/ingest.ts';
+import { isHiddenPath } from '../ingest/archive.ts';
+import { READABLE_EXT } from '../ingest/kinds.ts';
+import type { Ingested } from '../ingest/ingest.ts';
 import { GREP_MAX_FILE_BYTES } from './pi-tools/fs-tools.ts';
 import type {
   EditOperations,

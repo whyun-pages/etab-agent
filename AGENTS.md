@@ -147,13 +147,16 @@ http/       Koa app, per-process AppState, routes/
 agent/      the turn, model access (llm, model, pi), fetch, local file access, pi-tools/
 store/      settings, session-store — state on disk, each behind its own SerialQueue
 workbook/   spec validation and writing, spec-ops, table-query, preview, export
-formats/    zip, xlsx, xlsx-writer, xls; attachments (uploaded file -> text/rows)
+ingest/     an uploaded or fetched file -> text or rows: one module per kind
+            (csv, json, markup, m3u, image, archive), ingest.ts dispatches
+formats/    zip, xlsx, xlsx-writer, xls — the file formats themselves
 platform/   SEA assets, open-with-system — usable from any layer
 ```
 
 `agent/` and `store/` are one level: `store/settings` validates against the
-protocol and file-access definitions in `agent/`. Nothing in `workbook/` or
-`formats/` may import upward.
+protocol and file-access definitions in `agent/`. `workbook/` and `ingest/` are
+one level too, and do not import each other. Nothing in `workbook/`,
+`ingest/` or `formats/` may import upward.
 
 Tests mirror `src/`: the test for `src/<layer>/<module>.ts` is
 `tests/<layer>/<module>.test.ts`. A test that drives several modules goes where

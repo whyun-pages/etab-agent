@@ -3,22 +3,12 @@ import { test } from 'node:test';
 import assert from 'node:assert';
 import { writeZip, readZip } from '../../src/formats/zip.ts';
 import { writeSimpleSheet, writeWorkbook } from '../../src/formats/xlsx-writer.ts';
-import {
-  readAttachment,
-  parseCsv,
-  guessDelimiter,
-  decodeText,
-  matrixToTable,
-  detectHeaderRow,
-  coerce,
-  columnType,
-  markupToText,
-  docxText,
-  sniffKind,
-  sheetToMatrix,
-  gridSize,
-  ingestFile,
-} from '../../src/formats/attachments.ts';
+import { readAttachment, ingestFile } from '../../src/ingest/ingest.ts';
+import { parseCsv, guessDelimiter, decodeText } from '../../src/ingest/csv.ts';
+import { matrixToTable, detectHeaderRow, coerce, columnType } from '../../src/ingest/table.ts';
+import { markupToText, docxText } from '../../src/ingest/markup.ts';
+import { sniffKind } from '../../src/ingest/kinds.ts';
+import { sheetToMatrix, gridSize } from '../../src/ingest/grid.ts';
 
 // ---------------------------------------------------------------------- CSV
 test('CSV parsing handles quoting, embedded delimiters and newlines', () => {

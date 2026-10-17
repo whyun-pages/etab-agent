@@ -13,7 +13,7 @@ import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 
-import type { readAttachment } from '../formats/attachments.ts';
+import type { Attachment, Extractor } from '../ingest/types.ts';
 import type { FileWrite } from '../agent/file-access.ts';
 import { openWithSystem } from '../platform/open-file.ts';
 import { Settings } from '../store/settings.ts';
@@ -31,11 +31,9 @@ type SettingsLike = import('../store/settings.ts').Settings;
 /** A pi-ai model, for the test seam that replaces the configured one. */
 export type PiModel = import('@earendil-works/pi-ai').Model<any>;
 
-// `src/formats/attachments.ts` does not export its `Attachment`/`Extractor` shapes, so
-// the ones needed here are derived from the function that produces them rather
-// than re-declared. Deriving is what keeps them from drifting.
-export type Attachment = Awaited<ReturnType<typeof readAttachment>>;
-export type Extractor = NonNullable<Parameters<typeof readAttachment>[2]>['imageExtractor'];
+// Re-exported for the routes, which take them from here with the rest of
+// the state's shapes.
+export type { Attachment, Extractor };
 
 /**
  * An uploaded attachment as this process keeps it: the reader's result plus the
