@@ -76,12 +76,18 @@ function runText(xml: string): string {
   return out;
 }
 
+/**
+ * XML entities in WordprocessingML text. Not xlsx's unescapeXml: that one
+ * also decodes SpreadsheetML's `_xHHHH_` escapes, which in a Word document
+ * are just text.
+ */
 function decodeEntities(s: string): string {
   const NAMED: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" };
   return s.replace(/&(amp|lt|gt|quot|apos|#x?[0-9a-fA-F]+);/g, (m, g) => {
     if (g[0] === '#') {
       const code = g[1] === 'x' || g[1] === 'X' ? parseInt(g.slice(2), 16) : parseInt(g.slice(1), 10);
-      return Number.isFinite(code) ? String.fromCodePoint(code) : m;
+      // Past U+10FFFF fromCodePoint throws; kept as written rather than failing the file.
+      return code >= 0 && code <= 0x10ffff ? String.fromCodePoint(code) : m;
     }
     return NAMED[g] ?? m;
   });

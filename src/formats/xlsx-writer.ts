@@ -110,10 +110,7 @@ export class CellBuilder {
       if (isFormulaInput(value)) return this._formulaCell(value.formula, value.cached, opts);
     }
 
-    const s = opts.styleIndex != null ? opts.styleIndex : this.styleIndex;
-    const sAttr = opts.styleAttr != null ? opts.styleAttr : null;
-    const styleAttr = sAttr != null ? ` s="${sAttr}"` : s != null && s !== 0 ? ` s="${s}"` : '';
-    const ref = opts.ref ? ` r="${opts.ref}"` : '';
+    const { styleAttr, ref } = this._attrs(opts);
     const formula = opts.formula ? `<f>${escapeXml(opts.formula)}</f>` : '';
 
     if (value === null || value === undefined || value === '') {
@@ -135,13 +132,7 @@ export class CellBuilder {
       const serial = (value.getTime() - Date.UTC(1899, 11, 30)) / 86400000;
       return `<c${ref}${styleAttr}>${formula}<v>${serial.toFixed(6)}</v></c>`;
     }
-    if (isFormulaInput(value)) {
-      return this._formulaCell(value.formula, value.cached, opts);
-    }
-    if (typeof value === 'object' && 'error' in value && value.error != null) {
-      return this._errorCell(value.error, opts);
-    }
-
+    // Formula and error objects returned at the top; what is left is text.
     const text = String(value);
     if (this.reuseShared) {
       let idx = this._intern.get(text);

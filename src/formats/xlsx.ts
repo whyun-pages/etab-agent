@@ -25,7 +25,9 @@ export function unescapeXml(s: string): string {
   let out = s.replace(/&(#x?[0-9a-fA-F]+|amp|lt|gt|quot|apos);/g, (m, g) => {
     if (g[0] === '#') {
       const code = g[1] === 'x' || g[1] === 'X' ? parseInt(g.slice(2), 16) : parseInt(g.slice(1), 10);
-      return Number.isFinite(code) ? String.fromCodePoint(code) : m;
+      // Past U+10FFFF fromCodePoint throws, and one bad reference would fail
+      // the whole file; it is kept as written instead.
+      return code >= 0 && code <= 0x10ffff ? String.fromCodePoint(code) : m;
     }
     return XML_ENTITIES[g] ?? m;
   });

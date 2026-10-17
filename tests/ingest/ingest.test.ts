@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert';
 import { writeZip, readZip } from '../../src/formats/zip.ts';
 import { writeSimpleSheet, writeWorkbook } from '../../src/formats/xlsx-writer.ts';
+import { unescapeXml } from '../../src/formats/xlsx.ts';
 import { readAttachment, ingestFile } from '../../src/ingest/ingest.ts';
 import { parseCsv, guessDelimiter, decodeText } from '../../src/ingest/csv.ts';
 import { matrixToTable, detectHeaderRow, coerce, columnType } from '../../src/ingest/table.ts';
@@ -460,4 +461,22 @@ test('docx tabs and line breaks become whitespace, in order', async () => {
   assert.match(text.text, /^姓名\t张三$/m);
   assert.match(text.text, /^第一行\n第二行$/m);
   assert.deepStrictEqual(text.tables[0][0], ['地址', '甲\n乙']);
+});
+
+test('a numeric reference past U+10FFFF is kept as text, not a reason to fail the file', async () => {
+  // String.fromCodePoint throws on it; one bad reference failed the whole
+  // document. Both readers keep it as written.
+  const doc =
+    '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>' +
+    '<w:p><w:r><w:t>a&#99999999;b&#x4E2D;</w:t></w:r></w:p></w:body></w:document>';
+  const att = await readAttachment(
+    writeZip([
+      { name: '[Content_Types].xml', data: '<Types/>' },
+      { name: 'word/document.xml', data: doc },
+    ]),
+    'bad-entity.docx',
+  );
+  assert.strictEqual(att.kind, 'text');
+  assert.match(att.text, /a&#99999999;b中/);
+  assert.strictEqual(unescapeXml('x&#x110000;y&#65;'), 'x&#x110000;yA');
 });

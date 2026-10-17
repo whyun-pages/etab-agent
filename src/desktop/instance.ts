@@ -37,7 +37,14 @@ interface InstanceRecord {
   pid?: number;
 }
 
-/** Is something answering as this app on that port? */
+/**
+ * Is something answering as this app on that port?
+ *
+ * http.get, not fetch: fetch refuses the "bad ports" (6000, 5060, 6665-6669,
+ * 10080 ...), and the instance's port is whatever the OS handed out for port
+ * 0. A refused probe reads as "no instance", so the second launch would start
+ * a server of its own instead of handing off.
+ */
 function probeHealth(port: number, timeoutMs = 1200): Promise<{ port: number } | null> {
   return new Promise((resolve) => {
     const req = http.get({ host: '127.0.0.1', port, path: '/api/health' }, (res) => {
