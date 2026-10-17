@@ -34,14 +34,19 @@ export function unescapeXml(s: string): string {
 }
 
 export function escapeXml(s: unknown): string {
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;')
-    // XML 1.0 forbids most control characters; Excel's escape keeps them round-trippable.
-    .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, (c) => '_x' + c.charCodeAt(0).toString(16).toUpperCase().padStart(4, '0') + '_');
+  return (
+    String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&apos;')
+      // XML 1.0 forbids most control characters; Excel's escape keeps them round-trippable.
+      .replace(
+        /[\x00-\x08\x0b\x0c\x0e-\x1f]/g,
+        (c) => '_x' + c.charCodeAt(0).toString(16).toUpperCase().padStart(4, '0') + '_',
+      )
+  );
 }
 
 /** Pull the text of the first <tag>...</tag> inside `xml`. */
@@ -95,7 +100,10 @@ export function parseSharedStrings(xml: string | null): string[] {
   let m;
   while ((m = itemRe.exec(xml))) {
     const inner = m[1];
-    if (inner == null) { out.push(''); continue; }
+    if (inner == null) {
+      out.push('');
+      continue;
+    }
     // A <si> is either <t>text</t> or a run list <r><t>..</t></r>...; concat runs.
     let text = '';
     const tRe = /<t\b[^>]*>([\s\S]*?)<\/t>|<t\b[^>]*\/>/g;
@@ -253,7 +261,12 @@ export function readWorkbook(buf: Buffer): Workbook {
   for (const sheet of sheets) {
     if (!sheet.path) continue;
     const xml = get(sheet.path) || get(sheet.path.replace(/^xl\//, ''));
-    if (!xml) { sheet.cells = []; sheet.merges = []; sheet.dimensions = null; continue; }
+    if (!xml) {
+      sheet.cells = [];
+      sheet.merges = [];
+      sheet.dimensions = null;
+      continue;
+    }
     const parsed = parseSheet(xml, sharedStrings, styles);
     sheet.cells = parsed.cells;
     sheet.merges = parsed.merges;
@@ -316,12 +329,34 @@ function parseDefinedNames(xml: string): Record<string, string> {
 // ------------------------------------------------------------------ styles
 
 const BUILTIN_NUM_FMTS: Record<string, string> = {
-  0: 'General', 1: '0', 2: '0.00', 3: '#,##0', 4: '#,##0.00', 9: '0%', 10: '0.00%',
-  11: '0.00E+00', 12: '# ?/?', 13: '# ??/??', 14: 'm/d/yyyy', 15: 'd-mmm-yy',
-  16: 'd-mmm', 17: 'mmm-yy', 18: 'h:mm AM/PM', 19: 'h:mm:ss AM/PM', 20: 'h:mm',
-  21: 'h:mm:ss', 22: 'm/d/yyyy h:mm', 37: '#,##0 ;(#,##0)',
-  38: '#,##0 ;[Red](#,##0)', 39: '#,##0.00;(#,##0.00)', 40: '#,##0.00;[Red](#,##0.00)',
-  45: 'mm:ss', 46: '[h]:mm:ss', 47: 'mmss.0', 48: '##0.0E+0', 49: '@',
+  0: 'General',
+  1: '0',
+  2: '0.00',
+  3: '#,##0',
+  4: '#,##0.00',
+  9: '0%',
+  10: '0.00%',
+  11: '0.00E+00',
+  12: '# ?/?',
+  13: '# ??/??',
+  14: 'm/d/yyyy',
+  15: 'd-mmm-yy',
+  16: 'd-mmm',
+  17: 'mmm-yy',
+  18: 'h:mm AM/PM',
+  19: 'h:mm:ss AM/PM',
+  20: 'h:mm',
+  21: 'h:mm:ss',
+  22: 'm/d/yyyy h:mm',
+  37: '#,##0 ;(#,##0)',
+  38: '#,##0 ;[Red](#,##0)',
+  39: '#,##0.00;(#,##0.00)',
+  40: '#,##0.00;[Red](#,##0.00)',
+  45: 'mm:ss',
+  46: '[h]:mm:ss',
+  47: 'mmss.0',
+  48: '##0.0E+0',
+  49: '@',
 };
 
 /**
@@ -410,7 +445,8 @@ export function numFmtCodeFor(styles: StylesTable, styleIndex: number | null | u
  */
 export function parseSheet(xml: string, sharedStrings: string[], styles: StylesTable): SheetXml {
   const cells: ParsedCell[] = [];
-  let maxRow = 0, maxCol = 0;
+  let maxRow = 0,
+    maxCol = 0;
   const merges: string[] = [];
   const cols: ColSpec[] = [];
 
@@ -425,8 +461,10 @@ export function parseSheet(xml: string, sharedStrings: string[], styles: StylesT
         return r ? Number(r[1]) : null;
       };
       cols.push({
-        min: g('min'), max: g('max'),
-        width: g('width'), hidden: g('hidden') === 1,
+        min: g('min'),
+        max: g('max'),
+        width: g('width'),
+        hidden: g('hidden') === 1,
         style: g('style'),
         customWidth: /customWidth="1"/.test(attrs),
       });
@@ -486,7 +524,8 @@ export function parseSheet(xml: string, sharedStrings: string[], styles: StylesT
         const tRe = /<t\b[^>]*>([\s\S]*?)<\/t>/g;
         let t;
         while ((t = tRe.exec(isRaw))) text += unescapeXml(t[1]);
-        value = text; kind = 's';
+        value = text;
+        kind = 's';
       } else if (type === 's') {
         value = sharedStrings[Number(vRaw)] ?? '';
         kind = 's';
@@ -494,18 +533,23 @@ export function parseSheet(xml: string, sharedStrings: string[], styles: StylesT
         value = unescapeXml(vRaw ?? '');
         kind = 's';
       } else if (type === 'inlineStr') {
-        value = ''; kind = 's';
+        value = '';
+        kind = 's';
       } else if (type === 'b') {
-        value = vRaw === '1'; kind = 'b';
+        value = vRaw === '1';
+        kind = 'b';
       } else if (type === 'e') {
         // Wrap in an object: a bare string would be re-emitted as text by the
         // writer, silently turning #DIV/0! into a literal label.
-        value = { error: unescapeXml(vRaw ?? '') }; kind = 'e';
+        value = { error: unescapeXml(vRaw ?? '') };
+        kind = 'e';
       } else if (type === 'd') {
-        value = unescapeXml(vRaw ?? ''); kind = 'd';
+        value = unescapeXml(vRaw ?? '');
+        kind = 'd';
       } else if (vRaw != null) {
         const n = Number(vRaw);
-        value = Number.isFinite(n) ? n : unescapeXml(vRaw); kind = 'n';
+        value = Number.isFinite(n) ? n : unescapeXml(vRaw);
+        kind = 'n';
       }
 
       if (row > maxRow) maxRow = row;

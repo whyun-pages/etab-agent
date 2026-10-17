@@ -37,13 +37,21 @@ function launch(t, { env = {}, args = [] } = {}) {
   });
   let out = '';
   let err = '';
-  proc.stdout.on('data', (d) => { out += d.toString('utf8'); });
-  proc.stderr.on('data', (d) => { err += d.toString('utf8'); });
+  proc.stdout.on('data', (d) => {
+    out += d.toString('utf8');
+  });
+  proc.stderr.on('data', (d) => {
+    err += d.toString('utf8');
+  });
   const exited = new Promise((res) => proc.on('exit', (code) => res(code)));
 
   const handle = {
-    get out() { return out; },
-    get err() { return err; },
+    get out() {
+      return out;
+    },
+    get err() {
+      return err;
+    },
     exited,
     /** The port the process reported, or null. */
     boundPort() {
@@ -77,11 +85,16 @@ function portLive(port) {
   return new Promise((resolve) => {
     const req = http.get({ host: '127.0.0.1', port, path: '/api/health', timeout: 1500 }, (res) => {
       let s = '';
-      res.on('data', (c) => { s += c; });
+      res.on('data', (c) => {
+        s += c;
+      });
       res.on('end', () => resolve(s.includes('tab-agent')));
     });
     req.on('error', () => resolve(false));
-    req.on('timeout', () => { req.destroy(); resolve(false); });
+    req.on('timeout', () => {
+      req.destroy();
+      resolve(false);
+    });
   });
 }
 

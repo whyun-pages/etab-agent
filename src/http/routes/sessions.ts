@@ -111,7 +111,9 @@ export function sessionRoutes(router: Router, { state }: RouteDeps): void {
         return null;
       }
       try {
-        const next = applyOps(current.spec, [{ op: 'set_column_widths', args: { sheet: sheet.name, widths: [{ header, width: body.width }] } }]).spec;
+        const next = applyOps(current.spec, [
+          { op: 'set_column_widths', args: { sheet: sheet.name, widths: [{ header, width: body.width }] } },
+        ]).spec;
         return next ? { ...current, spec: next } : null;
       } catch (err) {
         conflict = messageOf(err);

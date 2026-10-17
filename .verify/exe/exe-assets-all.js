@@ -14,17 +14,24 @@ const ROOT = path.join(__dirname, '..', '..');
 const EXE = path.join(ROOT, 'dist', 'TabAgent.exe');
 const PUBLIC = path.join(ROOT, 'public');
 
-function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
 
 function get(port, p) {
   return new Promise((resolve) => {
     const req = http.get({ host: '127.0.0.1', port, path: p }, (res) => {
       const chunks = [];
       res.on('data', (c) => chunks.push(c));
-      res.on('end', () => resolve({ status: res.statusCode, body: Buffer.concat(chunks), type: res.headers['content-type'] }));
+      res.on('end', () =>
+        resolve({ status: res.statusCode, body: Buffer.concat(chunks), type: res.headers['content-type'] }),
+      );
     });
     req.on('error', (e) => resolve({ status: 0, err: e.message }));
-    req.setTimeout(8000, () => { req.destroy(); resolve({ status: 0, err: 'timeout' }); });
+    req.setTimeout(8000, () => {
+      req.destroy();
+      resolve({ status: 0, err: 'timeout' });
+    });
   });
 }
 
@@ -36,7 +43,9 @@ function get(port, p) {
  */
 const INTENTIONALLY_EXCLUDED = new Set(['package.json']);
 
-function sha(buf) { return require('node:crypto').createHash('sha256').update(buf).digest('hex').slice(0, 16); }
+function sha(buf) {
+  return require('node:crypto').createHash('sha256').update(buf).digest('hex').slice(0, 16);
+}
 
 /** Every file under public/, as POSIX relative paths. */
 function diskKeys(dir = PUBLIC, prefix = '') {
@@ -92,10 +101,16 @@ async function main() {
   console.log('\nreferenced but absent from public/: ' + (missing.length ? missing.join(', ') : 'none'));
 
   console.log('\n=== starting packaged exe --headless ===');
-  const child = spawn(EXE, ['--headless', '--data-dir', path.join(ROOT, '.verify', 'out', 'win-data')], { stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = spawn(EXE, ['--headless', '--data-dir', path.join(ROOT, '.verify', 'out', 'win-data')], {
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
   let out = '';
-  child.stdout.on('data', (d) => { out += d.toString(); });
-  child.stderr.on('data', (d) => { out += d.toString(); });
+  child.stdout.on('data', (d) => {
+    out += d.toString();
+  });
+  child.stderr.on('data', (d) => {
+    out += d.toString();
+  });
 
   let port = null;
   for (let i = 0; i < 20 && !port; i++) {
@@ -127,17 +142,25 @@ async function main() {
 
     if (INTENTIONALLY_EXCLUDED.has(r.key)) {
       excluded++;
-      console.log('  SKIP ' + String(r.status).padEnd(4) + r.key.padEnd(24) + ' intentionally not served (404 = designed)');
+      console.log(
+        '  SKIP ' + String(r.status).padEnd(4) + r.key.padEnd(24) + ' intentionally not served (404 = designed)',
+      );
       continue;
     }
 
     const ok = r.status === 200 && gotHash === diskHash;
     if (!ok) bad++;
     console.log(
-      '  ' + (ok ? ' OK ' : 'FAIL') + ' ' +
-      String(r.status).padEnd(4) +
-      String(r.body ? r.body.length : 0).padStart(7) + 'B  ' +
-      gotHash + (ok ? ' == ' + diskHash : ' != ' + diskHash) + '  /' + r.key
+      '  ' +
+        (ok ? ' OK ' : 'FAIL') +
+        ' ' +
+        String(r.status).padEnd(4) +
+        String(r.body ? r.body.length : 0).padStart(7) +
+        'B  ' +
+        gotHash +
+        (ok ? ' == ' + diskHash : ' != ' + diskHash) +
+        '  /' +
+        r.key,
     );
   }
 
@@ -147,11 +170,22 @@ async function main() {
     console.log('  ' + String(r.status).padEnd(4) + p + (r.status === 200 ? '  ' + r.body.length + 'B' : ''));
   }
 
-  console.log('\nfailures: ' + bad + ' / ' + (results.length - excluded) + ' servable assets (' + excluded + ' intentionally excluded)');
+  console.log(
+    '\nfailures: ' +
+      bad +
+      ' / ' +
+      (results.length - excluded) +
+      ' servable assets (' +
+      excluded +
+      ' intentionally excluded)',
+  );
   console.log(bad === 0 ? 'EVERY SERVABLE ASSET BYTE-IDENTICAL' : 'EMBEDDED ASSET GAPS REMAIN');
 
   child.kill();
   await sleep(500);
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

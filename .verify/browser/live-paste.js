@@ -38,8 +38,14 @@ const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwA
 let passed = 0;
 let failed = 0;
 function check(name, ok, detail) {
-  if (ok) { passed += 1; console.log(`  ok    ${name}`); }
-  else { failed += 1; console.log(`  FAIL  ${name}`); if (detail) console.log(`        ${detail}`); }
+  if (ok) {
+    passed += 1;
+    console.log(`  ok    ${name}`);
+  } else {
+    failed += 1;
+    console.log(`  FAIL  ${name}`);
+    if (detail) console.log(`        ${detail}`);
+  }
 }
 
 async function main() {
@@ -47,7 +53,12 @@ async function main() {
   fs.mkdirSync(OUT, { recursive: true });
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'live-paste-'));
   // Attachments are parsed locally; no model is asked to read them.
-  await new Settings(dataDir).save({ baseUrl: 'http://127.0.0.1:1/v1', apiKey: 'sk-not-a-real-key', model: 'stub', useForAttachments: false });
+  await new Settings(dataDir).save({
+    baseUrl: 'http://127.0.0.1:1/v1',
+    apiKey: 'sk-not-a-real-key',
+    model: 'stub',
+    useForAttachments: false,
+  });
 
   const server = createServer({
     dataDir,
@@ -56,18 +67,26 @@ async function main() {
   });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   const base = `http://127.0.0.1:${server.address().port}`;
-  const created = await (await fetch(`${base}/api/sessions`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).json();
+  const created = await (
+    await fetch(`${base}/api/sessions`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+  ).json();
   const attUrl = `${base}/api/sessions/${encodeURIComponent(created.session.id)}/attachments`;
 
   let page = null;
   try {
     page = await openPage({
-      edge: findEdge(), profile: path.join(OUT, 'paste-profile'), url: base, port: 9768, window: '1200,800', waitForSelector: '.rail',
+      edge: findEdge(),
+      profile: path.join(OUT, 'paste-profile'),
+      url: base,
+      port: 9768,
+      window: '1200,800',
+      waitForSelector: '.rail',
     });
     await sleep(1500);
 
     /** Paste into the composer; `items` are {name, type, b64} files and/or {text}. */
-    const paste = (items) => page.evaluate(`(() => {
+    const paste = (items) =>
+      page.evaluate(`(() => {
       const ta = document.querySelector('.composer__input');
       ta.focus();
       const dt = new DataTransfer();
@@ -80,7 +99,10 @@ async function main() {
       ta.dispatchEvent(ev);
       return ev.defaultPrevented;
     })()`);
-    const chips = () => page.evaluate(`JSON.stringify([...document.querySelectorAll('.chip .chip__name')].map((n) => n.textContent))`).then(JSON.parse);
+    const chips = () =>
+      page
+        .evaluate(`JSON.stringify([...document.querySelectorAll('.chip .chip__name')].map((n) => n.textContent))`)
+        .then(JSON.parse);
     const onServer = async () => (await (await fetch(attUrl)).json()).attachments.map((a) => a.name);
     const clear = () => fetch(attUrl, { method: 'DELETE' });
 
@@ -89,19 +111,35 @@ async function main() {
     await sleep(1000);
     const one = await chips();
     check('a pasted screenshot is taken over from the browser', took === true);
-    check('it becomes an attachment named by the time', one.length === 1 && /^截图-\d{6}\.png$/.test(one[0]), JSON.stringify(one));
-    check('the server has it', JSON.stringify(await onServer()) === JSON.stringify(one), JSON.stringify(await onServer()));
+    check(
+      'it becomes an attachment named by the time',
+      one.length === 1 && /^截图-\d{6}\.png$/.test(one[0]),
+      JSON.stringify(one),
+    );
+    check(
+      'the server has it',
+      JSON.stringify(await onServer()) === JSON.stringify(one),
+      JSON.stringify(await onServer()),
+    );
 
     await clear();
     await paste([shot, shot]);
     await sleep(1000);
     const two = await onServer();
-    check('two screenshots at once get two names', two.length === 2 && two[0] !== two[1] && two.every((n) => /^截图-\d{6}-[12]\.png$/.test(n)), JSON.stringify(two));
+    check(
+      'two screenshots at once get two names',
+      two.length === 2 && two[0] !== two[1] && two.every((n) => /^截图-\d{6}-[12]\.png$/.test(n)),
+      JSON.stringify(two),
+    );
 
     await clear();
     await paste([{ name: '客户名单.csv', type: 'text/csv', b64: Buffer.from('客户,金额\n甲,1\n').toString('base64') }]);
     await sleep(1000);
-    check('a file copied from disk keeps its name', JSON.stringify(await onServer()) === JSON.stringify(['客户名单.csv']), JSON.stringify(await onServer()));
+    check(
+      'a file copied from disk keeps its name',
+      JSON.stringify(await onServer()) === JSON.stringify(['客户名单.csv']),
+      JSON.stringify(await onServer()),
+    );
 
     await clear();
     const excel = await paste([{ text: '甲\t1\n乙\t2' }, shot]);
@@ -112,13 +150,22 @@ async function main() {
     const text = await paste([{ text: '你好' }]);
     check('a plain text paste is left to the browser', text === false);
   } finally {
-    if (page) { try { await closePage(page, { trashProfile: true }); } catch {} }
+    if (page) {
+      try {
+        await closePage(page, { trashProfile: true });
+      } catch {}
+    }
     await new Promise((r) => server.close(r));
-    try { fs.rmSync(dataDir, { recursive: true, force: true }); } catch {}
+    try {
+      fs.rmSync(dataDir, { recursive: true, force: true });
+    } catch {}
   }
 
   console.log(`\n${failed === 0 ? 'PASTE CHECKS PASSED' : `${failed} FAILED`} (${passed} ok)`);
   process.exit(failed === 0 ? 0 : 1);
 }
 
-main().catch((err) => { console.error(err); process.exit(1); });
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

@@ -65,8 +65,13 @@ test('concurrent creates over HTTP all land, with distinct ids', async (t) => {
   // The store has its own version of this; here it is the route that must
   // await the create before answering, or the list misses some.
   const { base } = await startServer(t);
-  const many = await Promise.all(Array.from({ length: 10 }, (_, i) => post(base, '/api/sessions', { title: `批量-${i}` })));
-  assert.ok(many.every((m) => m.status === 200), many.map((m) => m.status).join(','));
+  const many = await Promise.all(
+    Array.from({ length: 10 }, (_, i) => post(base, '/api/sessions', { title: `批量-${i}` })),
+  );
+  assert.ok(
+    many.every((m) => m.status === 200),
+    many.map((m) => m.status).join(','),
+  );
   assert.strictEqual(new Set(many.map((m) => m.json.session.id)).size, 10, 'a duplicate id');
   assert.strictEqual((await get(base, '/api/sessions')).json.sessions.length, 10);
 });
@@ -175,7 +180,9 @@ test('a session survives a server restart', async (t) => {
 
 test('the workbook downloads as CSV and JSON too', async (t) => {
   const { base } = await startServer(t, { chatConfirmEdits: false, replies: [ACTION] });
-  const { json: { session } } = await post(base, '/api/sessions', {});
+  const {
+    json: { session },
+  } = await post(base, '/api/sessions', {});
   await post(base, `/api/sessions/${session.id}/turn`, { message: '做表' });
 
   const csv = await fetch(`${base}/api/sessions/${session.id}/workbook.csv`);
@@ -203,7 +210,10 @@ const bigSpec = (n) => ({
 });
 
 test('the preview comes in a first window, and the rest pages in by key', async (t) => {
-  const { base } = await startServer(t, { replies: [[{ tool: 'create_workbook', args: bigSpec(300) }, '好']], chatConfirmEdits: false });
+  const { base } = await startServer(t, {
+    replies: [[{ tool: 'create_workbook', args: bigSpec(300) }, '好']],
+    chatConfirmEdits: false,
+  });
   const { json: created } = await post(base, '/api/sessions', {});
   const id = created.session.id;
   const turn = await post(base, `/api/sessions/${id}/turn`, { message: '做一个 300 行的表' });
@@ -225,7 +235,10 @@ test('the preview comes in a first window, and the rest pages in by key', async 
   }
   assert.strictEqual(rows.length, 301);
   assert.deepStrictEqual(rows[300], ['客户300', 30000]);
-  assert.deepStrictEqual(rows.slice(1).map((r) => r[0]), Array.from({ length: 300 }, (_, i) => `客户${i + 1}`));
+  assert.deepStrictEqual(
+    rows.slice(1).map((r) => r[0]),
+    Array.from({ length: 300 }, (_, i) => `客户${i + 1}`),
+  );
 
   // The same key is what reloading the session hands out.
   const back = await get(base, `/api/sessions/${id}`);
@@ -233,7 +246,10 @@ test('the preview comes in a first window, and the rest pages in by key', async 
 });
 
 test('a page request is capped, and a changed table answers stale', async (t) => {
-  const { base } = await startServer(t, { replies: [[{ tool: 'create_workbook', args: bigSpec(800) }, '好']], chatConfirmEdits: false });
+  const { base } = await startServer(t, {
+    replies: [[{ tool: 'create_workbook', args: bigSpec(800) }, '好']],
+    chatConfirmEdits: false,
+  });
   const { json: created } = await post(base, '/api/sessions', {});
   const id = created.session.id;
   const { json: turn } = await post(base, `/api/sessions/${id}/turn`, { message: '做表' });
@@ -253,7 +269,10 @@ test('a page request is capped, and a changed table answers stale', async (t) =>
 });
 
 test('a held proposal pages its own rows, not the stored table', async (t) => {
-  const { base } = await startServer(t, { replies: [[{ tool: 'create_workbook', args: bigSpec(120) }, '好']], chatConfirmEdits: true });
+  const { base } = await startServer(t, {
+    replies: [[{ tool: 'create_workbook', args: bigSpec(120) }, '好']],
+    chatConfirmEdits: true,
+  });
   const { json: created } = await post(base, '/api/sessions', {});
   const id = created.session.id;
   const { json: turn } = await post(base, `/api/sessions/${id}/turn`, { message: '做表' });
@@ -278,10 +297,18 @@ test('a column width dragged in the preview is stored, exported and previewed', 
   const id = (await post(base, '/api/sessions', {})).json.session.id;
   const turn = await post(base, `/api/sessions/${id}/turn`, { message: '做一个销售台账' });
 
-  const r = await post(base, `/api/sessions/${id}/column-width`, { sheet: '明细', index: 1, header: '金额', width: 31.5 });
+  const r = await post(base, `/api/sessions/${id}/column-width`, {
+    sheet: '明细',
+    index: 1,
+    header: '金额',
+    width: 31.5,
+  });
   assert.strictEqual(r.status, 200, JSON.stringify(r.json));
   assert.notStrictEqual(r.json.key, turn.json.preview.key, 'the file changed, so the key did');
-  assert.ok(r.json.cols.some((c) => c.min <= 2 && 2 <= c.max && c.width === 31.5), JSON.stringify(r.json.cols));
+  assert.ok(
+    r.json.cols.some((c) => c.min <= 2 && 2 <= c.max && c.width === 31.5),
+    JSON.stringify(r.json.cols),
+  );
 
   const stored = JSON.parse(fs.readFileSync(path.join(dataDir, 'sessions', `${id}.json`), 'utf8'));
   assert.strictEqual(stored.spec.sheets[0].columns[1].width, 31.5);
@@ -301,7 +328,7 @@ test('a column width aimed at a column that has moved is refused, and nothing is
   const before = fs.readFileSync(file, 'utf8');
 
   for (const body of [
-    { sheet: '明细', index: 0, header: '金额', width: 20 },   // header is elsewhere now
+    { sheet: '明细', index: 0, header: '金额', width: 20 }, // header is elsewhere now
     { sheet: '明细', index: 5, header: '金额', width: 20 },
     { sheet: '没有', index: 1, header: '金额', width: 20 },
     { sheet: '明细', index: 1, header: '金额', width: 'wide' },
@@ -312,7 +339,12 @@ test('a column width aimed at a column that has moved is refused, and nothing is
   }
   assert.strictEqual(fs.readFileSync(file, 'utf8'), before, 'the session file was not touched');
 
-  const missing = await post(base, '/api/sessions/nope/column-width', { sheet: '明细', index: 1, header: '金额', width: 20 });
+  const missing = await post(base, '/api/sessions/nope/column-width', {
+    sheet: '明细',
+    index: 1,
+    header: '金额',
+    width: 20,
+  });
   assert.strictEqual(missing.status, 404);
 });
 
@@ -320,9 +352,13 @@ test('a column width saved while a turn is in flight survives the turn landing',
   // The turn's operations are replayed on the stored table, which by then has
   // the new width; writing back its snapshot would have erased it.
   let release;
-  const gate = new Promise((r) => { release = r; });
+  const gate = new Promise((r) => {
+    release = r;
+  });
   let entered;
-  const inFlight = new Promise((r) => { entered = r; });
+  const inFlight = new Promise((r) => {
+    entered = r;
+  });
   const held = (context) => {
     if (context.messages.some((m) => m.role === 'toolResult')) return '改好了。';
     entered();
@@ -334,7 +370,12 @@ test('a column width saved while a turn is in flight survives the turn landing',
 
   const slow = post(base, `/api/sessions/${id}/turn`, { message: '把甲的金额改成 1' });
   await inFlight;
-  const w = await post(base, `/api/sessions/${id}/column-width`, { sheet: '明细', index: 0, header: '客户名称', width: 40 });
+  const w = await post(base, `/api/sessions/${id}/column-width`, {
+    sheet: '明细',
+    index: 0,
+    header: '客户名称',
+    width: 40,
+  });
   assert.strictEqual(w.status, 200);
   release();
   assert.strictEqual((await slow).json.applied, true);

@@ -74,18 +74,24 @@ export function restoreChatScroll(root, before) {
     if (box.scrollHeight > before.height) unseen = true;
   }
 
-  const sync = () => { if (jump) jump.hidden = stuck || !unseen; };
+  const sync = () => {
+    if (jump) jump.hidden = stuck || !unseen;
+  };
   sync();
 
-  box.addEventListener('scroll', () => {
-    // A replaced stream still gets one late scroll event once detached, where
-    // its height is 0 and so it reads as "at the bottom". Only the live one
-    // speaks for where the user is.
-    if (!box.isConnected) return;
-    stuck = atBottom(box);
-    if (stuck) unseen = false;
-    sync();
-  }, { passive: true });
+  box.addEventListener(
+    'scroll',
+    () => {
+      // A replaced stream still gets one late scroll event once detached, where
+      // its height is 0 and so it reads as "at the bottom". Only the live one
+      // speaks for where the user is.
+      if (!box.isConnected) return;
+      stuck = atBottom(box);
+      if (stuck) unseen = false;
+      sync();
+    },
+    { passive: true },
+  );
 
   if (jump) {
     jump.addEventListener('click', () => {
@@ -102,7 +108,9 @@ export function restoreChatScroll(root, before) {
   // transcript from below without any repaint. While stuck, stay at the end.
   observer?.disconnect();
   if (typeof ResizeObserver === 'function') {
-    observer = new ResizeObserver(() => { if (stuck) toBottom(box); });
+    observer = new ResizeObserver(() => {
+      if (stuck) toBottom(box);
+    });
     observer.observe(box);
   }
 }

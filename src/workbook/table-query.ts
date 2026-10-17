@@ -83,7 +83,22 @@ export interface AggregateResult {
   total: number;
 }
 
-export const CONDITION_OPS = ['=', '!=', '>', '>=', '<', '<=', 'contains', 'not_contains', 'starts_with', 'ends_with', 'in', 'not_in', 'empty', 'not_empty'] as const;
+export const CONDITION_OPS = [
+  '=',
+  '!=',
+  '>',
+  '>=',
+  '<',
+  '<=',
+  'contains',
+  'not_contains',
+  'starts_with',
+  'ends_with',
+  'in',
+  'not_in',
+  'empty',
+  'not_empty',
+] as const;
 export const METRIC_FNS = ['count', 'sum', 'avg', 'min', 'max', 'distinct'] as const;
 
 /** Label shown for an empty group key; a blank line in a listing reads as missing data. */
@@ -113,7 +128,10 @@ export function toNumber(v: unknown): number | null {
   if (typeof v === 'number') return Number.isFinite(v) ? v : null;
   if (typeof v === 'boolean') return v ? 1 : 0;
   if (typeof v !== 'string') return null;
-  let s = v.trim().replace(/[,，\s]/g, '').replace(/^[¥￥$]/, '');
+  let s = v
+    .trim()
+    .replace(/[,，\s]/g, '')
+    .replace(/^[¥￥$]/, '');
   const pct = s.endsWith('%');
   if (pct) s = s.slice(0, -1);
   if (!/^[-+]?(\d+(\.\d*)?|\.\d+)([eE][-+]?\d+)?$/.test(s)) return null;
@@ -195,7 +213,11 @@ export function compileSelection(t: QueryTable, sel: Selection): (row: unknown[]
   const conds = list(sel.where).map((raw) => {
     const c = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
     const i = columnIndex(t, c.column);
-    const op = String(c.op ?? '=').trim().toLowerCase().replace(/^==$/, '=').replace(/^<>$/, '!=');
+    const op = String(c.op ?? '=')
+      .trim()
+      .toLowerCase()
+      .replace(/^==$/, '=')
+      .replace(/^<>$/, '!=');
     if (!(CONDITION_OPS as readonly string[]).includes(op)) {
       throw new QueryError(`不认识的条件「${op}」。可用：${CONDITION_OPS.join(' ')}`);
     }
@@ -229,21 +251,36 @@ function test(cell: unknown, op: string, value: unknown): boolean {
   const text = cellText(cell).toLowerCase();
   const want = cellText(value).toLowerCase();
   switch (op) {
-    case '=': return same(cell, value);
-    case '!=': return !same(cell, value);
-    case '>': return orderable(cell, value) && compare(cell, value) > 0;
-    case '>=': return orderable(cell, value) && compare(cell, value) >= 0;
-    case '<': return orderable(cell, value) && compare(cell, value) < 0;
-    case '<=': return orderable(cell, value) && compare(cell, value) <= 0;
-    case 'contains': return text.includes(want);
-    case 'not_contains': return !text.includes(want);
-    case 'starts_with': return text.startsWith(want);
-    case 'ends_with': return text.endsWith(want);
-    case 'in': return (value as unknown[]).some((v) => same(cell, v));
-    case 'not_in': return !(value as unknown[]).some((v) => same(cell, v));
-    case 'empty': return isBlank(cell);
-    case 'not_empty': return !isBlank(cell);
-    default: return false;
+    case '=':
+      return same(cell, value);
+    case '!=':
+      return !same(cell, value);
+    case '>':
+      return orderable(cell, value) && compare(cell, value) > 0;
+    case '>=':
+      return orderable(cell, value) && compare(cell, value) >= 0;
+    case '<':
+      return orderable(cell, value) && compare(cell, value) < 0;
+    case '<=':
+      return orderable(cell, value) && compare(cell, value) <= 0;
+    case 'contains':
+      return text.includes(want);
+    case 'not_contains':
+      return !text.includes(want);
+    case 'starts_with':
+      return text.startsWith(want);
+    case 'ends_with':
+      return text.endsWith(want);
+    case 'in':
+      return (value as unknown[]).some((v) => same(cell, v));
+    case 'not_in':
+      return !(value as unknown[]).some((v) => same(cell, v));
+    case 'empty':
+      return isBlank(cell);
+    case 'not_empty':
+      return !isBlank(cell);
+    default:
+      return false;
   }
 }
 
@@ -251,7 +288,9 @@ function test(cell: unknown, op: string, value: unknown): boolean {
 export function selectRows(t: QueryTable, sel: Selection): number[] {
   const keep = compileSelection(t, sel);
   const out: number[] = [];
-  t.rows.forEach((r, i) => { if (keep(r)) out.push(i); });
+  t.rows.forEach((r, i) => {
+    if (keep(r)) out.push(i);
+  });
   return out;
 }
 
@@ -280,15 +319,25 @@ export function aggregate(t: QueryTable, args: AggregateArgs): AggregateResult {
   const metricsIn = list(args.metrics).length ? list(args.metrics) : [{ fn: 'count' }];
   const metrics = metricsIn.map((raw) => {
     const m = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
-    const fn = String(m.fn ?? 'count').trim().toLowerCase();
-    if (!(METRIC_FNS as readonly string[]).includes(fn)) throw new QueryError(`不认识的统计「${fn}」。可用：${METRIC_FNS.join(' ')}`);
+    const fn = String(m.fn ?? 'count')
+      .trim()
+      .toLowerCase();
+    if (!(METRIC_FNS as readonly string[]).includes(fn))
+      throw new QueryError(`不认识的统计「${fn}」。可用：${METRIC_FNS.join(' ')}`);
     const col = m.column == null || m.column === '' ? null : compileValue(t, String(m.column));
     if (!col && fn !== 'count') throw new QueryError(`统计 ${fn} 需要 column。`);
     const label = String(m.as ?? '').trim() || (fn === 'count' && !col ? '行数' : `${col!.label}${METRIC_LABEL[fn]}`);
     return { fn, col, label };
   });
 
-  interface Acc { n: number; sum: number; nums: number; min: unknown; max: unknown; seen: Set<string> }
+  interface Acc {
+    n: number;
+    sum: number;
+    nums: number;
+    min: unknown;
+    max: unknown;
+    seen: Set<string>;
+  }
   const groups = new Map<string, { key: unknown[]; acc: Acc[] }>();
   let matched = 0;
   t.rows.forEach((row, idx) => {
@@ -298,25 +347,37 @@ export function aggregate(t: QueryTable, args: AggregateArgs): AggregateResult {
     const id = JSON.stringify(keyVals.map((v) => (isBlank(v) ? '' : cellText(v).trim())));
     let g = groups.get(id);
     if (!g) {
-      g = { key: keyVals.map((v) => (isBlank(v) ? EMPTY_LABEL : v)), acc: metrics.map(() => ({ n: 0, sum: 0, nums: 0, min: null, max: null, seen: new Set() })) };
+      g = {
+        key: keyVals.map((v) => (isBlank(v) ? EMPTY_LABEL : v)),
+        acc: metrics.map(() => ({ n: 0, sum: 0, nums: 0, min: null, max: null, seen: new Set() })),
+      };
       groups.set(id, g);
     }
     metrics.forEach((m, k) => {
       const a = g!.acc[k];
-      if (!m.col) { a.n++; return; }
+      if (!m.col) {
+        a.n++;
+        return;
+      }
       const v = m.col.get(row, idx + 1);
       if (isBlank(v)) return;
       a.n++;
       a.seen.add(cellText(v).trim());
       const num = toNumber(v);
-      if (num !== null) { a.sum += num; a.nums++; }
+      if (num !== null) {
+        a.sum += num;
+        a.nums++;
+      }
       if (a.min === null || compare(v, a.min) < 0) a.min = v;
       if (a.max === null || compare(v, a.max) > 0) a.max = v;
     });
   });
   // No groupBy and nothing matched is still one row of zeros: "0 orders" is an answer.
   if (!keys.length && !groups.size) {
-    groups.set('[]', { key: [], acc: metrics.map(() => ({ n: 0, sum: 0, nums: 0, min: null, max: null, seen: new Set() })) });
+    groups.set('[]', {
+      key: [],
+      acc: metrics.map(() => ({ n: 0, sum: 0, nums: 0, min: null, max: null, seen: new Set() })),
+    });
   }
 
   const header = [...keys.map((k) => k.label), ...metrics.map((m) => m.label)];
@@ -325,19 +386,26 @@ export function aggregate(t: QueryTable, args: AggregateArgs): AggregateResult {
     ...metrics.map((m, k): CellValue => {
       const a = g.acc[k];
       switch (m.fn) {
-        case 'count': return a.n;
-        case 'sum': return round6(a.sum);
-        case 'avg': return a.nums ? round6(a.sum / a.nums) : null;
-        case 'min': return (a.min ?? null) as CellValue;
-        case 'max': return (a.max ?? null) as CellValue;
-        case 'distinct': return a.seen.size;
-        default: return null;
+        case 'count':
+          return a.n;
+        case 'sum':
+          return round6(a.sum);
+        case 'avg':
+          return a.nums ? round6(a.sum / a.nums) : null;
+        case 'min':
+          return (a.min ?? null) as CellValue;
+        case 'max':
+          return (a.max ?? null) as CellValue;
+        case 'distinct':
+          return a.seen.size;
+        default:
+          return null;
       }
     }),
   ]);
 
   if (rows.length > 1) {
-    const by = args.sort && args.sort.by ? String(args.sort.by) : (keys.length ? header[keys.length] : '');
+    const by = args.sort && args.sort.by ? String(args.sort.by) : keys.length ? header[keys.length] : '';
     if (by) {
       const i = header.findIndex((h) => h === by);
       if (i < 0) throw new QueryError(`sort.by 必须是结果里的列：${header.join('、')}`);
@@ -350,7 +418,14 @@ export function aggregate(t: QueryTable, args: AggregateArgs): AggregateResult {
   return { header, rows, matched, total: t.rows.length };
 }
 
-const METRIC_LABEL: Record<string, string> = { sum: '合计', avg: '平均', min: '最小', max: '最大', distinct: '去重数', count: '个数' };
+const METRIC_LABEL: Record<string, string> = {
+  sum: '合计',
+  avg: '平均',
+  min: '最小',
+  max: '最大',
+  distinct: '去重数',
+  count: '个数',
+};
 
 // --------------------------------------------------------- expressions
 
@@ -358,9 +433,10 @@ const METRIC_LABEL: Record<string, string> = { sum: '合计', avg: '平均', min
  * The expression language, in one place so the tool descriptions and the
  * errors can quote it.
  */
-export const EXPRESSION_HELP = '表达式：用 [列名] 引用本行的值；运算 + - * / %，比较 = != > >= < <=，逻辑 and or not，& 连接文本；'
-  + '函数 IF ROUND ABS MIN MAX SUM AVG LEN LEFT RIGHT MID UPPER LOWER TRIM CONCAT CONTAINS REPLACE YEAR MONTH DAY DATE DATEDIFF ADDDAYS TEXT NUMBER ISBLANK COALESCE ROW。'
-  + '文本用引号 "…"。例：[单价]*[数量]、IF([金额]>1000,"大单","普通")、YEAR([下单日期])&"-"&MONTH([下单日期])';
+export const EXPRESSION_HELP =
+  '表达式：用 [列名] 引用本行的值；运算 + - * / %，比较 = != > >= < <=，逻辑 and or not，& 连接文本；' +
+  '函数 IF ROUND ABS MIN MAX SUM AVG LEN LEFT RIGHT MID UPPER LOWER TRIM CONCAT CONTAINS REPLACE YEAR MONTH DAY DATE DATEDIFF ADDDAYS TEXT NUMBER ISBLANK COALESCE ROW。' +
+  '文本用引号 "…"。例：[单价]*[数量]、IF([金额]>1000,"大单","普通")、YEAR([下单日期])&"-"&MONTH([下单日期])';
 
 type Node =
   | { t: 'lit'; v: unknown }
@@ -369,18 +445,26 @@ type Node =
   | { t: 'bin'; op: string; a: Node; b: Node }
   | { t: 'call'; name: string; args: Node[] };
 
-interface Tok { k: 'num' | 'str' | 'col' | 'id' | 'op' | 'end'; v: string }
+interface Tok {
+  k: 'num' | 'str' | 'col' | 'id' | 'op' | 'end';
+  v: string;
+}
 
 function tokenize(src: string): Tok[] {
   const out: Tok[] = [];
   let i = 0;
   while (i < src.length) {
     const c = src[i];
-    if (/\s/.test(c)) { i++; continue; }
+    if (/\s/.test(c)) {
+      i++;
+      continue;
+    }
     if (/[0-9]/.test(c) || (c === '.' && /[0-9]/.test(src[i + 1] || ''))) {
       const m = /^(\d+(\.\d*)?|\.\d+)([eE][-+]?\d+)?/.exec(src.slice(i));
       if (!m) throw new QueryError(`表达式在第 ${i + 1} 个字符处有不认识的数字。`);
-      out.push({ k: 'num', v: m[0] }); i += m[0].length; continue;
+      out.push({ k: 'num', v: m[0] });
+      i += m[0].length;
+      continue;
     }
     if (c === '"' || c === "'" || c === '“' || c === '‘') {
       const close = c === '“' ? '”' : c === '‘' ? '’' : c;
@@ -388,22 +472,43 @@ function tokenize(src: string): Tok[] {
       let s = '';
       while (j < src.length && src[j] !== close) {
         // A backslash escapes the next character, so a quote can appear inside.
-        if (src[j] === '\\' && j + 1 < src.length) { s += src[j + 1]; j += 2; continue; }
-        s += src[j]; j++;
+        if (src[j] === '\\' && j + 1 < src.length) {
+          s += src[j + 1];
+          j += 2;
+          continue;
+        }
+        s += src[j];
+        j++;
       }
       if (j >= src.length) throw new QueryError('表达式里的引号没有闭合。');
-      out.push({ k: 'str', v: s }); i = j + 1; continue;
+      out.push({ k: 'str', v: s });
+      i = j + 1;
+      continue;
     }
     if (c === '[') {
       const j = src.indexOf(']', i);
       if (j < 0) throw new QueryError('表达式里的 [ 没有闭合。');
-      out.push({ k: 'col', v: src.slice(i + 1, j) }); i = j + 1; continue;
+      out.push({ k: 'col', v: src.slice(i + 1, j) });
+      i = j + 1;
+      continue;
     }
     const two = src.slice(i, i + 2);
-    if (['>=', '<=', '!=', '<>', '==', '&&', '||'].includes(two)) { out.push({ k: 'op', v: two }); i += 2; continue; }
-    if ('+-*/%=<>&(),!'.includes(c)) { out.push({ k: 'op', v: c }); i++; continue; }
+    if (['>=', '<=', '!=', '<>', '==', '&&', '||'].includes(two)) {
+      out.push({ k: 'op', v: two });
+      i += 2;
+      continue;
+    }
+    if ('+-*/%=<>&(),!'.includes(c)) {
+      out.push({ k: 'op', v: c });
+      i++;
+      continue;
+    }
     const m = /^[A-Za-z_][A-Za-z0-9_]*/.exec(src.slice(i));
-    if (m) { out.push({ k: 'id', v: m[0] }); i += m[0].length; continue; }
+    if (m) {
+      out.push({ k: 'id', v: m[0] });
+      i += m[0].length;
+      continue;
+    }
     throw new QueryError(`表达式在第 ${i + 1} 个字符「${c}」处无法识别。列名要写在 [ ] 里，文本要加引号。`);
   }
   out.push({ k: 'end', v: '' });
@@ -411,15 +516,34 @@ function tokenize(src: string): Tok[] {
 }
 
 const FUNCTIONS: Record<string, { min: number; max: number }> = {
-  IF: { min: 2, max: 3 }, ROUND: { min: 1, max: 2 }, ABS: { min: 1, max: 1 },
-  MIN: { min: 1, max: 64 }, MAX: { min: 1, max: 64 }, SUM: { min: 1, max: 64 }, AVG: { min: 1, max: 64 },
-  LEN: { min: 1, max: 1 }, LEFT: { min: 1, max: 2 }, RIGHT: { min: 1, max: 2 }, MID: { min: 2, max: 3 },
-  UPPER: { min: 1, max: 1 }, LOWER: { min: 1, max: 1 }, TRIM: { min: 1, max: 1 },
-  CONCAT: { min: 1, max: 64 }, CONTAINS: { min: 2, max: 2 }, REPLACE: { min: 3, max: 3 },
-  YEAR: { min: 1, max: 1 }, MONTH: { min: 1, max: 1 }, DAY: { min: 1, max: 1 },
-  DATE: { min: 3, max: 3 }, DATEDIFF: { min: 2, max: 2 }, ADDDAYS: { min: 2, max: 2 },
-  TEXT: { min: 1, max: 1 }, NUMBER: { min: 1, max: 1 }, ISBLANK: { min: 1, max: 1 },
-  COALESCE: { min: 1, max: 64 }, ROW: { min: 0, max: 0 },
+  IF: { min: 2, max: 3 },
+  ROUND: { min: 1, max: 2 },
+  ABS: { min: 1, max: 1 },
+  MIN: { min: 1, max: 64 },
+  MAX: { min: 1, max: 64 },
+  SUM: { min: 1, max: 64 },
+  AVG: { min: 1, max: 64 },
+  LEN: { min: 1, max: 1 },
+  LEFT: { min: 1, max: 2 },
+  RIGHT: { min: 1, max: 2 },
+  MID: { min: 2, max: 3 },
+  UPPER: { min: 1, max: 1 },
+  LOWER: { min: 1, max: 1 },
+  TRIM: { min: 1, max: 1 },
+  CONCAT: { min: 1, max: 64 },
+  CONTAINS: { min: 2, max: 2 },
+  REPLACE: { min: 3, max: 3 },
+  YEAR: { min: 1, max: 1 },
+  MONTH: { min: 1, max: 1 },
+  DAY: { min: 1, max: 1 },
+  DATE: { min: 3, max: 3 },
+  DATEDIFF: { min: 2, max: 2 },
+  ADDDAYS: { min: 2, max: 2 },
+  TEXT: { min: 1, max: 1 },
+  NUMBER: { min: 1, max: 1 },
+  ISBLANK: { min: 1, max: 1 },
+  COALESCE: { min: 1, max: 64 },
+  ROW: { min: 0, max: 0 },
 };
 
 /** Expressions longer than this are refused; nothing a person asks for needs more. */
@@ -439,16 +563,25 @@ function parse(t: QueryTable, src: string): Node {
 
   const orExpr = (): Node => {
     let a = andExpr();
-    while (isOp('||') || isWord('or')) { p++; a = { t: 'bin', op: 'or', a, b: andExpr() }; }
+    while (isOp('||') || isWord('or')) {
+      p++;
+      a = { t: 'bin', op: 'or', a, b: andExpr() };
+    }
     return a;
   };
   const andExpr = (): Node => {
     let a = notExpr();
-    while (isOp('&&') || isWord('and')) { p++; a = { t: 'bin', op: 'and', a, b: notExpr() }; }
+    while (isOp('&&') || isWord('and')) {
+      p++;
+      a = { t: 'bin', op: 'and', a, b: notExpr() };
+    }
     return a;
   };
   const notExpr = (): Node => {
-    if (isOp('!') || isWord('not')) { p++; return { t: 'un', op: 'not', a: notExpr() }; }
+    if (isOp('!') || isWord('not')) {
+      p++;
+      return { t: 'un', op: 'not', a: notExpr() };
+    }
     return cmpExpr();
   };
   const cmpExpr = (): Node => {
@@ -462,30 +595,59 @@ function parse(t: QueryTable, src: string): Node {
   };
   const catExpr = (): Node => {
     let a = addExpr();
-    while (isOp('&')) { p++; a = { t: 'bin', op: '&', a, b: addExpr() }; }
+    while (isOp('&')) {
+      p++;
+      a = { t: 'bin', op: '&', a, b: addExpr() };
+    }
     return a;
   };
   const addExpr = (): Node => {
     let a = mulExpr();
-    while (isOp('+', '-')) { const op = toks[p++].v; a = { t: 'bin', op, a, b: mulExpr() }; }
+    while (isOp('+', '-')) {
+      const op = toks[p++].v;
+      a = { t: 'bin', op, a, b: mulExpr() };
+    }
     return a;
   };
   const mulExpr = (): Node => {
     let a = unary();
-    while (isOp('*', '/', '%')) { const op = toks[p++].v; a = { t: 'bin', op, a, b: unary() }; }
+    while (isOp('*', '/', '%')) {
+      const op = toks[p++].v;
+      a = { t: 'bin', op, a, b: unary() };
+    }
     return a;
   };
   const unary = (): Node => {
-    if (isOp('-')) { p++; return { t: 'un', op: 'neg', a: unary() }; }
-    if (isOp('+')) { p++; return unary(); }
+    if (isOp('-')) {
+      p++;
+      return { t: 'un', op: 'neg', a: unary() };
+    }
+    if (isOp('+')) {
+      p++;
+      return unary();
+    }
     return primary();
   };
   const primary = (): Node => {
     const tok = peek();
-    if (tok.k === 'num') { p++; return { t: 'lit', v: Number(tok.v) }; }
-    if (tok.k === 'str') { p++; return { t: 'lit', v: tok.v }; }
-    if (tok.k === 'col') { p++; return { t: 'col', i: columnIndex(t, tok.v) }; }
-    if (isOp('(')) { p++; const e = orExpr(); expect(')'); return e; }
+    if (tok.k === 'num') {
+      p++;
+      return { t: 'lit', v: Number(tok.v) };
+    }
+    if (tok.k === 'str') {
+      p++;
+      return { t: 'lit', v: tok.v };
+    }
+    if (tok.k === 'col') {
+      p++;
+      return { t: 'col', i: columnIndex(t, tok.v) };
+    }
+    if (isOp('(')) {
+      p++;
+      const e = orExpr();
+      expect(')');
+      return e;
+    }
     if (tok.k === 'id') {
       p++;
       const word = tok.v.toLowerCase();
@@ -498,11 +660,16 @@ function parse(t: QueryTable, src: string): Node {
       const args: Node[] = [];
       if (!isOp(')')) {
         args.push(orExpr());
-        while (isOp(',')) { p++; args.push(orExpr()); }
+        while (isOp(',')) {
+          p++;
+          args.push(orExpr());
+        }
       }
       expect(')');
       if (args.length < spec.min || args.length > spec.max) {
-        throw new QueryError(`函数 ${name} 需要 ${spec.min === spec.max ? spec.min : `${spec.min}–${spec.max}`} 个参数，给了 ${args.length} 个。`);
+        throw new QueryError(
+          `函数 ${name} 需要 ${spec.min === spec.max ? spec.min : `${spec.min}–${spec.max}`} 个参数，给了 ${args.length} 个。`,
+        );
       }
       return { t: 'call', name, args };
     }
@@ -542,11 +709,13 @@ const DAY_MS = 86_400_000;
 
 function evaluate(n: Node, row: unknown[], rowNo: number): unknown {
   switch (n.t) {
-    case 'lit': return n.v;
-    case 'col': return row[n.i] ?? null;
+    case 'lit':
+      return n.v;
+    case 'col':
+      return row[n.i] ?? null;
     case 'un': {
       const a = evaluate(n.a, row, rowNo);
-      return n.op === 'not' ? !truthy(a) : (isBlank(a) ? null : -num(a));
+      return n.op === 'not' ? !truthy(a) : isBlank(a) ? null : -num(a);
     }
     case 'bin': {
       if (n.op === 'and') return truthy(evaluate(n.a, row, rowNo)) && truthy(evaluate(n.b, row, rowNo));
@@ -554,23 +723,44 @@ function evaluate(n: Node, row: unknown[], rowNo: number): unknown {
       const a = evaluate(n.a, row, rowNo);
       const b = evaluate(n.b, row, rowNo);
       switch (n.op) {
-        case '&': return cellText(a) + cellText(b);
-        case '+': return num(a) + num(b);
-        case '-': return num(a) - num(b);
-        case '*': return num(a) * num(b);
-        case '/': { const d = num(b); if (d === 0) throw new RowError('除数为 0'); return num(a) / d; }
-        case '%': { const d = num(b); if (d === 0) throw new RowError('除数为 0'); return num(a) % d; }
-        case '=': return same(a, b);
-        case '!=': return !same(a, b);
-        case '>': return compare(a, b) > 0;
-        case '>=': return compare(a, b) >= 0;
-        case '<': return compare(a, b) < 0;
-        case '<=': return compare(a, b) <= 0;
-        default: return null;
+        case '&':
+          return cellText(a) + cellText(b);
+        case '+':
+          return num(a) + num(b);
+        case '-':
+          return num(a) - num(b);
+        case '*':
+          return num(a) * num(b);
+        case '/': {
+          const d = num(b);
+          if (d === 0) throw new RowError('除数为 0');
+          return num(a) / d;
+        }
+        case '%': {
+          const d = num(b);
+          if (d === 0) throw new RowError('除数为 0');
+          return num(a) % d;
+        }
+        case '=':
+          return same(a, b);
+        case '!=':
+          return !same(a, b);
+        case '>':
+          return compare(a, b) > 0;
+        case '>=':
+          return compare(a, b) >= 0;
+        case '<':
+          return compare(a, b) < 0;
+        case '<=':
+          return compare(a, b) <= 0;
+        default:
+          return null;
       }
     }
-    case 'call': return call(n, row, rowNo);
-    default: return null;
+    case 'call':
+      return call(n, row, rowNo);
+    default:
+      return null;
   }
 }
 
@@ -578,43 +768,94 @@ function call(n: Extract<Node, { t: 'call' }>, row: unknown[], rowNo: number): u
   // IF and COALESCE evaluate lazily: the branch not taken may not compute
   // (a division by a zero that the condition was guarding against).
   if (n.name === 'IF') {
-    return truthy(evaluate(n.args[0], row, rowNo)) ? evaluate(n.args[1], row, rowNo) : (n.args[2] ? evaluate(n.args[2], row, rowNo) : null);
+    return truthy(evaluate(n.args[0], row, rowNo))
+      ? evaluate(n.args[1], row, rowNo)
+      : n.args[2]
+        ? evaluate(n.args[2], row, rowNo)
+        : null;
   }
   if (n.name === 'COALESCE') {
-    for (const a of n.args) { const v = evaluate(a, row, rowNo); if (!isBlank(v)) return v; }
+    for (const a of n.args) {
+      const v = evaluate(a, row, rowNo);
+      if (!isBlank(v)) return v;
+    }
     return null;
   }
   const v = n.args.map((a) => evaluate(a, row, rowNo));
   const s = (i: number) => cellText(v[i]);
   const nums = () => v.filter((x) => !isBlank(x)).map(num);
   switch (n.name) {
-    case 'ROUND': { const d = v.length > 1 ? Math.trunc(num(v[1])) : 0; const f = 10 ** d; return isBlank(v[0]) ? null : Math.round(num(v[0]) * f) / f; }
-    case 'ABS': return isBlank(v[0]) ? null : Math.abs(num(v[0]));
-    case 'MIN': { const xs = nums(); return xs.length ? Math.min(...xs) : null; }
-    case 'MAX': { const xs = nums(); return xs.length ? Math.max(...xs) : null; }
-    case 'SUM': return nums().reduce((a, b) => a + b, 0);
-    case 'AVG': { const xs = nums(); return xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null; }
-    case 'LEN': return [...s(0)].length;
-    case 'LEFT': return [...s(0)].slice(0, v.length > 1 ? Math.max(0, Math.trunc(num(v[1]))) : 1).join('');
-    case 'RIGHT': { const k = v.length > 1 ? Math.max(0, Math.trunc(num(v[1]))) : 1; const cs = [...s(0)]; return k ? cs.slice(-k).join('') : ''; }
-    case 'MID': { const cs = [...s(0)]; const from = Math.max(1, Math.trunc(num(v[1]))) - 1; return cs.slice(from, v.length > 2 ? from + Math.max(0, Math.trunc(num(v[2]))) : undefined).join(''); }
-    case 'UPPER': return s(0).toUpperCase();
-    case 'LOWER': return s(0).toLowerCase();
-    case 'TRIM': return s(0).trim();
-    case 'CONCAT': return v.map(cellText).join('');
-    case 'CONTAINS': return s(0).toLowerCase().includes(s(1).toLowerCase());
-    case 'REPLACE': return s(1) ? s(0).split(s(1)).join(s(2)) : s(0);
-    case 'YEAR': return isBlank(v[0]) ? null : dateOf(v[0]).getUTCFullYear();
-    case 'MONTH': return isBlank(v[0]) ? null : dateOf(v[0]).getUTCMonth() + 1;
-    case 'DAY': return isBlank(v[0]) ? null : dateOf(v[0]).getUTCDate();
-    case 'DATE': return new Date(Date.UTC(num(v[0]), num(v[1]) - 1, num(v[2])));
-    case 'DATEDIFF': return (isBlank(v[0]) || isBlank(v[1])) ? null : Math.round((dateOf(v[0]).getTime() - dateOf(v[1]).getTime()) / DAY_MS);
-    case 'ADDDAYS': return isBlank(v[0]) ? null : new Date(dateOf(v[0]).getTime() + Math.round(num(v[1])) * DAY_MS);
-    case 'TEXT': return s(0);
-    case 'NUMBER': return isBlank(v[0]) ? null : num(v[0]);
-    case 'ISBLANK': return isBlank(v[0]);
-    case 'ROW': return rowNo;
-    default: return null;
+    case 'ROUND': {
+      const d = v.length > 1 ? Math.trunc(num(v[1])) : 0;
+      const f = 10 ** d;
+      return isBlank(v[0]) ? null : Math.round(num(v[0]) * f) / f;
+    }
+    case 'ABS':
+      return isBlank(v[0]) ? null : Math.abs(num(v[0]));
+    case 'MIN': {
+      const xs = nums();
+      return xs.length ? Math.min(...xs) : null;
+    }
+    case 'MAX': {
+      const xs = nums();
+      return xs.length ? Math.max(...xs) : null;
+    }
+    case 'SUM':
+      return nums().reduce((a, b) => a + b, 0);
+    case 'AVG': {
+      const xs = nums();
+      return xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null;
+    }
+    case 'LEN':
+      return [...s(0)].length;
+    case 'LEFT':
+      return [...s(0)].slice(0, v.length > 1 ? Math.max(0, Math.trunc(num(v[1]))) : 1).join('');
+    case 'RIGHT': {
+      const k = v.length > 1 ? Math.max(0, Math.trunc(num(v[1]))) : 1;
+      const cs = [...s(0)];
+      return k ? cs.slice(-k).join('') : '';
+    }
+    case 'MID': {
+      const cs = [...s(0)];
+      const from = Math.max(1, Math.trunc(num(v[1]))) - 1;
+      return cs.slice(from, v.length > 2 ? from + Math.max(0, Math.trunc(num(v[2]))) : undefined).join('');
+    }
+    case 'UPPER':
+      return s(0).toUpperCase();
+    case 'LOWER':
+      return s(0).toLowerCase();
+    case 'TRIM':
+      return s(0).trim();
+    case 'CONCAT':
+      return v.map(cellText).join('');
+    case 'CONTAINS':
+      return s(0).toLowerCase().includes(s(1).toLowerCase());
+    case 'REPLACE':
+      return s(1) ? s(0).split(s(1)).join(s(2)) : s(0);
+    case 'YEAR':
+      return isBlank(v[0]) ? null : dateOf(v[0]).getUTCFullYear();
+    case 'MONTH':
+      return isBlank(v[0]) ? null : dateOf(v[0]).getUTCMonth() + 1;
+    case 'DAY':
+      return isBlank(v[0]) ? null : dateOf(v[0]).getUTCDate();
+    case 'DATE':
+      return new Date(Date.UTC(num(v[0]), num(v[1]) - 1, num(v[2])));
+    case 'DATEDIFF':
+      return isBlank(v[0]) || isBlank(v[1])
+        ? null
+        : Math.round((dateOf(v[0]).getTime() - dateOf(v[1]).getTime()) / DAY_MS);
+    case 'ADDDAYS':
+      return isBlank(v[0]) ? null : new Date(dateOf(v[0]).getTime() + Math.round(num(v[1])) * DAY_MS);
+    case 'TEXT':
+      return s(0);
+    case 'NUMBER':
+      return isBlank(v[0]) ? null : num(v[0]);
+    case 'ISBLANK':
+      return isBlank(v[0]);
+    case 'ROW':
+      return rowNo;
+    default:
+      return null;
   }
 }
 
@@ -643,7 +884,11 @@ export function compileExpression(t: QueryTable, src: string): Compiled {
  * division by zero) gets null and is counted: one bad cell in 900 should not
  * refuse the other 899, and it should not pass silently either.
  */
-export function computeRows(t: QueryTable, src: string, indices: number[]): { values: Map<number, unknown>; failed: Array<{ row: number; reason: string }> } {
+export function computeRows(
+  t: QueryTable,
+  src: string,
+  indices: number[],
+): { values: Map<number, unknown>; failed: Array<{ row: number; reason: string }> } {
   const fn = compileExpression(t, src);
   const values = new Map<number, unknown>();
   const failed: Array<{ row: number; reason: string }> = [];
@@ -662,7 +907,10 @@ export function computeRows(t: QueryTable, src: string, indices: number[]): { va
 /** A short, model-readable account of rows that could not be computed. */
 export function describeFailures(failed: Array<{ row: number; reason: string }>): string {
   if (!failed.length) return '';
-  const shown = failed.slice(0, 5).map((f) => `第 ${f.row} 行（${f.reason}）`).join('、');
+  const shown = failed
+    .slice(0, 5)
+    .map((f) => `第 ${f.row} 行（${f.reason}）`)
+    .join('、');
   return `；${failed.length} 行无法计算，已留空：${shown}${failed.length > 5 ? ' 等' : ''}`;
 }
 

@@ -23,7 +23,10 @@ const BAD = "import { toast, initModal } from './ui.js';";
 let failures = 0;
 function check(name, cond, extra = '') {
   if (cond) console.log(`  ok   ${name}`);
-  else { failures++; console.log(`  FAIL ${name} ${extra}`); }
+  else {
+    failures++;
+    console.log(`  FAIL ${name} ${extra}`);
+  }
 }
 
 function runChecker() {

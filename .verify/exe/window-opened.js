@@ -29,17 +29,30 @@ const SHADOW = path.join(OUT, 'window-opened-shadow');
 const DATA = path.join(OUT, 'window-opened-data');
 const MARK = 'window-opened-data'; // must appear in the edge command line
 
-function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
 
 function health(port) {
   return new Promise((resolve) => {
     const req = http.get({ host: '127.0.0.1', port, path: '/api/health' }, (res) => {
       let s = '';
-      res.on('data', (d) => { s += d; });
-      res.on('end', () => { try { resolve(JSON.parse(s).ok === true); } catch { resolve(false); } });
+      res.on('data', (d) => {
+        s += d;
+      });
+      res.on('end', () => {
+        try {
+          resolve(JSON.parse(s).ok === true);
+        } catch {
+          resolve(false);
+        }
+      });
     });
     req.on('error', () => resolve(false));
-    req.setTimeout(2500, () => { req.destroy(); resolve(false); });
+    req.setTimeout(2500, () => {
+      req.destroy();
+      resolve(false);
+    });
   });
 }
 
@@ -52,31 +65,56 @@ function health(port) {
  */
 function edgeProcsFor(marker) {
   try {
-    const out = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
-      `Get-CimInstance Win32_Process -Filter "Name='msedge.exe'" | ` +
-      `Where-Object { $_.CommandLine -like '*${marker}*' } | ` +
-      `ForEach-Object { "$($_.ProcessId)|$($_.CreationDate.Ticks)" }`,
-    ], { encoding: 'utf8', timeout: 20000 });
-    return out.trim().split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
-  } catch { return []; }
+    const out = execFileSync(
+      'powershell.exe',
+      [
+        '-NoProfile',
+        '-NonInteractive',
+        '-Command',
+        `Get-CimInstance Win32_Process -Filter "Name='msedge.exe'" | ` +
+          `Where-Object { $_.CommandLine -like '*${marker}*' } | ` +
+          `ForEach-Object { "$($_.ProcessId)|$($_.CreationDate.Ticks)" }`,
+      ],
+      { encoding: 'utf8', timeout: 20000 },
+    );
+    return out
+      .trim()
+      .split(/\r?\n/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
 }
 
 function killEdgesFor(marker) {
   try {
-    execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
-      `Get-CimInstance Win32_Process -Filter "Name='msedge.exe'" | ` +
-      `Where-Object { $_.CommandLine -like '*${marker}*' } | ` +
-      `ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }`,
-    ], { encoding: 'utf8', timeout: 20000 });
-  } catch { /* nothing matched */ }
+    execFileSync(
+      'powershell.exe',
+      [
+        '-NoProfile',
+        '-NonInteractive',
+        '-Command',
+        `Get-CimInstance Win32_Process -Filter "Name='msedge.exe'" | ` +
+          `Where-Object { $_.CommandLine -like '*${marker}*' } | ` +
+          `ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }`,
+      ],
+      { encoding: 'utf8', timeout: 20000 },
+    );
+  } catch {
+    /* nothing matched */
+  }
 }
 
 let failures = 0;
 function check(label, actual, expected) {
   const ok = JSON.stringify(actual) === JSON.stringify(expected);
   if (!ok) failures++;
-  console.log((ok ? '  ok   ' : '  FAIL ') + label +
-    (ok ? '' : `\n         expected: ${JSON.stringify(expected)}\n         actual:   ${JSON.stringify(actual)}`));
+  console.log(
+    (ok ? '  ok   ' : '  FAIL ') +
+      label +
+      (ok ? '' : `\n         expected: ${JSON.stringify(expected)}\n         actual:   ${JSON.stringify(actual)}`),
+  );
 }
 
 async function main() {
@@ -100,13 +138,22 @@ async function main() {
   console.log('\n=== A) headless server (no window) ===');
   const a = spawn(file, [...args, '--headless', '--data-dir', DATA], { stdio: ['ignore', 'pipe', 'pipe'] });
   let aOut = '';
-  a.stdout.on('data', (d) => { aOut += d.toString(); });
-  a.stderr.on('data', (d) => { aOut += d.toString(); });
+  a.stdout.on('data', (d) => {
+    aOut += d.toString();
+  });
+  a.stderr.on('data', (d) => {
+    aOut += d.toString();
+  });
   let aDead = false;
-  a.on('exit', () => { aDead = true; });
+  a.on('exit', () => {
+    aDead = true;
+  });
 
   let rec = null;
-  for (let i = 0; i < 40 && !rec; i++) { await sleep(250); rec = readRecord(); }
+  for (let i = 0; i < 40 && !rec; i++) {
+    await sleep(250);
+    rec = readRecord();
+  }
   const portA = rec ? rec.port : 0;
   check('A is up', await health(portA), true);
   check('no Edge windows yet for our marker', edgeProcsFor(MARK).length, 0);
@@ -115,10 +162,16 @@ async function main() {
   const before = edgeProcsFor(MARK).length;
   const b = spawn(file, [...args, '--data-dir', DATA], { stdio: ['ignore', 'pipe', 'pipe'] });
   let bOut = '';
-  b.stdout.on('data', (d) => { bOut += d.toString(); });
-  b.stderr.on('data', (d) => { bOut += d.toString(); });
+  b.stdout.on('data', (d) => {
+    bOut += d.toString();
+  });
+  b.stderr.on('data', (d) => {
+    bOut += d.toString();
+  });
   let bDead = false;
-  b.on('exit', () => { bDead = true; });
+  b.on('exit', () => {
+    bDead = true;
+  });
 
   // Poll while B runs: Edge may hand off and vanish quickly, so presence has to
   // be sampled, not read once at the end.
@@ -154,14 +207,24 @@ async function main() {
   const leftover = edgeProcsFor(MARK).length;
   check('our Edge windows closed', leftover, 0);
 
-  console.log('\n' + (failures === 0
-    ? 'WINDOW ON HANDOFF OK — the second launch really does open a window'
-    : failures + ' CHECK(S) FAILED'));
+  console.log(
+    '\n' +
+      (failures === 0
+        ? 'WINDOW ON HANDOFF OK — the second launch really does open a window'
+        : failures + ' CHECK(S) FAILED'),
+  );
   process.exit(failures === 0 ? 0 : 1);
 }
 
 function readRecord() {
-  try { return JSON.parse(fs.readFileSync(path.join(DATA, 'instance.json'), 'utf8')); } catch { return null; }
+  try {
+    return JSON.parse(fs.readFileSync(path.join(DATA, 'instance.json'), 'utf8'));
+  } catch {
+    return null;
+  }
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

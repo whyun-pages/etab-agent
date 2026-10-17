@@ -84,11 +84,24 @@ const num = (ref, v, style) => `<c r="${ref}" s="${style}"><v>${v}</v></c>`;
 
 // Shared strings, in the order they are referenced.
 const SHARED = [
-  '销售合同汇总表',                                   // 0
-  '客户名称', '合同金额（元）', '签约日期', '是否续约', '负责人', '备注（选填）', // 1-6
-  '北京示例科技有限公司', '1250000', '46023', '是', '张三',   // 7-11
-  '上海另一家商贸', '980000', '46054', '否', '11',           // 12-16
-  '合计',                                              // 17
+  '销售合同汇总表', // 0
+  '客户名称',
+  '合同金额（元）',
+  '签约日期',
+  '是否续约',
+  '负责人',
+  '备注（选填）', // 1-6
+  '北京示例科技有限公司',
+  '1250000',
+  '46023',
+  '是',
+  '张三', // 7-11
+  '上海另一家商贸',
+  '980000',
+  '46054',
+  '否',
+  '11', // 12-16
+  '合计', // 17
 ];
 
 const SHEET = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -204,4 +217,3 @@ const out = path.join(__dirname, '..', 'public', 'sample', 'contract.xlsx');
 fs.mkdirSync(path.dirname(out), { recursive: true });
 fs.writeFileSync(out, writeZip(files));
 console.log(`wrote ${out} (${fs.statSync(out).size} bytes)`);
-

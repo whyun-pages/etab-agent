@@ -31,7 +31,9 @@ const HEIGHT = Number(process.argv[2] || 470);
 
 const { createServer } = require(path.join(ROOT, 'src', 'http', 'server.ts'));
 
-function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
 
 function get(urlPath, port = PORT) {
   return new Promise((resolve, reject) => {
@@ -46,7 +48,12 @@ function get(urlPath, port = PORT) {
 }
 
 class CDP {
-  constructor(ws) { this.ws = ws; this.id = 0; this.pending = new Map(); this.errors = []; }
+  constructor(ws) {
+    this.ws = ws;
+    this.id = 0;
+    this.pending = new Map();
+    this.errors = [];
+  }
 
   static async attach(wsUrl) {
     const ws = new WebSocket(wsUrl);
@@ -57,7 +64,11 @@ class CDP {
     const client = new CDP(ws);
     ws.onmessage = (ev) => {
       let msg;
-      try { msg = JSON.parse(ev.data); } catch { return; }
+      try {
+        msg = JSON.parse(ev.data);
+      } catch {
+        return;
+      }
       if (msg.method === 'Runtime.exceptionThrown') {
         client.errors.push(msg.params?.exceptionDetails?.exception?.description || 'exception');
       }
@@ -72,10 +83,19 @@ class CDP {
   send(method, params = {}) {
     const id = ++this.id;
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => { this.pending.delete(id); reject(new Error(method + ' timed out')); }, 20000);
+      const timer = setTimeout(() => {
+        this.pending.delete(id);
+        reject(new Error(method + ' timed out'));
+      }, 20000);
       this.pending.set(id, {
-        resolve: (r) => { clearTimeout(timer); resolve(r); },
-        reject: (e) => { clearTimeout(timer); reject(e); },
+        resolve: (r) => {
+          clearTimeout(timer);
+          resolve(r);
+        },
+        reject: (e) => {
+          clearTimeout(timer);
+          reject(e);
+        },
       });
       this.ws.send(JSON.stringify({ id, method, params }));
     });
@@ -86,7 +106,13 @@ class CDP {
     return r.result.value;
   }
 
-  close() { try { this.ws.close(); } catch { /* ignore */ } }
+  close() {
+    try {
+      this.ws.close();
+    } catch {
+      /* ignore */
+    }
+  }
 }
 
 async function main() {
@@ -96,12 +122,17 @@ async function main() {
   const server = createServer({ dataDir: DATA, staticDir: path.join(ROOT, 'public') });
   await new Promise((r) => server.listen(PORT, '127.0.0.1', r));
 
-  const edge = spawn(EDGE, [
-    `--remote-debugging-port=${CDP_PORT}`,
-    `--user-data-dir=${PROFILE}`,
-    '--no-first-run', '--no-default-browser-check',
-    'about:blank',
-  ], { stdio: 'ignore', detached: true });
+  const edge = spawn(
+    EDGE,
+    [
+      `--remote-debugging-port=${CDP_PORT}`,
+      `--user-data-dir=${PROFILE}`,
+      '--no-first-run',
+      '--no-default-browser-check',
+      'about:blank',
+    ],
+    { stdio: 'ignore', detached: true },
+  );
   edge.unref();
 
   let page = null;
@@ -110,7 +141,9 @@ async function main() {
     try {
       const res = await get('/json/list', CDP_PORT);
       page = JSON.parse(res.body).find((t) => t.type === 'page') || null;
-    } catch { /* not up yet */ }
+    } catch {
+      /* not up yet */
+    }
   }
   if (!page) throw new Error('Edge CDP never came up');
 
@@ -118,7 +151,10 @@ async function main() {
   await cdp.send('Page.enable');
   await cdp.send('Runtime.enable');
   await cdp.send('Emulation.setDeviceMetricsOverride', {
-    width: 1180, height: HEIGHT, deviceScaleFactor: 1, mobile: false,
+    width: 1180,
+    height: HEIGHT,
+    deviceScaleFactor: 1,
+    mobile: false,
   });
   await cdp.send('Page.navigate', { url: `http://127.0.0.1:${PORT}/` });
 
@@ -135,7 +171,8 @@ async function main() {
   })()`);
   await sleep(700);
 
-  const state = JSON.parse(await cdp.eval(`(() => {
+  const state = JSON.parse(
+    await cdp.eval(`(() => {
     const sc = document.querySelector('.editor__scroll');
     const panel = document.querySelector('.settings');
     const foot = document.querySelector('.settings__actions');
@@ -149,7 +186,8 @@ async function main() {
       footVisibleBeforeScroll: rect ? (rect.top >= 0 && rect.bottom <= innerHeight) : null,
       scrollable: sc ? sc.scrollHeight > sc.clientHeight + 1 : false,
     });
-  })()`));
+  })()`),
+  );
 
   console.log(`viewport         ${state.viewport}`);
   console.log(`scroll container ${state.scrollClientH}  content ${state.scrollH}  scrollable ${state.scrollable}`);
@@ -167,12 +205,14 @@ async function main() {
   })()`);
   await sleep(400);
 
-  const after = JSON.parse(await cdp.eval(`(() => {
+  const after = JSON.parse(
+    await cdp.eval(`(() => {
     const foot = document.querySelector('.settings__actions');
     const r = foot ? foot.getBoundingClientRect() : null;
     return JSON.stringify({ scrollTop: document.querySelector('.editor__scroll')?.scrollTop ?? -1,
       footVisible: r ? (r.top >= 0 && r.bottom <= innerHeight) : null });
-  })()`));
+  })()`),
+  );
 
   console.log(`after scrolling to bottom: scrollTop ${after.scrollTop}, save row reachable: ${after.footVisible}`);
 
@@ -184,7 +224,11 @@ async function main() {
 
   cdp.close();
   server.close();
-  try { edge.kill(); } catch { /* ignore */ }
+  try {
+    edge.kill();
+  } catch {
+    /* ignore */
+  }
   await sleep(400);
 
   const ok = state.scrollable && after.footVisible;
@@ -194,4 +238,7 @@ async function main() {
 
 main()
   .then((c) => process.exit(c))
-  .catch((err) => { console.error('FAILED:', err.message); process.exit(2); });
+  .catch((err) => {
+    console.error('FAILED:', err.message);
+    process.exit(2);
+  });

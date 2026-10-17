@@ -36,7 +36,12 @@ test('save then load keeps the spec and the messages', async () => {
     title: 'T',
     sheets: [{ name: 'S', columns: [{ header: '客户' }], rows: [['甲']] }],
   };
-  await store.save({ ...s, title: '改了名', spec, messages: [{ role: 'user', content: '你好', at: '2026-09-26T00:00:00.000Z' }] });
+  await store.save({
+    ...s,
+    title: '改了名',
+    spec,
+    messages: [{ role: 'user', content: '你好', at: '2026-09-26T00:00:00.000Z' }],
+  });
 
   const loaded = await store.load(s.id);
   assert.strictEqual(loaded.title, '改了名');
@@ -144,7 +149,10 @@ test('append: adds to the end and persists', async () => {
   await store.append(s.id, { role: 'user', content: 'a' });
   await store.append(s.id, { role: 'assistant', content: 'b' });
   const loaded = await store.load(s.id);
-  assert.deepStrictEqual(loaded.messages.map((m) => m.content), ['a', 'b']);
+  assert.deepStrictEqual(
+    loaded.messages.map((m) => m.content),
+    ['a', 'b'],
+  );
 });
 
 test('append: an unknown session returns null instead of creating one', async () => {
@@ -245,8 +253,11 @@ test('concurrent appends to one session keep every message', async () => {
     const store = new SessionStore(dir);
     const session = await store.create('并发测试');
 
-    await Promise.all(Array.from({ length: CONCURRENCY }, (_, i) =>
-      store.append(session.id, { role: 'user', content: `msg-${round}-${i}`, at: new Date().toISOString() })));
+    await Promise.all(
+      Array.from({ length: CONCURRENCY }, (_, i) =>
+        store.append(session.id, { role: 'user', content: `msg-${round}-${i}`, at: new Date().toISOString() }),
+      ),
+    );
 
     const loaded = await store.load(session.id);
     const got = new Set(loaded.messages.map((m) => m.content));
@@ -266,13 +277,19 @@ test('concurrent appends to distinct sessions do not cross over', async () => {
   const sessions = [];
   for (let i = 0; i < 8; i += 1) sessions.push(await store.create(`session-${i}`));
 
-  await Promise.all(sessions.flatMap((s, si) =>
-    Array.from({ length: 6 }, (_, m) => store.append(s.id, { role: 'assistant', content: `s${si}-${m}` }))));
+  await Promise.all(
+    sessions.flatMap((s, si) =>
+      Array.from({ length: 6 }, (_, m) => store.append(s.id, { role: 'assistant', content: `s${si}-${m}` })),
+    ),
+  );
 
   for (let i = 0; i < sessions.length; i += 1) {
     const loaded = await store.load(sessions[i].id);
     assert.strictEqual(loaded.messages.length, 6, `session ${i}`);
-    assert.ok(loaded.messages.every((m) => m.content.startsWith(`s${i}-`)), `session ${i} picked up another session's message`);
+    assert.ok(
+      loaded.messages.every((m) => m.content.startsWith(`s${i}-`)),
+      `session ${i} picked up another session's message`,
+    );
   }
 });
 

@@ -101,9 +101,21 @@ export function endRender(token) {
   // Something else claimed focus during the pass; leave it alone.
   if (document.activeElement !== document.body && document.activeElement !== active) return;
 
-  try { active.focus({ preventScroll: true }); } catch { try { active.focus(); } catch { return; } }
+  try {
+    active.focus({ preventScroll: true });
+  } catch {
+    try {
+      active.focus();
+    } catch {
+      return;
+    }
+  }
   if (selection && typeof active.setSelectionRange === 'function') {
-    try { active.setSelectionRange(selection.start, selection.end); } catch { /* not a text control */ }
+    try {
+      active.setSelectionRange(selection.start, selection.end);
+    } catch {
+      /* not a text control */
+    }
   }
 }
 
@@ -158,8 +170,15 @@ export function clock(iso) {
 // ── domain vocabulary ───────────────────────────────────────────────
 
 const TYPE_LABEL = {
-  text: '文本', number: '数字', integer: '整数', currency: '金额',
-  percent: '百分比', date: '日期', boolean: '是否', formula: '公式', unknown: '未知',
+  text: '文本',
+  number: '数字',
+  integer: '整数',
+  currency: '金额',
+  percent: '百分比',
+  date: '日期',
+  boolean: '是否',
+  formula: '公式',
+  unknown: '未知',
 };
 export const typeLabel = (t) => TYPE_LABEL[t] || t || '—';
 
@@ -174,14 +193,28 @@ const STATUS_META = {
 export const statusMeta = (s) => STATUS_META[s] || { label: s || '—', cls: 'mute', dot: 'dot--mute' };
 
 const KIND_LABEL = {
-  table: '表格', text: '文本', image: '图片', csv: '表格', tsv: '表格',
-  xlsx: '工作簿', xlsm: '工作簿', docx: '文档', json: '数据', unknown: '未知', error: '失败',
+  table: '表格',
+  text: '文本',
+  image: '图片',
+  csv: '表格',
+  tsv: '表格',
+  xlsx: '工作簿',
+  xlsm: '工作簿',
+  docx: '文档',
+  json: '数据',
+  unknown: '未知',
+  error: '失败',
 };
 export const kindLabel = (k) => KIND_LABEL[k] || k || '文件';
 
 const KIND_ICON = {
-  table: 'table', text: 'text', image: 'image', docx: 'file',
-  json: 'text', unknown: 'alert', error: 'alert',
+  table: 'table',
+  text: 'text',
+  image: 'image',
+  docx: 'file',
+  json: 'text',
+  unknown: 'alert',
+  error: 'alert',
 };
 export const kindIcon = (a) => KIND_ICON[a.kind] || (a.meta && KIND_ICON[a.meta.kind]) || 'paperclip';
 
@@ -207,11 +240,18 @@ export function placeholderFor(schema) {
 
 function sampleFor(type) {
   switch (type) {
-    case 'currency': case 'number': case 'integer': return '12000';
-    case 'percent': return '13%';
-    case 'date': return '2026年3月1日';
-    case 'boolean': return '是';
-    default: return '示例';
+    case 'currency':
+    case 'number':
+    case 'integer':
+      return '12000';
+    case 'percent':
+      return '13%';
+    case 'date':
+      return '2026年3月1日';
+    case 'boolean':
+      return '是';
+    default:
+      return '示例';
   }
 }
 

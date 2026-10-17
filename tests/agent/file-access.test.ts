@@ -49,7 +49,10 @@ test('checkPath: built-in blocks hold — keys, the app data folder — and say 
   await assert.rejects(checkPath('~/.ssh/config', s.opts), /禁止访问/);
   await assert.rejects(checkPath(path.join(s.data, 'settings.json'), s.opts), /禁止访问/);
   await assert.rejects(checkPath(path.join(s.docs, '订单', 'server.pem'), s.opts), /\*\.pem/);
-  assert.strictEqual(await checkPath(path.join(s.docs, '订单', '5月.csv'), s.opts), fs.realpathSync(path.join(s.docs, '订单', '5月.csv')));
+  assert.strictEqual(
+    await checkPath(path.join(s.docs, '订单', '5月.csv'), s.opts),
+    fs.realpathSync(path.join(s.docs, '订单', '5月.csv')),
+  );
 });
 
 test('checkPath: the user list adds locations and name patterns', async (t) => {
@@ -97,7 +100,10 @@ test('readPath: a folder reads its readable files, recursing; a zip is opened', 
 test('performWrite: text only; creates folders, replaces whole, leaves no temp file', async (t) => {
   const s = scratch(t);
   const target = path.join(s.docs, '报告', '汇总.md');
-  assert.strictEqual(await performWrite({ path: target, content: '# 一' }, s.opts), fs.realpathSync(path.join(s.docs, '报告')) + path.sep + '汇总.md');
+  assert.strictEqual(
+    await performWrite({ path: target, content: '# 一' }, s.opts),
+    fs.realpathSync(path.join(s.docs, '报告')) + path.sep + '汇总.md',
+  );
   await performWrite({ path: target, content: '# 四' }, s.opts);
   assert.strictEqual(fs.readFileSync(target, 'utf8'), '# 四');
   assert.deepStrictEqual(fs.readdirSync(path.join(s.docs, '报告')), ['汇总.md'], 'no temp file left behind');

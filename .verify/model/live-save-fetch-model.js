@@ -35,12 +35,21 @@ const CSV_URL = 'https://people.sc.fsu.edu/~jburkardt/data/csv/cities.csv';
 let failed = 0;
 let passed = 0;
 function check(name, ok, detail) {
-  if (ok) { passed += 1; console.log(`  ok    ${name}`); }
-  else { failed += 1; console.log(`  FAIL  ${name}`); if (detail) console.log(`        ${String(detail).slice(0, 600)}`); }
+  if (ok) {
+    passed += 1;
+    console.log(`  ok    ${name}`);
+  } else {
+    failed += 1;
+    console.log(`  FAIL  ${name}`);
+    if (detail) console.log(`        ${String(detail).slice(0, 600)}`);
+  }
 }
 
 async function main() {
-  if (!fs.existsSync(path.join(LIVE_DATA, 'settings.json'))) { console.error(`no live settings in ${LIVE_DATA}`); process.exit(2); }
+  if (!fs.existsSync(path.join(LIVE_DATA, 'settings.json'))) {
+    console.error(`no live settings in ${LIVE_DATA}`);
+    process.exit(2);
+  }
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'live-save-fetch-'));
   const exportDir = path.join(dataDir, 'exports');
   const creds = await new Settings(LIVE_DATA).secrets();
@@ -63,31 +72,46 @@ async function main() {
   const server = createServer({ dataDir, staticDir: path.join(ROOT, 'public'), settingsOverride: settings });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   const base = `http://127.0.0.1:${server.address().port}`;
-  const post = (p, body) => fetch(base + p, {
-    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
-  }).then(async (r) => ({ status: r.status, json: await r.json().catch(() => null) }));
+  const post = (p, body) =>
+    fetch(base + p, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    }).then(async (r) => ({ status: r.status, json: await r.json().catch(() => null) }));
   const get = (p) => fetch(base + p).then((r) => r.json());
 
   console.log('=== live save/fetch ===');
   console.log(`model: ${creds.model}   data: ${dataDir}`);
   try {
-    const { json: { session } } = await post('/api/sessions', {});
+    const {
+      json: { session },
+    } = await post('/api/sessions', {});
     const id = session.id;
 
     console.log('\n--- 1) import a public CSV ---');
-    const t1 = await post(`/api/sessions/${id}/turn`, { message: `把 ${CSV_URL} 这个 CSV 导入成表格，工作表叫「城市」` });
+    const t1 = await post(`/api/sessions/${id}/turn`, {
+      message: `把 ${CSV_URL} 这个 CSV 导入成表格，工作表叫「城市」`,
+    });
     console.log(`  reply: ${String(t1.json.reply).slice(0, 200).replace(/\n/g, ' ')}`);
     check('the turn succeeded', t1.json.ok === true, t1.json.error);
     check('the import landed', t1.json.applied === true, JSON.stringify(t1.json).slice(0, 300));
     const s1 = (await get(`/api/sessions/${id}`)).session.spec;
     const rows = s1 ? s1.sheets.reduce((n, s) => n + s.rows.length, 0) : 0;
     check('the whole CSV is in the table (128 cities)', rows === 128, `rows=${rows}`);
-    check('the sheet is named as asked', Boolean(s1 && s1.sheets.some((s) => s.name === '城市')), s1 && s1.sheets.map((s) => s.name).join());
+    check(
+      'the sheet is named as asked',
+      Boolean(s1 && s1.sheets.some((s) => s.name === '城市')),
+      s1 && s1.sheets.map((s) => s.name).join(),
+    );
 
     console.log('\n--- 2) save it as CSV ---');
     const t2 = await post(`/api/sessions/${id}/turn`, { message: '把这个表保存成 csv 文件，文件名叫 城市列表' });
     console.log(`  reply: ${String(t2.json.reply).slice(0, 300).replace(/\n/g, ' ')}`);
-    check('a file was saved', Array.isArray(t2.json.saved) && t2.json.saved.length === 1, JSON.stringify(t2.json.saved));
+    check(
+      'a file was saved',
+      Array.isArray(t2.json.saved) && t2.json.saved.length === 1,
+      JSON.stringify(t2.json.saved),
+    );
     const files = fs.existsSync(exportDir) ? fs.readdirSync(exportDir) : [];
     check('it is the CSV, named as asked', files.includes('城市列表.csv'), files.join());
     if (files.includes('城市列表.csv')) {
@@ -98,17 +122,28 @@ async function main() {
 
     console.log('\n--- 3) a blocked URL ---');
     const before = JSON.stringify((await get(`/api/sessions/${id}`)).session.spec);
-    const t3 = await post(`/api/sessions/${id}/turn`, { message: '抓取 https://data.example.com/prices.csv 看看里面有什么' });
+    const t3 = await post(`/api/sessions/${id}/turn`, {
+      message: '抓取 https://data.example.com/prices.csv 看看里面有什么',
+    });
     console.log(`  reply: ${String(t3.json.reply).slice(0, 200).replace(/\n/g, ' ')}`);
     check('the turn did not fail', t3.json.ok === true, t3.json.error);
     check('nothing changed', JSON.stringify((await get(`/api/sessions/${id}`)).session.spec) === before);
-    check('the reply does not pretend it read the page', /禁止|不允许|无法|没能|不能|拒绝/.test(t3.json.reply), t3.json.reply);
+    check(
+      'the reply does not pretend it read the page',
+      /禁止|不允许|无法|没能|不能|拒绝/.test(t3.json.reply),
+      t3.json.reply,
+    );
   } finally {
     await new Promise((r) => server.close(r));
-    try { fs.rmSync(dataDir, { recursive: true, force: true }); } catch {}
+    try {
+      fs.rmSync(dataDir, { recursive: true, force: true });
+    } catch {}
   }
   console.log(`\n${failed === 0 ? 'LIVE SAVE/FETCH PASSED' : `${failed} FAILED`} (${passed} ok)`);
   process.exit(failed === 0 ? 0 : 1);
 }
 
-main().catch((err) => { console.error(err); process.exit(1); });
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

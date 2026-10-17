@@ -29,55 +29,96 @@ const DATA = path.join(OUT, 'single-instance-data');
 
 fs.mkdirSync(DATA, { recursive: true });
 
-function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
 
 function health(port) {
   return new Promise((resolve) => {
     const req = http.get({ host: '127.0.0.1', port, path: '/api/health' }, (res) => {
       let s = '';
-      res.on('data', (d) => { s += d; });
+      res.on('data', (d) => {
+        s += d;
+      });
       res.on('end', () => {
-        try { resolve({ ok: JSON.parse(s).ok === true, port }); } catch { resolve({ ok: false, port }); }
+        try {
+          resolve({ ok: JSON.parse(s).ok === true, port });
+        } catch {
+          resolve({ ok: false, port });
+        }
       });
     });
     req.on('error', () => resolve({ ok: false, port }));
-    req.setTimeout(2500, () => { req.destroy(); resolve({ ok: false, port }); });
+    req.setTimeout(2500, () => {
+      req.destroy();
+      resolve({ ok: false, port });
+    });
   });
 }
 
 /** Which ports does this PID have open for listening? */
 function listeningPortsOf(pid) {
   try {
-    const out = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
-      `(Get-NetTCPConnection -State Listen -OwningProcess ${pid} -ErrorAction SilentlyContinue).LocalPort -join ','`,
-    ], { encoding: 'utf8' });
-    return out.trim().split(',').map((s) => Number(s.trim())).filter(Boolean);
-  } catch { return []; }
+    const out = execFileSync(
+      'powershell.exe',
+      [
+        '-NoProfile',
+        '-NonInteractive',
+        '-Command',
+        `(Get-NetTCPConnection -State Listen -OwningProcess ${pid} -ErrorAction SilentlyContinue).LocalPort -join ','`,
+      ],
+      { encoding: 'utf8' },
+    );
+    return out
+      .trim()
+      .split(',')
+      .map((s) => Number(s.trim()))
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
 }
 
 function launch(label, extraArgs = []) {
   const cmd = USE_EXE
     ? { file: path.join(ROOT, 'dist', 'TabAgent.exe'), args: ['--data-dir', DATA, ...extraArgs] }
-    : { file: process.execPath, args: [path.join(ROOT, '.build', 'js', 'desktop.js'), '--data-dir', DATA, ...extraArgs] };
+    : {
+        file: process.execPath,
+        args: [path.join(ROOT, '.build', 'js', 'desktop.js'), '--data-dir', DATA, ...extraArgs],
+      };
 
   const child = spawn(cmd.file, cmd.args, { stdio: ['ignore', 'pipe', 'pipe'] });
   const rec = { label, child, output: '', exitedAt: null, code: null, started: Date.now() };
-  child.stdout.on('data', (d) => { rec.output += d.toString(); });
-  child.stderr.on('data', (d) => { rec.output += d.toString(); });
-  child.on('exit', (code) => { rec.exitedAt = Date.now() - rec.started; rec.code = code; });
+  child.stdout.on('data', (d) => {
+    rec.output += d.toString();
+  });
+  child.stderr.on('data', (d) => {
+    rec.output += d.toString();
+  });
+  child.on('exit', (code) => {
+    rec.exitedAt = Date.now() - rec.started;
+    rec.code = code;
+  });
   return rec;
 }
 
 function readRecord() {
-  try { return JSON.parse(fs.readFileSync(path.join(DATA, 'instance.json'), 'utf8')); } catch { return null; }
+  try {
+    return JSON.parse(fs.readFileSync(path.join(DATA, 'instance.json'), 'utf8'));
+  } catch {
+    return null;
+  }
 }
 
 let failures = 0;
 function check(label, actual, expected) {
   const ok = JSON.stringify(actual) === JSON.stringify(expected);
   if (!ok) failures++;
-  console.log((ok ? '  ok   ' : '  FAIL ') + label +
-    (ok ? '' : `\n         expected: ${JSON.stringify(expected)}\n         actual:   ${JSON.stringify(actual)}`));
+  console.log(
+    (ok ? '  ok   ' : '  FAIL ') +
+      label +
+      (ok ? '' : `\n         expected: ${JSON.stringify(expected)}\n         actual:   ${JSON.stringify(actual)}`),
+  );
 }
 
 async function main() {
@@ -87,7 +128,10 @@ async function main() {
   console.log('=== A) first launch ===');
   const a = launch('A', ['--port', '3231']);
   let rec = null;
-  for (let i = 0; i < 30 && !rec; i++) { await sleep(500); rec = readRecord(); }
+  for (let i = 0; i < 30 && !rec; i++) {
+    await sleep(500);
+    rec = readRecord();
+  }
   check('instance record published', !!rec && Number.isInteger(rec.port), true);
   console.log('     record: ' + JSON.stringify(rec));
   const portA = rec ? rec.port : 3231;
@@ -99,7 +143,14 @@ async function main() {
   // The second launch should finish quickly: it only opens a window.
   for (let i = 0; i < 20 && b.exitedAt === null; i++) await sleep(400);
 
-  console.log('     B output:\n' + b.output.split(/\r?\n/).filter(Boolean).map((l) => '       ' + l).join('\n'));
+  console.log(
+    '     B output:\n' +
+      b.output
+        .split(/\r?\n/)
+        .filter(Boolean)
+        .map((l) => '       ' + l)
+        .join('\n'),
+  );
   check('B exited on its own (did not linger as a second server)', b.exitedAt !== null, true);
   check('B did not bind a port of its own', listeningPortsOf(b.child.pid).length, 0);
   check('B mentioned the running instance', /已在运行的实例/.test(b.output), true);
@@ -117,13 +168,17 @@ async function main() {
   if (b.exitedAt === null) b.child.kill();
   await sleep(1200);
   const recGone = readRecord();
-  console.log('     record after shutdown: ' + JSON.stringify(recGone) +
-    ' (a forced kill may leave it; the next launch clears a stale record)');
+  console.log(
+    '     record after shutdown: ' +
+      JSON.stringify(recGone) +
+      ' (a forced kill may leave it; the next launch clears a stale record)',
+  );
 
-  console.log('\n' + (failures === 0
-    ? 'SINGLE-INSTANCE HANDOFF OK'
-    : failures + ' CHECK(S) FAILED'));
+  console.log('\n' + (failures === 0 ? 'SINGLE-INSTANCE HANDOFF OK' : failures + ' CHECK(S) FAILED'));
   process.exit(failures === 0 ? 0 : 1);
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

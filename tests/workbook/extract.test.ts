@@ -2,8 +2,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
 import {
-  normalizeText, parseNumber, parseChineseNumber, numberNear,
-  parseDate, dateNear, textAfterLabel, parseBoolean, matchEnum,
+  normalizeText,
+  parseNumber,
+  parseChineseNumber,
+  numberNear,
+  parseDate,
+  dateNear,
+  textAfterLabel,
+  parseBoolean,
+  matchEnum,
 } from '../../src/workbook/extract.ts';
 
 // -------------------------------------------------------------- normalising
@@ -105,7 +112,10 @@ test('rejects impossible calendar dates', () => {
 test('relative dates resolve against today', () => {
   const today = new Date();
   const fmt = (d) => d.toISOString().slice(0, 10);
-  assert.strictEqual(fmt(parseDate('今天')), fmt(new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()))));
+  assert.strictEqual(
+    fmt(parseDate('今天')),
+    fmt(new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()))),
+  );
   const tomorrow = parseDate('明天');
   assert.ok(tomorrow > new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate())));
 });

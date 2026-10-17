@@ -36,7 +36,10 @@ const DEFAULT_SETTINGS = {
 let failures = 0;
 function check(name, cond, extra = '') {
   if (cond) console.log(`  ok   ${name}`);
-  else { failures++; console.log(`  FAIL ${name}  ${extra}`); }
+  else {
+    failures++;
+    console.log(`  FAIL ${name}  ${extra}`);
+  }
 }
 
 async function main() {
@@ -62,12 +65,15 @@ async function main() {
   await sleep(900);
 
   // ── centre of an element, in page coordinates ──────────────────────
-  const boxOf = (sel) => page.evaluate(`(() => {
+  const boxOf = (sel) =>
+    page
+      .evaluate(`(() => {
     const el = document.querySelector(${JSON.stringify(sel)});
     if (!el) return null;
     const r = el.getBoundingClientRect();
     return JSON.stringify({ x: r.left + r.width / 2, y: r.top + r.height / 2, w: r.width, h: r.height });
-  })()`).then((s) => (s ? JSON.parse(s) : null));
+  })()`)
+      .then((s) => (s ? JSON.parse(s) : null));
 
   async function clickAt(x, y) {
     await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, button: 'none', clickCount: 0 });
@@ -99,12 +105,17 @@ async function main() {
   await clickSel('.chat__idea');
   const after = await composerText();
   check('clicking a chip fills the composer', after === firstText, JSON.stringify(after));
-  check('clicking a chip did NOT send a message', await page.evaluate('document.querySelectorAll(".chat__row--me").length') === 0);
-  check('clicking a chip focused the composer',
-    await page.evaluate('document.activeElement && document.activeElement.className') === 'composer__input');
+  check(
+    'clicking a chip did NOT send a message',
+    (await page.evaluate('document.querySelectorAll(".chat__row--me").length')) === 0,
+  );
+  check(
+    'clicking a chip focused the composer',
+    (await page.evaluate('document.activeElement && document.activeElement.className')) === 'composer__input',
+  );
 
   // ── 2. the chip is a real button, so it is keyboard reachable ──────
-  check('chip is a <button>', await page.evaluate('document.querySelector(".chat__idea").tagName') === 'BUTTON');
+  check('chip is a <button>', (await page.evaluate('document.querySelector(".chat__idea").tagName')) === 'BUTTON');
 
   // ── 3. splitters resize the columns on a real drag ─────────────────
   const railBefore = await page.evaluate('document.getElementById("rail").getBoundingClientRect().width');
@@ -117,15 +128,30 @@ async function main() {
   await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: sx, y: sy, button: 'none', clickCount: 0 });
   await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: sx, y: sy, button: 'left', clickCount: 1 });
   for (let i = 1; i <= 9; i++) {
-    await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: sx + i * 10, y: sy, button: 'left', clickCount: 1 });
+    await page.send('Input.dispatchMouseEvent', {
+      type: 'mouseMoved',
+      x: sx + i * 10,
+      y: sy,
+      button: 'left',
+      clickCount: 1,
+    });
     await sleep(20);
   }
-  await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: sx + 90, y: sy, button: 'left', clickCount: 1 });
+  await page.send('Input.dispatchMouseEvent', {
+    type: 'mouseReleased',
+    x: sx + 90,
+    y: sy,
+    button: 'left',
+    clickCount: 1,
+  });
   await sleep(300);
 
   const railAfter = await page.evaluate('document.getElementById("rail").getBoundingClientRect().width');
-  check('dragging the rail splitter widened the rail', railAfter > railBefore + 50,
-    `before=${railBefore} after=${railAfter}`);
+  check(
+    'dragging the rail splitter widened the rail',
+    railAfter > railBefore + 50,
+    `before=${railBefore} after=${railAfter}`,
+  );
 
   const stored = await page.evaluate('localStorage.getItem("tab-agent:columns")');
   check('the dragged width was persisted', stored && stored.includes('--rail-w'), String(stored));
@@ -134,8 +160,20 @@ async function main() {
   const shellW = await page.evaluate('document.getElementById("shell").getBoundingClientRect().width');
   await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: sx, y: sy, button: 'none', clickCount: 0 });
   await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: sx, y: sy, button: 'left', clickCount: 1 });
-  await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: sx + 2000, y: sy, button: 'left', clickCount: 1 });
-  await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: sx + 2000, y: sy, button: 'left', clickCount: 1 });
+  await page.send('Input.dispatchMouseEvent', {
+    type: 'mouseMoved',
+    x: sx + 2000,
+    y: sy,
+    button: 'left',
+    clickCount: 1,
+  });
+  await page.send('Input.dispatchMouseEvent', {
+    type: 'mouseReleased',
+    x: sx + 2000,
+    y: sy,
+    button: 'left',
+    clickCount: 1,
+  });
   await sleep(300);
   const railClamped = await page.evaluate('document.getElementById("rail").getBoundingClientRect().width');
   const paneW = await page.evaluate('document.getElementById("pane").getBoundingClientRect().width');
@@ -150,8 +188,20 @@ async function main() {
   //     Clicking the old coordinates lands inside the rail and does nothing.
   const resetBox = await boxOf('#split-rail');
   for (const n of [1, 2]) {
-    await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: resetBox.x, y: resetBox.y, button: 'left', clickCount: n });
-    await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: resetBox.x, y: resetBox.y, button: 'left', clickCount: n });
+    await page.send('Input.dispatchMouseEvent', {
+      type: 'mousePressed',
+      x: resetBox.x,
+      y: resetBox.y,
+      button: 'left',
+      clickCount: n,
+    });
+    await page.send('Input.dispatchMouseEvent', {
+      type: 'mouseReleased',
+      x: resetBox.x,
+      y: resetBox.y,
+      button: 'left',
+      clickCount: n,
+    });
     await sleep(40);
   }
   await sleep(400);
@@ -164,10 +214,17 @@ async function main() {
 
   await closePage(page, { trashProfile: true });
   server.close();
-  try { fs.rmSync(dataDir, { recursive: true, force: true }); } catch { /* scratch */ }
+  try {
+    fs.rmSync(dataDir, { recursive: true, force: true });
+  } catch {
+    /* scratch */
+  }
 
   console.log(failures ? `\n${failures} FAILED` : '\nALL CLICK CHECKS PASSED');
   process.exit(failures ? 1 : 0);
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

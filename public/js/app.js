@@ -70,7 +70,10 @@ function bindKeyboard() {
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
       const modal = $('#modal');
-      if (modal && !modal.hidden) { modal.hidden = true; return; }
+      if (modal && !modal.hidden) {
+        modal.hidden = true;
+        return;
+      }
       if (state.view === 'settings') closeSettings();
       return;
     }
@@ -107,7 +110,10 @@ async function openSession(id) {
     // an empty list, not a failed open: the transcript is what was asked for.
     const [res, att] = await Promise.all([
       api.getSession(id),
-      api.listAttachments(id).catch((err) => { console.warn('attachments read failed', err); return null; }),
+      api.listAttachments(id).catch((err) => {
+        console.warn('attachments read failed', err);
+        return null;
+      }),
     ]);
     // A different conversation means a different message box. The cached node
     // is keyed by session id, so this also clears the half-typed text.
@@ -205,7 +211,23 @@ let fileInput = null;
 let folderInput = null;
 
 /** What the file picker offers, and what a picked folder is filtered down to. */
-const ATTACH_EXT = ['.csv', '.tsv', '.txt', '.json', '.md', '.xlsx', '.xls', '.png', '.jpg', '.jpeg', '.webp', '.gif', '.docx', '.pdf', '.zip'];
+const ATTACH_EXT = [
+  '.csv',
+  '.tsv',
+  '.txt',
+  '.json',
+  '.md',
+  '.xlsx',
+  '.xls',
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.webp',
+  '.gif',
+  '.docx',
+  '.pdf',
+  '.zip',
+];
 
 /**
  * The server takes at most this many files per request (`MAX_FILES` in
@@ -223,7 +245,9 @@ const ATTACH_BATCH = 20;
  */
 function bindFileInput() {
   fileInput = el('input', {
-    type: 'file', id: 'file-input', multiple: true,
+    type: 'file',
+    id: 'file-input',
+    multiple: true,
     accept: ATTACH_EXT.join(','),
   });
   fileInput.style.display = 'none';
@@ -345,12 +369,23 @@ async function handleFiles(files) {
     // A zip expands into its readable members; say what was left out, so a
     // missing file is not a mystery.
     if (archiveNotes.length) {
-      toast({ tone: 'info', title: '压缩包已展开', body: archiveNotes.map((n) => `${n.name}：跳过 ${n.skipped} 个不支持的文件`).join('\n'), ms: 6000 });
+      toast({
+        tone: 'info',
+        title: '压缩包已展开',
+        body: archiveNotes.map((n) => `${n.name}：跳过 ${n.skipped} 个不支持的文件`).join('\n'),
+        ms: 6000,
+      });
     }
     await refreshAttachments(id);
     const bad = results.filter((a) => a.kind === 'error');
     set({ status: bad.length ? `${bad.length} 个文件读不了` : `已添加 ${list.length} 个文件` });
-    if (bad.length) toast({ tone: 'err', title: '有一部文件读不了', body: bad.map((a) => `${a.name}：${a.error || '不支持'}`).join('\n'), ms: 8000 });
+    if (bad.length)
+      toast({
+        tone: 'err',
+        title: '有一部文件读不了',
+        body: bad.map((a) => `${a.name}：${a.error || '不支持'}`).join('\n'),
+        ms: 8000,
+      });
   } catch (err) {
     fail('上传失败', err);
   } finally {
@@ -475,12 +510,15 @@ async function send(text) {
   set({
     // The server folds attachment content into the model's message itself and
     // stores only the names; the optimistic bubble shows the same names.
-    messages: [...state.messages, {
-      role: 'user',
-      content: message,
-      attachments: attachedNames(),
-      at: new Date().toISOString(),
-    }],
+    messages: [
+      ...state.messages,
+      {
+        role: 'user',
+        content: message,
+        attachments: attachedNames(),
+        at: new Date().toISOString(),
+      },
+    ],
     error: null,
     status: '正在想…',
   });
@@ -507,9 +545,7 @@ async function send(text) {
       preview: preview ? { ...preview, proposed: preview === res.proposed?.preview } : state.preview,
       previewError: null,
       pending: res.pending ? { rows: res.proposed?.rows, reply: res.reply } : null,
-      status: res.pending
-        ? '改好了，等你确认'
-        : res.applied ? '已改' : '已回复',
+      status: res.pending ? '改好了，等你确认' : res.applied ? '已改' : '已回复',
     });
 
     // A rename lands on the first change, so the list needs refreshing.
@@ -539,7 +575,11 @@ function restoreDraft(text, why) {
   const ta = state.draftNode;
   if (ta) {
     ta.value = text;
-    try { ta.focus(); } catch { /* not focusable yet */ }
+    try {
+      ta.focus();
+    } catch {
+      /* not focusable yet */
+    }
   }
   toast({ tone: 'err', title: '对话失败', body: why, ms: 7000 });
 }
@@ -605,7 +645,8 @@ async function loadMorePreview() {
       },
     });
   } catch (err) {
-    if (state.activeId === id) set({ previewError: err instanceof ApiError ? err.message : String(err?.message || err) });
+    if (state.activeId === id)
+      set({ previewError: err instanceof ApiError ? err.message : String(err?.message || err) });
   } finally {
     set({ previewLoading: false });
   }
@@ -646,7 +687,10 @@ async function setColumnWidth(index, width) {
 function withWidth(cols, c, width) {
   const out = [];
   for (const r of cols || []) {
-    if (c < r.min || c > r.max) { out.push(r); continue; }
+    if (c < r.min || c > r.max) {
+      out.push(r);
+      continue;
+    }
     if (r.min < c) out.push({ ...r, max: c - 1 });
     if (r.max > c) out.push({ ...r, min: c + 1 });
   }
@@ -723,8 +767,20 @@ async function saveSettings(draft) {
   setBusy('settings', true);
   try {
     const patch = {};
-    for (const k of ['api', 'baseUrl', 'model', 'useForAttachments', 'chatCanEdit', 'chatConfirmEdits',
-      'chatCanSave', 'exportDir', 'chatCanFetch', 'fetchBlocklist', 'chatFileAccess', 'fileBlocklist']) {
+    for (const k of [
+      'api',
+      'baseUrl',
+      'model',
+      'useForAttachments',
+      'chatCanEdit',
+      'chatConfirmEdits',
+      'chatCanSave',
+      'exportDir',
+      'chatCanFetch',
+      'fetchBlocklist',
+      'chatFileAccess',
+      'fileBlocklist',
+    ]) {
       if (k in draft) patch[k] = draft[k];
     }
     if (draft.apiKey) patch.apiKey = draft.apiKey;
@@ -757,8 +813,11 @@ async function clearSettingsKey() {
   try {
     const res = await api.saveSettings({ apiKey: '' });
     set({
-      settings: res.settings, settingsDraft: {}, settingsTest: null,
-      settingsNotice: { tone: 'ok', text: `已清除 API key（${clock()}）` }, status: '已清除 API key',
+      settings: res.settings,
+      settingsDraft: {},
+      settingsTest: null,
+      settingsNotice: { tone: 'ok', text: `已清除 API key（${clock()}）` },
+      status: '已清除 API key',
     });
     toast('已清除 API key', 'ok');
   } catch (err) {
@@ -816,7 +875,15 @@ function fail(title, err) {
 function focusComposer() {
   const ta = state.draftNode;
   if (!ta) return;
-  try { ta.focus({ preventScroll: true }); } catch { try { ta.focus(); } catch { /* ignore */ } }
+  try {
+    ta.focus({ preventScroll: true });
+  } catch {
+    try {
+      ta.focus();
+    } catch {
+      /* ignore */
+    }
+  }
 }
 
 // ── render ──────────────────────────────────────────────────────────
@@ -844,7 +911,7 @@ function render() {
 
 function renderTitlebar() {
   const node = $('#titlebar-title');
-  node.textContent = state.view === 'settings' ? '设置' : (state.title || '');
+  node.textContent = state.view === 'settings' ? '设置' : state.title || '';
 }
 
 function renderError() {
@@ -857,7 +924,10 @@ function renderError() {
   mount(banner, [
     el('span', { class: 'pane__errortext', text: state.error }),
     el('button', {
-      class: 'iconbtn', type: 'button', title: '关闭', html: icon('x'),
+      class: 'iconbtn',
+      type: 'button',
+      title: '关闭',
+      html: icon('x'),
       onclick: () => set({ error: null }),
     }),
   ]);
@@ -867,12 +937,15 @@ function renderRail() {
   // The grid track is set by a class on the shell, not by the rail itself: the
   // column width belongs to the layout, and the splitter beside it has to go too.
   $('#shell').classList.toggle('is-rail-collapsed', state.railCollapsed);
-  mount($('#rail'), sessionsView(state, {
-    onOpen: openSession,
-    onRemove: confirmRemoveSession,
-    onCreate: createSession,
-    onToggle: toggleRail,
-  }));
+  mount(
+    $('#rail'),
+    sessionsView(state, {
+      onOpen: openSession,
+      onRemove: confirmRemoveSession,
+      onCreate: createSession,
+      onToggle: toggleRail,
+    }),
+  );
 }
 
 // ── rail folding ────────────────────────────────────────────────────
@@ -883,12 +956,20 @@ function renderRail() {
 const RAIL_KEY = 'tab-agent:rail-collapsed';
 
 function readRailCollapsed() {
-  try { return localStorage.getItem(RAIL_KEY) === '1'; } catch { return false; }
+  try {
+    return localStorage.getItem(RAIL_KEY) === '1';
+  } catch {
+    return false;
+  }
 }
 
 function toggleRail() {
   const railCollapsed = !state.railCollapsed;
-  try { localStorage.setItem(RAIL_KEY, railCollapsed ? '1' : '0'); } catch { /* not fatal */ }
+  try {
+    localStorage.setItem(RAIL_KEY, railCollapsed ? '1' : '0');
+  } catch {
+    /* not fatal */
+  }
   set({ railCollapsed });
 }
 
@@ -953,7 +1034,9 @@ function renderPreview() {
 function renderStatusbar() {
   $('#status-msg').textContent = state.status || '就绪';
 
-  const busy = Object.entries(state.busy).filter(([, v]) => v).map(([k]) => k);
+  const busy = Object.entries(state.busy)
+    .filter(([, v]) => v)
+    .map(([k]) => k);
   $('#status-busy').textContent = busy.length ? `进行中：${busy.join(' / ')}` : '';
 }
 
@@ -969,9 +1052,15 @@ const handlers = {
     // node from here — that is what a repaint would trample.
     state.draft = v;
   },
-  onDraftNode: (node) => { state.draftNode = node; },
-  onIdea: (text) => { useIdea(text); },
-  onStartSession: () => { startSession(); },
+  onDraftNode: (node) => {
+    state.draftNode = node;
+  },
+  onIdea: (text) => {
+    useIdea(text);
+  },
+  onStartSession: () => {
+    startSession();
+  },
   onPickFiles: pickFiles,
   onPickFolder: pickFolder,
   onPasteFiles: pasteFiles,

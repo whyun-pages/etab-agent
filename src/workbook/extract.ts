@@ -19,7 +19,7 @@ export function normalizeText(s: unknown): string {
   let out = String(s);
   // Full-width forms (U+FF01..U+FF5E) map to ASCII by offset 0xFEE0.
   out = out.replace(/[\uff01-\uff5e]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xfee0));
-  out = out.replace(/\u3000/g, ' ');          // ideographic space
+  out = out.replace(/\u3000/g, ' '); // ideographic space
   out = out.replace(/[，、]/g, ',');
   out = out.replace(/[。；]/g, ';');
   out = out.replace(/[：]/g, ':');
@@ -30,7 +30,29 @@ export function normalizeText(s: unknown): string {
 
 // ------------------------------------------------------------------ numbers
 
-const CN_DIGITS: Record<string, number> = { 零: 0, 〇: 0, 一: 1, 壹: 1, 二: 2, 两: 2, 贰: 2, 三: 3, 叁: 3, 四: 4, 肆: 4, 五: 5, 伍: 5, 六: 6, 陆: 6, 七: 7, 柒: 7, 八: 8, 捌: 8, 九: 9, 玖: 9 };
+const CN_DIGITS: Record<string, number> = {
+  零: 0,
+  〇: 0,
+  一: 1,
+  壹: 1,
+  二: 2,
+  两: 2,
+  贰: 2,
+  三: 3,
+  叁: 3,
+  四: 4,
+  肆: 4,
+  五: 5,
+  伍: 5,
+  六: 6,
+  陆: 6,
+  七: 7,
+  柒: 7,
+  八: 8,
+  捌: 8,
+  九: 9,
+  玖: 9,
+};
 const CN_UNITS: Record<string, number> = { 十: 10, 拾: 10, 百: 100, 佰: 100, 千: 1000, 仟: 1000 };
 
 /** Scale multipliers that commonly follow a number in Chinese text. */
@@ -66,11 +88,14 @@ export function parseChineseNumber(text: string): number | null {
   if (!/^[零〇一二两三四五六七八九十百千壹贰叁肆伍陆柒捌玖拾佰仟萬亿万]+$/.test(s)) return null;
 
   let total = 0;
-  let section = 0;   // accumulates below 万/亿
-  let number = 0;    // current digit run
+  let section = 0; // accumulates below 万/亿
+  let number = 0; // current digit run
 
   for (const ch of s) {
-    if (ch in CN_DIGITS) { number = CN_DIGITS[ch]; continue; }
+    if (ch in CN_DIGITS) {
+      number = CN_DIGITS[ch];
+      continue;
+    }
     if (ch in CN_UNITS) {
       const unit = CN_UNITS[ch];
       // "十五" means 15: a unit with no preceding digit implies one.
@@ -78,8 +103,18 @@ export function parseChineseNumber(text: string): number | null {
       number = 0;
       continue;
     }
-    if (ch === '万' || ch === '萬') { total += (section + number) * 1e4; section = 0; number = 0; continue; }
-    if (ch === '亿' || ch === '億') { total += (section + number) * 1e8; section = 0; number = 0; continue; }
+    if (ch === '万' || ch === '萬') {
+      total += (section + number) * 1e4;
+      section = 0;
+      number = 0;
+      continue;
+    }
+    if (ch === '亿' || ch === '億') {
+      total += (section + number) * 1e8;
+      section = 0;
+      number = 0;
+      continue;
+    }
   }
   return total + section + number;
 }
@@ -97,7 +132,10 @@ export function parseNumber(token: string): ParsedNumber | null {
 
   // Strip decorations; keep digits, separators and scale chars. The percent sign
   // is consumed here but already recorded in `percent` above.
-  let body = s.replace(/[¥$€£￥%\s]/g, '').replace(/^[-−+]/, '').replace(/[元圆整人民币RMBrmb]/g, '');
+  let body = s
+    .replace(/[¥$€£￥%\s]/g, '')
+    .replace(/^[-−+]/, '')
+    .replace(/[元圆整人民币RMBrmb]/g, '');
 
   // Apply a scale suffix only to an Arabic digit run (1.5万, 3千万). A Chinese
   // numeral carries its own units, so stripping 千 out of 三千五百 would be wrong.
@@ -155,13 +193,20 @@ export function looksNumericToken(raw: string): boolean {
 }
 
 /** Find the number that appears nearest after a label occurrence. */
-export function numberNear(text: string, label: string, { searchWindow = 60 }: { searchWindow?: number } = {}): ParsedNumber | null {
+export function numberNear(
+  text: string,
+  label: string,
+  { searchWindow = 60 }: { searchWindow?: number } = {},
+): ParsedNumber | null {
   const norm = normalizeText(text);
   const idx = norm.indexOf(normalizeText(label));
   if (idx === -1) return null;
 
   const after = norm.slice(idx + label.length, idx + label.length + searchWindow);
-  const m = /[:=\s]*(?:金额|总价|价格|是|为|约)?\s*([¥$€£￥]?\s*-?[\d零〇一二两三四五六七八九十百千壹贰叁肆伍陆柒捌玖拾佰仟萬亿.,]+(?:\.\d+)?\s*[万亿萬千百仟]?\s*%?(?:\s*元)?)/.exec(after);
+  const m =
+    /[:=\s]*(?:金额|总价|价格|是|为|约)?\s*([¥$€£￥]?\s*-?[\d零〇一二两三四五六七八九十百千壹贰叁肆伍陆柒捌玖拾佰仟萬亿.,]+(?:\.\d+)?\s*[万亿萬千百仟]?\s*%?(?:\s*元)?)/.exec(
+      after,
+    );
   if (m && looksNumericToken(m[1])) {
     const parsed = parseNumber(m[1]);
     if (parsed) return parsed;
@@ -198,7 +243,9 @@ export function parseDate(token: string): Date | null {
   }
   const compact = /^(\d{4})(\d{2})(\d{2})$/.exec(s);
   if (compact) {
-    const y = Number(compact[1]), mo = Number(compact[2]), d = Number(compact[3]);
+    const y = Number(compact[1]),
+      mo = Number(compact[2]),
+      d = Number(compact[3]);
     if (mo >= 1 && mo <= 12 && d >= 1 && d <= 31) return new Date(Date.UTC(y, mo - 1, d));
   }
   const cn = /([一二三四五六七八九十]{1,3})月([一二三四五六七八九十]{1,3})日/.exec(s);
@@ -250,7 +297,11 @@ const QUOTE_CHARS = /["'“”‘’「」『』《》]/g;
  * Read the value after a label: "客户：北京某某公司" → 北京某某公司.
  * Stops at a separator, a newline, or the next label-looking token.
  */
-export function textAfterLabel(text: string, label: string, { maxLength = 80, stopWords = [] }: { maxLength?: number; stopWords?: string[] } = {}): string | null {
+export function textAfterLabel(
+  text: string,
+  label: string,
+  { maxLength = 80, stopWords = [] }: { maxLength?: number; stopWords?: string[] } = {},
+): string | null {
   const norm = normalizeText(text);
   const idx = norm.indexOf(normalizeText(label));
   if (idx === -1) return null;

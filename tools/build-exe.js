@@ -110,7 +110,9 @@ async function main() {
   const OPTIONAL = new Set(['bufferutil', 'utf-8-validate', 'supports-color']);
   const unexplained = built.thirdParty.filter((s) => !OPTIONAL.has(s));
   if (unexplained.length) {
-    throw new Error('third-party modules left external, which a packaged executable cannot load: ' + unexplained.join(', '));
+    throw new Error(
+      'third-party modules left external, which a packaged executable cannot load: ' + unexplained.join(', '),
+    );
   }
   console.log(`    ${built.inputs} inputs, bundle.js = ${built.bytes} bytes`);
 
@@ -176,11 +178,10 @@ function resolvePostject() {
     const globalRoot = execFileSync('npm.cmd', ['root', '-g'], { encoding: 'utf8' }).trim();
     const globalCli = path.join(globalRoot, 'postject', 'dist', 'cli.js');
     if (fs.existsSync(globalCli)) return globalCli;
-  } catch { /* fall through to the error below */ }
-  throw new Error(
-    'postject not found. Install it first:\n' +
-    '  pnpm install  (postject is a devDependency)',
-  );
+  } catch {
+    /* fall through to the error below */
+  }
+  throw new Error('postject not found. Install it first:\n' + '  pnpm install  (postject is a devDependency)');
 }
 
 main().catch((err) => {

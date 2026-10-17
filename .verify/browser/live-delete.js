@@ -40,7 +40,10 @@ const DEFAULT_SETTINGS = {
 let failures = 0;
 function check(name, cond, extra = '') {
   if (cond) console.log(`  ok   ${name}`);
-  else { failures++; console.log(`  FAIL ${name}  ${extra}`); }
+  else {
+    failures++;
+    console.log(`  FAIL ${name}  ${extra}`);
+  }
 }
 
 async function main() {
@@ -56,7 +59,9 @@ async function main() {
   // Seed two sessions over HTTP so the rail has rows and a "next" to fall to.
   const mk = async (title) => {
     const res = await fetch(`${base}/api/sessions`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }),
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title }),
     });
     return (await res.json()).session.id;
   };
@@ -73,12 +78,15 @@ async function main() {
   });
   await sleep(1000);
 
-  const boxOf = (sel) => page.evaluate(`(() => {
+  const boxOf = (sel) =>
+    page
+      .evaluate(`(() => {
     const el = document.querySelector(${JSON.stringify(sel)});
     if (!el) return null;
     const r = el.getBoundingClientRect();
     return JSON.stringify({ x: r.left + r.width / 2, y: r.top + r.height / 2, w: r.width, h: r.height, left: r.left, top: r.top });
-  })()`).then((s) => (s ? JSON.parse(s) : null));
+  })()`)
+      .then((s) => (s ? JSON.parse(s) : null));
 
   async function moveTo(x, y) {
     await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, button: 'none', clickCount: 0 });
@@ -91,7 +99,8 @@ async function main() {
     await sleep(300);
   }
   /** What the browser would actually hit at (x,y) — the real hit test. */
-  const hitAt = (x, y) => page.evaluate(`(() => {
+  const hitAt = (x, y) =>
+    page.evaluate(`(() => {
     const el = document.elementFromPoint(${x}, ${y});
     if (!el) return 'null';
     const del = el.closest('.rail__del');
@@ -107,20 +116,28 @@ async function main() {
   // ── 2. the trash control is hover-revealed and hit-testable ────────
   const delBox = await boxOf('.rail__del');
   check('.rail__del exists in the DOM', !!delBox, JSON.stringify(delBox));
-  if (!delBox) { await finish(page, server, dataDir); return; }
+  if (!delBox) {
+    await finish(page, server, dataDir);
+    return;
+  }
 
   // The rail is NEWEST-FIRST, so `.rail__item` #1 is the most recently created
   // session, not the one seeded first. Target rows by TITLE: otherwise this
   // clicks a different row than it names, deletes the wrong session, and then
   // reports the product at fault for the test's own mistake.
-  const rowBoxOf = (title) => page.evaluate(`(() => {
+  const rowBoxOf = (title) =>
+    page
+      .evaluate(`(() => {
     const rows = [...document.querySelectorAll('.rail__item')];
     const row = rows.find((r) => (r.querySelector('.rail__name') || {}).textContent === ${JSON.stringify(title)});
     if (!row) return null;
     const r = row.getBoundingClientRect();
     return JSON.stringify({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
-  })()`).then((s) => (s ? JSON.parse(s) : null));
-  const delBoxOf = (title) => page.evaluate(`(() => {
+  })()`)
+      .then((s) => (s ? JSON.parse(s) : null));
+  const delBoxOf = (title) =>
+    page
+      .evaluate(`(() => {
     const rows = [...document.querySelectorAll('.rail__item')];
     const row = rows.find((r) => (r.querySelector('.rail__name') || {}).textContent === ${JSON.stringify(title)});
     if (!row) return null;
@@ -128,7 +145,8 @@ async function main() {
     if (!el) return null;
     const r = el.getBoundingClientRect();
     return JSON.stringify({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
-  })()`).then((s) => (s ? JSON.parse(s) : null));
+  })()`)
+      .then((s) => (s ? JSON.parse(s) : null));
 
   // Without hover it is opacity:0. Hover the target ROW first (the CSS reveals
   // on .rail__item:hover), then measure THAT row's trash.
@@ -156,13 +174,15 @@ async function main() {
   check('the modal warns it is irreversible', modal.includes('不可撤销'), JSON.stringify(modal.slice(0, 120)));
 
   // ── 4. the modal's 删除 button works ───────────────────────────────
-  const delBtnBox = await page.evaluate(`(() => {
+  const delBtnBox = await page
+    .evaluate(`(() => {
     const btns = [...document.querySelectorAll('.modal button')];
     const el = btns.find((b) => b.textContent.trim() === '删除');
     if (!el) return null;
     const r = el.getBoundingClientRect();
     return JSON.stringify({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
-  })()`).then((s) => (s ? JSON.parse(s) : null));
+  })()`)
+    .then((s) => (s ? JSON.parse(s) : null));
   check('the modal has a 删除 button', !!delBtnBox, JSON.stringify(delBtnBox));
 
   if (delBtnBox) {
@@ -186,11 +206,18 @@ async function main() {
 }
 
 async function finish(page, server, dataDir) {
-  try { await closePage(page, { trashProfile: true }); } catch {}
+  try {
+    await closePage(page, { trashProfile: true });
+  } catch {}
   await new Promise((r) => server.close(r));
-  try { fs.rmSync(dataDir, { recursive: true, force: true }); } catch {}
+  try {
+    fs.rmSync(dataDir, { recursive: true, force: true });
+  } catch {}
   console.log(failures === 0 ? '\nDELETE CLICK CHECKS PASSED' : `\n${failures} FAILED`);
   process.exit(failures === 0 ? 0 : 1);
 }
 
-main().catch((err) => { console.error(err); process.exit(1); });
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

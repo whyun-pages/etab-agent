@@ -22,22 +22,24 @@ import { specPreview, sheetPreview } from '../../src/workbook/preview.ts';
 /** A spec exercising every type, including the ones that need converting. */
 const SPEC = {
   title: '销售台账',
-  sheets: [{
-    name: '明细',
-    columns: [
-      { header: '客户名称', type: 'text' },
-      { header: '金额', type: 'currency' },
-      { header: '签约日期', type: 'date' },
-      { header: '税率', type: 'percent' },
-      { header: '数量', type: 'integer' },
-      { header: '已回款', type: 'boolean' },
-    ],
-    rows: [
-      ['甲', 1250000, '2026-01-08', 0.06, 12, true],
-      ['乙', '86万', '2026-01-22', '百分之六', 8, false],
-    ],
-    totals: { enabled: true, sumColumns: ['金额', '数量'] },
-  }],
+  sheets: [
+    {
+      name: '明细',
+      columns: [
+        { header: '客户名称', type: 'text' },
+        { header: '金额', type: 'currency' },
+        { header: '签约日期', type: 'date' },
+        { header: '税率', type: 'percent' },
+        { header: '数量', type: 'integer' },
+        { header: '已回款', type: 'boolean' },
+      ],
+      rows: [
+        ['甲', 1250000, '2026-01-08', 0.06, 12, true],
+        ['乙', '86万', '2026-01-22', '百分之六', 8, false],
+      ],
+      totals: { enabled: true, sumColumns: ['金额', '数量'] },
+    },
+  ],
 };
 
 const norm = () => normalizeSpec(SPEC).spec;
@@ -87,8 +89,11 @@ test('specPreview and sheetPreview agree cell for cell', () => {
   const fromBytes = sheetPreview(writeSpec(spec), '明细');
 
   assert.strictEqual(fromSpec.name, fromBytes.name);
-  assert.deepStrictEqual(fromSpec.rows, fromBytes.rows,
-    `spec path:  ${JSON.stringify(fromSpec.rows)}\nbytes path: ${JSON.stringify(fromBytes.rows)}`);
+  assert.deepStrictEqual(
+    fromSpec.rows,
+    fromBytes.rows,
+    `spec path:  ${JSON.stringify(fromSpec.rows)}\nbytes path: ${JSON.stringify(fromBytes.rows)}`,
+  );
 
   // Format CODES differ in spelling between the two paths — the bytes path
   // reads whatever the writer put in styles.xml, this path derives from the
@@ -109,8 +114,8 @@ test('specPreview and sheetPreview agree cell for cell', () => {
       assert.strictEqual(
         kind(fromSpec.formats[r][c]),
         kind(fromBytes.formats[r][c]),
-        `cell ${r + 1},${c + 1} (value ${JSON.stringify(fromBytes.rows[r][c])}): `
-        + `spec=${fromSpec.formats[r][c]} bytes=${fromBytes.formats[r][c]}`,
+        `cell ${r + 1},${c + 1} (value ${JSON.stringify(fromBytes.rows[r][c])}): ` +
+          `spec=${fromSpec.formats[r][c]} bytes=${fromBytes.formats[r][c]}`,
       );
     }
   }
@@ -144,11 +149,13 @@ test('sheetPreview: an unknown sheet name falls back to the first', () => {
 test('sheetPreview: a row limit truncates and says so', () => {
   const big = {
     title: 'T',
-    sheets: [{
-      name: 'S',
-      columns: [{ header: '客户' }],
-      rows: Array.from({ length: 60 }, (_, i) => [`客户${i}`]),
-    }],
+    sheets: [
+      {
+        name: 'S',
+        columns: [{ header: '客户' }],
+        rows: Array.from({ length: 60 }, (_, i) => [`客户${i}`]),
+      },
+    ],
   };
   const { spec } = normalizeSpec(big);
   const p = sheetPreview(writeSpec(spec), 'S', { maxRows: 10 });
@@ -173,11 +180,17 @@ test('sheetPreview: formats are null, not "General", on plain cells', () => {
 import { sheetWindow, MAX_PREVIEW_ROWS } from '../../src/workbook/preview.ts';
 import { readWorkbook } from '../../src/formats/xlsx.ts';
 
-const longSpec = (n) => normalizeSpec({
-  title: 'T',
-  sheets: [{ name: 'S', columns: [{ header: '名称' }, { header: '金额', type: 'currency' }],
-    rows: Array.from({ length: n }, (_, i) => [`r${i + 1}`, i + 1]) }],
-}).spec;
+const longSpec = (n) =>
+  normalizeSpec({
+    title: 'T',
+    sheets: [
+      {
+        name: 'S',
+        columns: [{ header: '名称' }, { header: '金额', type: 'currency' }],
+        rows: Array.from({ length: n }, (_, i) => [`r${i + 1}`, i + 1]),
+      },
+    ],
+  }).spec;
 
 test('sheetPreview: the first window says how big the whole sheet is', () => {
   const p = sheetPreview(writeSpec(longSpec(100)));
@@ -194,9 +207,18 @@ test('sheetWindow: windows tile the sheet exactly, values and formats alike', ()
   assert.strictEqual(whole.truncated, false);
 
   const parts = [1, 31, 61, 91].map((startRow) => sheetWindow(wb, undefined, { startRow, maxRows: 30 }));
-  assert.deepStrictEqual(parts.map((w) => w.startRow), [1, 31, 61, 91]);
-  assert.deepStrictEqual(parts.flatMap((w) => w.rows), whole.rows);
-  assert.deepStrictEqual(parts.flatMap((w) => w.formats), whole.formats);
+  assert.deepStrictEqual(
+    parts.map((w) => w.startRow),
+    [1, 31, 61, 91],
+  );
+  assert.deepStrictEqual(
+    parts.flatMap((w) => w.rows),
+    whole.rows,
+  );
+  assert.deepStrictEqual(
+    parts.flatMap((w) => w.formats),
+    whole.formats,
+  );
   assert.deepStrictEqual(parts[1].rows[0], ['r30', 30], 'sheet row 31 is data row 30');
   assert.strictEqual(parts[3].rows.length, 11, 'the last window stops at the last row');
 });

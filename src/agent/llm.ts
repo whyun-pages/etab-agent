@@ -181,7 +181,8 @@ export function createClocks({ timeoutMs, idleTimeoutMs, signal }: ClockArgs): C
 // ------------------------------------------------------------------ errors
 
 /** Messages that mean the request never reached a model. */
-const NETWORK_RE = /connection error|fetch failed|ECONNREFUSED|ECONNRESET|ENOTFOUND|EAI_AGAIN|getaddrinfo|ETIMEDOUT|socket hang up|network|certificate|self.signed/i;
+const NETWORK_RE =
+  /connection error|fetch failed|ECONNREFUSED|ECONNRESET|ENOTFOUND|EAI_AGAIN|getaddrinfo|ETIMEDOUT|socket hang up|network|certificate|self.signed/i;
 
 /**
  * A failed or aborted assistant message, as an `LlmError` the user can act on.
@@ -195,7 +196,10 @@ const NETWORK_RE = /connection error|fetch failed|ECONNREFUSED|ECONNRESET|ENOTFO
  * SDK's words — pi 1.x reports it as an error where 0.x reported an empty
  * success, and "Stream ended without finish_reason" tells the user nothing.
  */
-export function toLlmError(message: Pick<AssistantMessage, 'stopReason' | 'errorMessage'> & { content?: AssistantMessage['content'] }, clocks?: Clocks): LlmError {
+export function toLlmError(
+  message: Pick<AssistantMessage, 'stopReason' | 'errorMessage'> & { content?: AssistantMessage['content'] },
+  clocks?: Clocks,
+): LlmError {
   const why = clocks ? clocks.reason() : null;
   if (why === 'timeout') {
     return new LlmError(`请求超时（${Math.round(clocks!.timeoutMs / 1000)} 秒）`, { code: 'aborted' });
@@ -203,7 +207,9 @@ export function toLlmError(message: Pick<AssistantMessage, 'stopReason' | 'error
   if (why === 'idle') {
     // The window that fired, not the default: a turn arms a longer one while a
     // reply is streaming, and quoting the shorter would misstate the wait.
-    return new LlmError(`模型 ${Math.round((clocks!.idleWindowMs() || 0) / 1000)} 秒没有任何输出，已中断`, { code: 'aborted' });
+    return new LlmError(`模型 ${Math.round((clocks!.idleWindowMs() || 0) / 1000)} 秒没有任何输出，已中断`, {
+      code: 'aborted',
+    });
   }
   if (why === 'caller' || message.stopReason === 'aborted') {
     return new LlmError('请求已取消', { code: 'aborted' });
@@ -267,21 +273,34 @@ export function textOf(message: Pick<AssistantMessage, 'content'>): string {
 
 /** `ChatMessage[]` to a pi-ai context: system messages become the system prompt. */
 function toContext(messages: ChatMessage[], model: string): Context {
-  const system = messages.filter((m) => m.role === 'system').map((m) => m.content).join('\n\n');
-  const rest: Message[] = messages.filter((m) => m.role !== 'system').map((m): Message => (
-    m.role === 'assistant'
-      ? {
-        role: 'assistant',
-        content: [{ type: 'text', text: m.content }],
-        api: 'openai-completions',
-        provider: 'custom',
-        model,
-        usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
-        stopReason: 'stop',
-        timestamp: 0,
-      }
-      : { role: 'user', content: m.content, timestamp: 0 }
-  ));
+  const system = messages
+    .filter((m) => m.role === 'system')
+    .map((m) => m.content)
+    .join('\n\n');
+  const rest: Message[] = messages
+    .filter((m) => m.role !== 'system')
+    .map(
+      (m): Message =>
+        m.role === 'assistant'
+          ? {
+              role: 'assistant',
+              content: [{ type: 'text', text: m.content }],
+              api: 'openai-completions',
+              provider: 'custom',
+              model,
+              usage: {
+                input: 0,
+                output: 0,
+                cacheRead: 0,
+                cacheWrite: 0,
+                totalTokens: 0,
+                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+              },
+              stopReason: 'stop',
+              timestamp: 0,
+            }
+          : { role: 'user', content: m.content, timestamp: 0 },
+    );
   return { systemPrompt: system || undefined, messages: rest };
 }
 
@@ -306,7 +325,12 @@ export async function chat({
 }: ChatArgs): Promise<string> {
   const creds = requireCredentials(credentials);
   const pi = await loadPi();
-  const model = modelFromSecrets({ api: creds.api || 'openai-completions', baseUrl: creds.baseUrl, apiKey: creds.apiKey, model: creds.model });
+  const model = modelFromSecrets({
+    api: creds.api || 'openai-completions',
+    baseUrl: creds.baseUrl,
+    apiKey: creds.apiKey,
+    model: creds.model,
+  });
   const clocks = createClocks({ timeoutMs, idleTimeoutMs, signal });
   try {
     // A direct API call skips the normalisation a `Models` collection would
@@ -342,12 +366,14 @@ export async function chat({
  * the answer itself; left in place it reads to the user as part of the reply.
  */
 export function stripReasoning(content: unknown): string {
-  return String(content)
-    // <think>…</think> style, possibly multiline.
-    .replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, '')
-    // Some providers emit an empty tag when reasoning is suppressed.
-    .replace(/<think\b[^>]*\/>/gi, '')
-    .trim();
+  return (
+    String(content)
+      // <think>…</think> style, possibly multiline.
+      .replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, '')
+      // Some providers emit an empty tag when reasoning is suppressed.
+      .replace(/<think\b[^>]*\/>/gi, '')
+      .trim()
+  );
 }
 
 /** The request part for one image, the format the vision APIs expect. */

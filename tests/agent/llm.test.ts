@@ -87,7 +87,10 @@ test('the protocol defaults to OpenAI-compatible, including for an older file', 
   const store = new Settings(dir);
   assert.equal((await store.secrets()).api, 'openai-completions');
   // A settings.json written before the key existed.
-  fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ apiKey: 'sk-x', baseUrl: 'https://x/v1', model: 'm' }));
+  fs.writeFileSync(
+    path.join(dir, 'settings.json'),
+    JSON.stringify({ apiKey: 'sk-x', baseUrl: 'https://x/v1', model: 'm' }),
+  );
   const older = new Settings(dir);
   assert.equal((await older.secrets()).api, 'openai-completions');
   assert.equal((await older.publicSettings()).api, 'openai-completions');
@@ -105,12 +108,22 @@ test('a saved protocol round-trips; an unknown one reads as the default', async 
 });
 
 test('modelFromSecrets builds a custom model with conservative OpenAI compat', () => {
-  const m = modelFromSecrets({ api: 'openai-completions', baseUrl: 'https://x.test/v1///', apiKey: 'k', model: 'qwen-max' });
+  const m = modelFromSecrets({
+    api: 'openai-completions',
+    baseUrl: 'https://x.test/v1///',
+    apiKey: 'k',
+    model: 'qwen-max',
+  });
   assert.equal(m.id, 'qwen-max');
   assert.equal(m.api, 'openai-completions');
   assert.equal(m.baseUrl, 'https://x.test/v1');
   assert.deepEqual(m.compat, { supportsStore: false, supportsDeveloperRole: false, supportsStrictMode: false });
-  const a = modelFromSecrets({ api: 'anthropic-messages', baseUrl: 'https://api.anthropic.com', apiKey: 'k', model: 'c' });
+  const a = modelFromSecrets({
+    api: 'anthropic-messages',
+    baseUrl: 'https://api.anthropic.com',
+    apiKey: 'k',
+    model: 'c',
+  });
   assert.equal(a.api, 'anthropic-messages');
   assert.equal(a.compat, undefined, 'OpenAI compat is not attached to other protocols');
 });
@@ -129,7 +142,9 @@ function sseServer(t, script) {
   const seen = [];
   const server = http.createServer((req, res) => {
     let raw = '';
-    req.on('data', (c) => { raw += c; });
+    req.on('data', (c) => {
+      raw += c;
+    });
     req.on('end', () => {
       seen.push({ url: req.url, headers: req.headers, body: raw ? JSON.parse(raw) : null });
       script(res, req);
@@ -137,7 +152,10 @@ function sseServer(t, script) {
   });
   return new Promise((resolve) => {
     listenLocal(server).then(() => {
-      t.after(() => { server.closeAllConnections(); server.close(); });
+      t.after(() => {
+        server.closeAllConnections();
+        server.close();
+      });
       resolve({
         creds: { baseUrl: `http://127.0.0.1:${server.address().port}/v1`, apiKey: 'sk-test', model: 'm' },
         seen,
@@ -150,7 +168,8 @@ function sseServer(t, script) {
 // port a previous one just released; a pooled keep-alive socket to the old
 // server would take the new request and fail it.
 const sseHead = (res) => res.writeHead(200, { 'content-type': 'text/event-stream', connection: 'close' });
-const delta = (d, finish = null) => `data: ${JSON.stringify({ id: 'c1', object: 'chat.completion.chunk', created: 0, model: 'm', choices: [{ index: 0, delta: d, finish_reason: finish }] })}\n\n`;
+const delta = (d, finish = null) =>
+  `data: ${JSON.stringify({ id: 'c1', object: 'chat.completion.chunk', created: 0, model: 'm', choices: [{ index: 0, delta: d, finish_reason: finish }] })}\n\n`;
 const done = (res) => res.end(delta({}, 'stop') + 'data: [DONE]\n\n');
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -161,7 +180,13 @@ test('chat returns the message content, with a bearer token, at /chat/completion
     res.write(delta({ content: 'lo' }));
     done(res);
   });
-  const out = await chat({ credentials: creds, messages: [{ role: 'system', content: 'sys' }, { role: 'user', content: 'hi' }] });
+  const out = await chat({
+    credentials: creds,
+    messages: [
+      { role: 'system', content: 'sys' },
+      { role: 'user', content: 'hi' },
+    ],
+  });
   assert.equal(out, 'hello');
   assert.equal(seen[0].url, '/v1/chat/completions');
   assert.equal(seen[0].headers.authorization, 'Bearer sk-test');
@@ -173,7 +198,11 @@ test('chat returns the message content, with a bearer token, at /chat/completion
 });
 
 test('a trailing slash on baseUrl does not produce a doubled path', async (t) => {
-  const { creds, seen } = await sseServer(t, (res) => { sseHead(res); res.write(delta({ content: 'x' })); done(res); });
+  const { creds, seen } = await sseServer(t, (res) => {
+    sseHead(res);
+    res.write(delta({ content: 'x' }));
+    done(res);
+  });
   await chat({ credentials: { ...creds, baseUrl: `${creds.baseUrl}///` }, messages: [{ role: 'user', content: 'x' }] });
   assert.equal(seen[0].url, '/v1/chat/completions');
 });
@@ -202,7 +231,11 @@ test('a refused connection is reported as a connection problem', async (t) => {
   const port = probe.address().port;
   await new Promise((r) => probe.close(r));
   await assert.rejects(
-    () => chat({ credentials: { baseUrl: `http://127.0.0.1:${port}/v1`, apiKey: 'k', model: 'm' }, messages: [{ role: 'user', content: 'x' }] }),
+    () =>
+      chat({
+        credentials: { baseUrl: `http://127.0.0.1:${port}/v1`, apiKey: 'k', model: 'm' },
+        messages: [{ role: 'user', content: 'x' }],
+      }),
     (err) => {
       assert.equal(err.code, 'network', err.message);
       assert.match(err.message, /无法连接模型服务/);
@@ -307,11 +340,15 @@ test('a stream that never stops still ends at the total cap', async (t) => {
 });
 
 test('the caller can cancel', async (t) => {
-  const { creds } = await sseServer(t, (res) => { sseHead(res); res.write(delta({ content: '.' })); });
+  const { creds } = await sseServer(t, (res) => {
+    sseHead(res);
+    res.write(delta({ content: '.' }));
+  });
   const ctrl = new AbortController();
   setTimeout(() => ctrl.abort(), 50);
   await assert.rejects(
-    () => chat({ credentials: creds, messages: [{ role: 'user', content: 'x' }], timeoutMs: 5000, signal: ctrl.signal }),
+    () =>
+      chat({ credentials: creds, messages: [{ role: 'user', content: 'x' }], timeoutMs: 5000, signal: ctrl.signal }),
     (err) => err.code === 'aborted' && /已取消/.test(err.message),
   );
 });

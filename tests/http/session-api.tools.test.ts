@@ -14,14 +14,7 @@ import path from 'node:path';
 import http from 'node:http';
 import { listenLocal } from '../helpers/listen.ts';
 
-import {
-  tmpdir,
-  startServer,
-  post,
-  get,
-  SPEC,
-  ACTION,
-} from '../helpers/session-server.ts';
+import { tmpdir, startServer, post, get, SPEC, ACTION } from '../helpers/session-server.ts';
 
 // ── saving, downloading in other formats, fetching ──────────────────
 
@@ -33,12 +26,19 @@ test('a turn that edits and saves writes the LANDED table and says where', async
   const { base } = await startServer(t, {
     chatConfirmEdits: false,
     extra: saveSettings(exportDir),
-    replies: [[{ tool: 'create_workbook', args: SPEC }, { tool: 'save_file', args: { format: 'csv' } }, '建好并保存了。']],
+    replies: [
+      [{ tool: 'create_workbook', args: SPEC }, { tool: 'save_file', args: { format: 'csv' } }, '建好并保存了。'],
+    ],
   });
-  const { json: { session } } = await post(base, '/api/sessions', {});
+  const {
+    json: { session },
+  } = await post(base, '/api/sessions', {});
   const r = await post(base, `/api/sessions/${session.id}/turn`, { message: '做个销售台账并保存成 csv' });
   assert.strictEqual(r.json.applied, true);
-  assert.deepStrictEqual(r.json.saved.map((p) => path.basename(p)), ['销售台账.csv']);
+  assert.deepStrictEqual(
+    r.json.saved.map((p) => path.basename(p)),
+    ['销售台账.csv'],
+  );
   const csv = fs.readFileSync(path.join(exportDir, '销售台账.csv'), 'utf8');
   assert.match(csv, /^﻿客户名称,金额\r\n甲,1000000\r\n/);
   assert.match(r.json.reply, /已保存：.*销售台账\.csv/);
@@ -57,7 +57,9 @@ test('saving twice never overwrites', async (t) => {
     extra: saveSettings(exportDir),
     replies: [ACTION, save, save],
   });
-  const { json: { session } } = await post(base, '/api/sessions', {});
+  const {
+    json: { session },
+  } = await post(base, '/api/sessions', {});
   await post(base, `/api/sessions/${session.id}/turn`, { message: '做表' });
   await post(base, `/api/sessions/${session.id}/turn`, { message: '保存成 json' });
   await post(base, `/api/sessions/${session.id}/turn`, { message: '再保存一次' });
@@ -70,9 +72,17 @@ test('a held change is saved only once it is applied', async (t) => {
   const { base } = await startServer(t, {
     chatConfirmEdits: true,
     extra: saveSettings(exportDir),
-    replies: [[{ tool: 'create_workbook', args: SPEC }, { tool: 'save_file', args: { format: 'xlsx', filename: '台账' } }, '好了']],
+    replies: [
+      [
+        { tool: 'create_workbook', args: SPEC },
+        { tool: 'save_file', args: { format: 'xlsx', filename: '台账' } },
+        '好了',
+      ],
+    ],
   });
-  const { json: { session } } = await post(base, '/api/sessions', {});
+  const {
+    json: { session },
+  } = await post(base, '/api/sessions', {});
   const r = await post(base, `/api/sessions/${session.id}/turn`, { message: '做表并保存' });
   assert.strictEqual(r.json.pending, true);
   assert.deepStrictEqual(r.json.saved, []);
@@ -81,7 +91,10 @@ test('a held change is saved only once it is applied', async (t) => {
 
   const applied = await post(base, `/api/sessions/${session.id}/apply`, { accept: true });
   assert.strictEqual(applied.json.applied, true);
-  assert.deepStrictEqual(applied.json.saved.map((p) => path.basename(p)), ['台账.xlsx']);
+  assert.deepStrictEqual(
+    applied.json.saved.map((p) => path.basename(p)),
+    ['台账.xlsx'],
+  );
   assert.strictEqual(fs.readFileSync(path.join(exportDir, '台账.xlsx')).subarray(0, 2).toString(), 'PK');
 });
 
@@ -93,7 +106,9 @@ test('a rejected held change saves nothing', async (t) => {
     extra: saveSettings(exportDir),
     replies: [[{ tool: 'create_workbook', args: SPEC }, { tool: 'save_file', args: { format: 'csv' } }, '好了']],
   });
-  const { json: { session } } = await post(base, '/api/sessions', {});
+  const {
+    json: { session },
+  } = await post(base, '/api/sessions', {});
   await post(base, `/api/sessions/${session.id}/turn`, { message: '做表并保存' });
   await post(base, `/api/sessions/${session.id}/apply`, { accept: false });
   assert.deepStrictEqual(fs.readdirSync(exportDir), []);
@@ -109,7 +124,9 @@ test('with saving switched off the tool is not offered and nothing is written', 
     seen,
     replies: [ACTION],
   });
-  const { json: { session } } = await post(base, '/api/sessions', {});
+  const {
+    json: { session },
+  } = await post(base, '/api/sessions', {});
   await post(base, `/api/sessions/${session.id}/turn`, { message: '做表并保存' });
   assert.doesNotMatch(seen[0], /save_file/);
   assert.deepStrictEqual(fs.readdirSync(exportDir), []);
@@ -131,26 +148,35 @@ test('a turn can fetch a CSV and import it as the table', async (t) => {
     fetchOptions: { allowPrivate: true },
     replies: [[{ tool: 'fetch_url', args: { url, importAs: '城市' } }, '导入了。']],
   });
-  const { json: { session } } = await post(base, '/api/sessions', {});
+  const {
+    json: { session },
+  } = await post(base, '/api/sessions', {});
   const r = await post(base, `/api/sessions/${session.id}/turn`, { message: `把 ${url} 导入` });
   assert.strictEqual(r.json.applied, true);
   const stored = await get(base, `/api/sessions/${session.id}`);
-  assert.deepStrictEqual(stored.json.session.spec.sheets[0].rows, [['杭州', 1200], ['宁波', 950]]);
+  assert.deepStrictEqual(stored.json.session.spec.sheets[0].rows, [
+    ['杭州', 1200],
+    ['宁波', 950],
+  ]);
 });
 
 test('the server blocklist reaches the fetch tool', async (t) => {
   const seenResults = [];
   const { base } = await startServer(t, {
     extra: { chatCanFetch: true, fetchBlocklist: ['blocked.example'] },
-    replies: [[
-      { tool: 'fetch_url', args: { url: 'https://www.blocked.example/a.csv' } },
-      (context) => {
-        seenResults.push(...context.messages.filter((m) => m.role === 'toolResult'));
-        return '被禁止了。';
-      },
-    ]],
+    replies: [
+      [
+        { tool: 'fetch_url', args: { url: 'https://www.blocked.example/a.csv' } },
+        (context) => {
+          seenResults.push(...context.messages.filter((m) => m.role === 'toolResult'));
+          return '被禁止了。';
+        },
+      ],
+    ],
   });
-  const { json: { session } } = await post(base, '/api/sessions', {});
+  const {
+    json: { session },
+  } = await post(base, '/api/sessions', {});
   await post(base, `/api/sessions/${session.id}/turn`, { message: '抓 https://www.blocked.example/a.csv' });
   assert.strictEqual(seenResults.length, 1);
   assert.strictEqual(seenResults[0].isError, true);
@@ -167,22 +193,29 @@ test('a turn reads a local file, queries it, and the file stays as an attachment
   const results = [];
   const { base } = await startServer(t, {
     extra: { chatFileAccess: 'read', fileBlocklist: [] },
-    replies: [[
-      { tool: 'import_file', args: { path: file } },
-      { tool: 'query_table', args: { attachment: '订单.csv', groupBy: ['状态'] } },
-      (context) => {
-        results.push(...context.messages.filter((m) => m.role === 'toolResult'));
-        return '已签收 2 单，派送中 1 单。';
-      },
-    ]],
+    replies: [
+      [
+        { tool: 'import_file', args: { path: file } },
+        { tool: 'query_table', args: { attachment: '订单.csv', groupBy: ['状态'] } },
+        (context) => {
+          results.push(...context.messages.filter((m) => m.role === 'toolResult'));
+          return '已签收 2 单，派送中 1 单。';
+        },
+      ],
+    ],
   });
-  const { json: { session } } = await post(base, '/api/sessions', {});
+  const {
+    json: { session },
+  } = await post(base, '/api/sessions', {});
   const r = await post(base, `/api/sessions/${session.id}/turn`, { message: `${file} 统计订单状态` });
   assert.strictEqual(r.json.ok, true);
   assert.strictEqual(results[0].isError, false);
   assert.match(results[1].content[0].text, /已签收\t2\n派送中\t1/);
   const att = await get(base, `/api/sessions/${session.id}/attachments`);
-  assert.deepStrictEqual(att.json.attachments.map((a) => a.name), [file]);
+  assert.deepStrictEqual(
+    att.json.attachments.map((a) => a.name),
+    [file],
+  );
 });
 
 test('write and edit land after the turn, and only with readwrite access', async (t) => {
@@ -192,13 +225,20 @@ test('write and edit land after the turn, and only with readwrite access', async
   let onDiskDuringTurn = null;
   const { base } = await startServer(t, {
     extra: { chatFileAccess: 'readwrite', fileBlocklist: [] },
-    replies: [[
-      { tool: 'write', args: { path: target, content: '# 汇总\n共 3 单' } },
-      { tool: 'edit', args: { path: target, edits: [{ oldText: '3', newText: '4' }] } },
-      () => { onDiskDuringTurn = fs.existsSync(target); return '写好了。'; },
-    ]],
+    replies: [
+      [
+        { tool: 'write', args: { path: target, content: '# 汇总\n共 3 单' } },
+        { tool: 'edit', args: { path: target, edits: [{ oldText: '3', newText: '4' }] } },
+        () => {
+          onDiskDuringTurn = fs.existsSync(target);
+          return '写好了。';
+        },
+      ],
+    ],
   });
-  const { json: { session } } = await post(base, '/api/sessions', {});
+  const {
+    json: { session },
+  } = await post(base, '/api/sessions', {});
   const r = await post(base, `/api/sessions/${session.id}/turn`, { message: `把汇总写到 ${target}` });
   assert.strictEqual(onDiskDuringTurn, false, 'nothing is written while the turn runs');
   assert.strictEqual(fs.readFileSync(target, 'utf8'), '# 汇总\n共 4 单');
@@ -208,7 +248,9 @@ test('write and edit land after the turn, and only with readwrite access', async
 test('with file access off no file tool is offered, and the note says how to turn it on', async (t) => {
   const seen = [];
   const { base } = await startServer(t, { seen, replies: ['好'] });
-  const { json: { session } } = await post(base, '/api/sessions', {});
+  const {
+    json: { session },
+  } = await post(base, '/api/sessions', {});
   await post(base, `/api/sessions/${session.id}/turn`, { message: 'D:\tmp\box3.zip 统计订单状态' });
   assert.doesNotMatch(seen[0], /import_file|\bgrep\b|\bedit\b|powershell|bash/);
   assert.match(seen[0], /允许读写本机文件/);

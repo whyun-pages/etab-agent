@@ -41,11 +41,17 @@ const ONLY = (() => {
   return a ? a.split('=')[1] : null;
 })();
 
-let pass = 0, fail = 0;
+let pass = 0,
+  fail = 0;
 const notes = [];
 function check(label, ok, detail) {
-  if (ok) { pass++; console.log(`  ok   ${label}${detail ? '  — ' + detail : ''}`); }
-  else { fail++; console.log(`  FAIL ${label}${detail ? '  — ' + detail : ''}`); }
+  if (ok) {
+    pass++;
+    console.log(`  ok   ${label}${detail ? '  — ' + detail : ''}`);
+  } else {
+    fail++;
+    console.log(`  FAIL ${label}${detail ? '  — ' + detail : ''}`);
+  }
 }
 
 /** Never let key material into the output, whatever the provider echoes back. */
@@ -95,9 +101,10 @@ async function caseAnswer() {
 
 async function caseBuild() {
   console.log('\n--- B) build a table from prose ---');
-  const message = '做一个销售台账，三个客户：杭州云图科技有限公司、上海临港数据服务、深圳前海智算中心，'
-    + '金额分别是125万、86万、88万，签约日期分别是2026年1月8日、1月22日、2月3日，'
-    + '再加一列税率，百分之六、百分之六、百分之十三。';
+  const message =
+    '做一个销售台账，三个客户：杭州云图科技有限公司、上海临港数据服务、深圳前海智算中心，' +
+    '金额分别是125万、86万、88万，签约日期分别是2026年1月8日、1月22日、2月3日，' +
+    '再加一列税率，百分之六、百分之六、百分之十三。';
   const res = await turn(message);
   console.log(`  -> ${describe(res)}`);
   console.log(`     reply: ${scrub(res.reply).slice(0, 160)}`);
@@ -118,9 +125,16 @@ async function caseBuild() {
   check('the customers are present', /云图/.test(flat), scrub(flat).slice(0, 160));
   check('three rows', (sheet.rows || []).length === 3, `${(sheet.rows || []).length} rows`);
   check('the amounts are numbers, not "125万"', /1250000/.test(flat), scrub(flat).slice(0, 200));
-  check('a date column exists', headers.some((h) => /日期|签约/.test(h)), JSON.stringify(headers));
-  check('no column header is a latin placeholder',
-    !headers.every((h) => /^[a-z]+$/i.test(String(h))), JSON.stringify(headers));
+  check(
+    'a date column exists',
+    headers.some((h) => /日期|签约/.test(h)),
+    JSON.stringify(headers),
+  );
+  check(
+    'no column header is a latin placeholder',
+    !headers.every((h) => /^[a-z]+$/i.test(String(h))),
+    JSON.stringify(headers),
+  );
 
   // And it must actually become a file.
   try {
@@ -137,7 +151,10 @@ async function caseBuild() {
 
 async function caseEdit(spec) {
   console.log('\n--- C) an edit must keep the rows it was not asked about ---');
-  if (!spec) { console.log('  (skipped: no spec from case B)'); return spec; }
+  if (!spec) {
+    console.log('  (skipped: no spec from case B)');
+    return spec;
+  }
   const before = specStats(spec).rows;
 
   const res = await turn('把杭州云图那行的金额改成 150 万', spec);
@@ -163,7 +180,10 @@ async function caseDestructive(spec) {
   // Not asking the model to misbehave. This asks for something vague — the kind
   // of request that tempts a model to "tidy up" — and checks that whatever it
   // produces, the guard either lets a safe result through or names the loss.
-  if (!spec) { console.log('  (skipped: no spec)'); return; }
+  if (!spec) {
+    console.log('  (skipped: no spec)');
+    return;
+  }
   const before = specStats(spec).rows;
 
   const res = await turn('把这个表整理一下吧', spec);
@@ -172,9 +192,11 @@ async function caseDestructive(spec) {
   if (res.spec) {
     const after = specStats(res.spec).rows;
     console.log(`     rows ${before} -> ${after}`);
-    check('either the rows survived, or the loss was announced',
+    check(
+      'either the rows survived, or the loss was announced',
       after >= before || /为免误删|少 \d+ 行/.test(res.reply),
-      `${before} -> ${after}`);
+      `${before} -> ${after}`,
+    );
   } else {
     check('no spec, and the reply explains why', Boolean(res.reply), scrub(res.reply).slice(0, 160));
   }
@@ -185,7 +207,20 @@ async function caseHistory() {
   // The measured failure on the old chat layer: with prior questions replayed as
   // conversation, 0/5 commands were recognised. This is the same check on the
   // agent layer.
-  const spec = { title: '销售', sheets: [{ name: '明细', columns: [{ header: '客户' }, { header: '金额', type: 'currency' }], rows: [['甲', 100], ['乙', 200], ['丙', 300]] }] };
+  const spec = {
+    title: '销售',
+    sheets: [
+      {
+        name: '明细',
+        columns: [{ header: '客户' }, { header: '金额', type: 'currency' }],
+        rows: [
+          ['甲', 100],
+          ['乙', 200],
+          ['丙', 300],
+        ],
+      },
+    ],
+  };
   const history = [];
   for (let i = 0; i < 4; i++) {
     const res = await turn(`第 ${i + 1} 个问题：你能做什么？`, null, history.slice());
@@ -241,4 +276,7 @@ async function main() {
   process.exit(fail ? 1 : 0);
 }
 
-main().catch((err) => { console.error('FAILED:', scrub(err && err.stack || err)); process.exit(2); });
+main().catch((err) => {
+  console.error('FAILED:', scrub((err && err.stack) || err));
+  process.exit(2);
+});

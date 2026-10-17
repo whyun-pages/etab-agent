@@ -105,14 +105,17 @@ export function attachmentRoutes(router: Router, { state, imageExtractor, textEx
     // rule-based reading still stands.
     const modelNotes: ModelNote[] = [];
     const wantModel = (await state.settings.load()).useForAttachments;
-    const wrap = (fn: Extractor | undefined, label: string): Extractor | undefined => (wantModel && fn ? async (buffer, mime, filename, kind, text) => {
-      try {
-        return await fn(buffer, mime, filename, kind, text);
-      } catch (err) {
-        modelNotes.push({ step: label, error: messageOf(err) });
-        throw err;
-      }
-    } : undefined);
+    const wrap = (fn: Extractor | undefined, label: string): Extractor | undefined =>
+      wantModel && fn
+        ? async (buffer, mime, filename, kind, text) => {
+            try {
+              return await fn(buffer, mime, filename, kind, text);
+            } catch (err) {
+              modelNotes.push({ step: label, error: messageOf(err) });
+              throw err;
+            }
+          }
+        : undefined;
     const extractors = { imageExtractor: wrap(imageExtractor, 'image'), textExtractor: wrap(textExtractor, 'text') };
 
     const results: Array<Record<string, unknown>> = [];
@@ -128,7 +131,12 @@ export function attachmentRoutes(router: Router, { state, imageExtractor, textEx
           results.push({ name: it.name, kind: 'error', error: it.error });
           continue;
         }
-        const u: UploadedAttachment = { ...it.att, id: crypto.randomBytes(6).toString('hex'), filename: it.filename, data: it.data };
+        const u: UploadedAttachment = {
+          ...it.att,
+          id: crypto.randomBytes(6).toString('hex'),
+          filename: it.filename,
+          data: it.data,
+        };
         parsed.push(u);
         results.push(publicUpload(u));
       }
@@ -187,7 +195,9 @@ async function openCopy(state: AppState, sid: string, u: UploadedAttachment): Pr
     try {
       await fs.promises.access(u.openedPath);
       return u.openedPath;
-    } catch { /* removed since; write it again */ }
+    } catch {
+      /* removed since; write it again */
+    }
   }
   const dir = path.join(state.openDir, safeSessionId(sid) || 'session', u.id);
   await fs.promises.mkdir(dir, { recursive: true });

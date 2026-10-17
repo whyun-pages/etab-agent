@@ -103,7 +103,12 @@ export function readCfb(buf: Buffer): Map<string, Buffer> {
   const readChain = (start: number): Buffer => Buffer.concat(chain(start, fat).map(sector));
 
   const dir = readChain(firstDirSector);
-  interface Entry { name: string; type: number; start: number; size: number }
+  interface Entry {
+    name: string;
+    type: number;
+    start: number;
+    size: number;
+  }
   const entries: Entry[] = [];
   for (let off = 0; off + 128 <= dir.length; off += 128) {
     const nameLen = dir.readUInt16LE(off + 64);
@@ -139,7 +144,9 @@ export function readCfb(buf: Buffer): Map<string, Buffer> {
     if (e.size < miniCutoff) {
       loadMini();
       const ms = miniStream as unknown as Buffer;
-      data = Buffer.concat(chain(e.start, miniFat).map((id) => ms.subarray(id * miniSectorSize, (id + 1) * miniSectorSize)));
+      data = Buffer.concat(
+        chain(e.start, miniFat).map((id) => ms.subarray(id * miniSectorSize, (id + 1) * miniSectorSize)),
+      );
     } else {
       data = readChain(e.start);
     }
@@ -169,8 +176,13 @@ const R = {
 } as const;
 
 const ERRORS: Record<number, string> = {
-  0x00: '#NULL!', 0x07: '#DIV/0!', 0x0f: '#VALUE!', 0x17: '#REF!',
-  0x1d: '#NAME?', 0x24: '#NUM!', 0x2a: '#N/A',
+  0x00: '#NULL!',
+  0x07: '#DIV/0!',
+  0x0f: '#VALUE!',
+  0x17: '#REF!',
+  0x1d: '#NAME?',
+  0x24: '#NUM!',
+  0x2a: '#N/A',
 };
 
 interface BiffRecord {
@@ -220,33 +232,47 @@ class Cursor {
   chunks: Buffer[];
   i = 0;
   pos = 0;
-  constructor(chunks: Buffer[]) { this.chunks = chunks; }
+  constructor(chunks: Buffer[]) {
+    this.chunks = chunks;
+  }
 
-  get buf(): Buffer { return this.chunks[this.i]; }
-  atChunkEnd(): boolean { return this.pos >= this.buf.length; }
+  get buf(): Buffer {
+    return this.chunks[this.i];
+  }
+  atChunkEnd(): boolean {
+    return this.pos >= this.buf.length;
+  }
   next(): boolean {
     if (this.i + 1 >= this.chunks.length) return false;
-    this.i++; this.pos = 0;
+    this.i++;
+    this.pos = 0;
     return true;
   }
   u8(): number {
     while (this.atChunkEnd()) if (!this.next()) throw new Error('xls record truncated');
     return this.buf[this.pos++];
   }
-  u16(): number { const a = this.u8(); return a | (this.u8() << 8); }
-  u32(): number { return (this.u16() + this.u16() * 0x10000) >>> 0; }
+  u16(): number {
+    const a = this.u8();
+    return a | (this.u8() << 8);
+  }
+  u32(): number {
+    return (this.u16() + this.u16() * 0x10000) >>> 0;
+  }
   skip(n: number): void {
     while (n > 0) {
       while (this.atChunkEnd()) if (!this.next()) return;
       const k = Math.min(n, this.buf.length - this.pos);
-      this.pos += k; n -= k;
+      this.pos += k;
+      n -= k;
     }
   }
 
   /** XLUnicodeRichExtendedString (SST entries) or XLUnicodeString (the rest). */
   unicodeString(cch: number): string {
     let flags = this.u8();
-    let runs = 0, ext = 0;
+    let runs = 0,
+      ext = 0;
     if (flags & 0x08) runs = this.u16();
     if (flags & 0x04) ext = this.u32();
     let s = '';
@@ -260,7 +286,10 @@ class Cursor {
       const wide = flags & 1;
       const avail = Math.floor((this.buf.length - this.pos) / (wide ? 2 : 1));
       const k = Math.min(left, avail);
-      if (k <= 0) { this.pos = this.buf.length; continue; }
+      if (k <= 0) {
+        this.pos = this.buf.length;
+        continue;
+      }
       const end = this.pos + k * (wide ? 2 : 1);
       // An 8-bit char here is a UTF-16 code unit with its high byte dropped,
       // which is exactly latin1 — not the workbook's codepage.
@@ -332,15 +361,28 @@ export function readXls(buf: Buffer): XlsWorkbook {
       const c = new Cursor([d]);
       c.pos = 6;
       const cch = c.u8();
-      bound.push({ name: c.unicodeString(cch), pos: d.readUInt32LE(0), state: ['visible', 'hidden', 'veryHidden'][d[4] & 3] || 'visible' });
+      bound.push({
+        name: c.unicodeString(cch),
+        pos: d.readUInt32LE(0),
+        state: ['visible', 'hidden', 'veryHidden'][d[4] & 3] || 'visible',
+      });
     }
   }
 
   const sheets: ParsedSheet[] = bound.map((b, idx) => {
     const cells: ParsedCell[] = [];
-    let maxRow = 0, maxCol = 0;
-    const put = (row0: number, col0: number, xf: number, value: ParsedCell['value'], type: string, hasFormula = false): void => {
-      const row = row0 + 1, col = col0 + 1;
+    let maxRow = 0,
+      maxCol = 0;
+    const put = (
+      row0: number,
+      col0: number,
+      xf: number,
+      value: ParsedCell['value'],
+      type: string,
+      hasFormula = false,
+    ): void => {
+      const row = row0 + 1,
+        col = col0 + 1;
       if (row > maxRow) maxRow = row;
       if (col > maxCol) maxCol = col;
       cells.push({ ref: cellRef(col, row), col, row, type, value, formula: null, styleIndex: xf, hasFormula });
@@ -377,13 +419,16 @@ export function readXls(buf: Buffer): XlsWorkbook {
           break;
         }
         case R.BOOLERR: {
-          const v = d[6], isErr = d[7];
+          const v = d[6],
+            isErr = d[7];
           if (isErr) put(d.readUInt16LE(0), d.readUInt16LE(2), d.readUInt16LE(4), { error: ERRORS[v] || '#N/A' }, 'e');
           else put(d.readUInt16LE(0), d.readUInt16LE(2), d.readUInt16LE(4), v !== 0, 'b');
           break;
         }
         case R.FORMULA: {
-          const row = d.readUInt16LE(0), col = d.readUInt16LE(2), xf = d.readUInt16LE(4);
+          const row = d.readUInt16LE(0),
+            col = d.readUInt16LE(2),
+            xf = d.readUInt16LE(4);
           if (d.readUInt16LE(12) !== 0xffff) {
             put(row, col, xf, d.readDoubleLE(6), 'n', true);
             break;

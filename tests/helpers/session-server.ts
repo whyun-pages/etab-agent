@@ -41,13 +41,20 @@ export async function step(ai, s, context) {
   if (typeof s === 'function') s = await s(context);
   if (typeof s === 'string') return ai.fauxAssistantMessage(s);
   const calls = Array.isArray(s) ? s : [s];
-  return ai.fauxAssistantMessage(calls.map((c) => ai.fauxToolCall(c.tool, c.args)), { stopReason: 'toolUse' });
+  return ai.fauxAssistantMessage(
+    calls.map((c) => ai.fauxToolCall(c.tool, c.args)),
+    { stopReason: 'toolUse' },
+  );
 }
 
 /** What the model was shown on the FIRST call of a turn: system prompt and user message. */
 // pi 1.x carries the system prompt as a system message in the transcript.
 export const conversation = (context) => context.messages.filter((m) => m.role !== 'system');
-export const promptOf = (ai, context) => [ai.getCurrentSystemPrompt(context.messages), ...conversation(context).map((m) => (typeof m.content === 'string' ? m.content : ''))].join('\n');
+export const promptOf = (ai, context) =>
+  [
+    ai.getCurrentSystemPrompt(context.messages),
+    ...conversation(context).map((m) => (typeof m.content === 'string' ? m.content : '')),
+  ].join('\n');
 
 /**
  * Start a server whose model is scripted.
@@ -57,13 +64,26 @@ export const promptOf = (ai, context) => [ai.getCurrentSystemPrompt(context.mess
  * with an error, which is what a dead provider looks like from here.
  * `seen` collects the prompt of each turn's first call.
  */
-export async function startServer(t, { configured = true, replies = [], chatCanEdit = true, chatConfirmEdits = true, seen = null, extra = {}, fetchOptions } = {}) {
+export async function startServer(
+  t,
+  {
+    configured = true,
+    replies = [],
+    chatCanEdit = true,
+    chatConfirmEdits = true,
+    seen = null,
+    extra = {},
+    fetchOptions,
+  } = {},
+) {
   const dataDir = tmpdir();
   const { ai, faux } = await loadFaux();
-  faux.setResponses(replies.flat().map((s) => async (context) => {
-    if (seen && conversation(context).length === 1) seen.push(promptOf(ai, context));
-    return step(ai, s, context);
-  }));
+  faux.setResponses(
+    replies.flat().map((s) => async (context) => {
+      if (seen && conversation(context).length === 1) seen.push(promptOf(ai, context));
+      return step(ai, s, context);
+    }),
+  );
 
   const server = createServer({
     dataDir,
@@ -93,24 +113,31 @@ export function settingsStub({ configured = true, chatCanEdit = true, chatConfir
   };
 }
 
-export const post = (base, p, body) => fetch(base + p, {
-  method: 'POST',
-  headers: { 'content-type': 'application/json' },
-  body: JSON.stringify(body),
-}).then(async (r) => ({ status: r.status, json: await r.json().catch(() => null) }));
+export const post = (base, p, body) =>
+  fetch(base + p, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  }).then(async (r) => ({ status: r.status, json: await r.json().catch(() => null) }));
 
-export const get = (base, p) => fetch(base + p).then(async (r) => ({ status: r.status, json: await r.json().catch(() => null) }));
+export const get = (base, p) =>
+  fetch(base + p).then(async (r) => ({ status: r.status, json: await r.json().catch(() => null) }));
 
 export const SPEC = {
   title: '销售台账',
-  sheets: [{
-    name: '明细',
-    columns: [
-      { header: '客户名称', type: 'text' },
-      { header: '金额', type: 'currency' },
-    ],
-    rows: [['甲', 1000000], ['乙', 860000]],
-  }],
+  sheets: [
+    {
+      name: '明细',
+      columns: [
+        { header: '客户名称', type: 'text' },
+        { header: '金额', type: 'currency' },
+      ],
+      rows: [
+        ['甲', 1000000],
+        ['乙', 860000],
+      ],
+    },
+  ],
 };
 
 export const ACTION = [{ tool: 'create_workbook', args: SPEC }, '建好了。'];

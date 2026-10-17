@@ -15,34 +15,54 @@ const { openPage, closePage, findEdge, sleep } = require('../support/cdp.js');
 let failures = 0;
 function check(name, cond, extra = '') {
   if (cond) console.log(`  ok   ${name}`);
-  else { failures++; console.log(`  FAIL ${name}  ${extra}`); }
+  else {
+    failures++;
+    console.log(`  FAIL ${name}  ${extra}`);
+  }
 }
 
 (async () => {
   fs.mkdirSync(OUT, { recursive: true });
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'xlclickexe-'));
   // A placeholder key so the composer is not replaced by the setup notice.
-  fs.writeFileSync(path.join(dataDir, 'settings.json'), JSON.stringify({
-    baseUrl: 'https://api.example.invalid/v1', apiKey: 'sk-placeholder', model: 'placeholder',
-    useForAttachments: true, chatCanEdit: true, chatConfirmEdits: true,
-  }, null, 2));
+  fs.writeFileSync(
+    path.join(dataDir, 'settings.json'),
+    JSON.stringify(
+      {
+        baseUrl: 'https://api.example.invalid/v1',
+        apiKey: 'sk-placeholder',
+        model: 'placeholder',
+        useForAttachments: true,
+        chatCanEdit: true,
+        chatConfirmEdits: true,
+      },
+      null,
+      2,
+    ),
+  );
 
   const port = 59531;
   const proc = spawn(EXE, ['--headless', '--port', String(port), '--data-dir', dataDir], { stdio: 'ignore' });
   await sleep(8000);
 
   const page = await openPage({
-    edge: findEdge(), profile: path.join(OUT, 'click-exe-profile'),
-    url: `http://127.0.0.1:${port}`, port: 9755, window: '1440,900',
+    edge: findEdge(),
+    profile: path.join(OUT, 'click-exe-profile'),
+    url: `http://127.0.0.1:${port}`,
+    port: 9755,
+    window: '1440,900',
   });
   await sleep(1000);
 
-  const boxOf = (sel) => page.evaluate(`(() => {
+  const boxOf = (sel) =>
+    page
+      .evaluate(`(() => {
     const el = document.querySelector(${JSON.stringify(sel)});
     if (!el) return null;
     const r = el.getBoundingClientRect();
     return JSON.stringify({ x: r.left + r.width/2, y: r.top + r.height/2, w: r.width });
-  })()`).then((s) => (s ? JSON.parse(s) : null));
+  })()`)
+      .then((s) => (s ? JSON.parse(s) : null));
 
   async function clickAt(x, y) {
     await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, button: 'none', clickCount: 0 });
@@ -51,7 +71,7 @@ function check(name, cond, extra = '') {
     await sleep(300);
   }
 
-  check('packaged: settings-free crash (page booted)', await page.evaluate('document.title') === 'Tab Agent');
+  check('packaged: settings-free crash (page booted)', (await page.evaluate('document.title')) === 'Tab Agent');
 
   const chips = await page.evaluate('document.querySelectorAll(".chat__idea").length');
   check('packaged: three suggestion chips render', chips === 3, `got ${chips}`);
@@ -69,10 +89,22 @@ function check(name, cond, extra = '') {
   await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: s.x, y: s.y, button: 'none', clickCount: 0 });
   await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: s.x, y: s.y, button: 'left', clickCount: 1 });
   for (let i = 1; i <= 8; i++) {
-    await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: s.x + i * 10, y: s.y, button: 'left', clickCount: 1 });
+    await page.send('Input.dispatchMouseEvent', {
+      type: 'mouseMoved',
+      x: s.x + i * 10,
+      y: s.y,
+      button: 'left',
+      clickCount: 1,
+    });
     await sleep(20);
   }
-  await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: s.x + 80, y: s.y, button: 'left', clickCount: 1 });
+  await page.send('Input.dispatchMouseEvent', {
+    type: 'mouseReleased',
+    x: s.x + 80,
+    y: s.y,
+    button: 'left',
+    clickCount: 1,
+  });
   await sleep(300);
   const railAfter = await page.evaluate('document.getElementById("rail").getBoundingClientRect().width');
   check('packaged: dragging widens the rail', railAfter > railBefore + 40, `${railBefore} -> ${railAfter}`);
@@ -83,8 +115,15 @@ function check(name, cond, extra = '') {
   await closePage(page, { trashProfile: true });
   proc.kill();
   await sleep(500);
-  try { fs.rmSync(dataDir, { recursive: true, force: true }); } catch { /* scratch */ }
+  try {
+    fs.rmSync(dataDir, { recursive: true, force: true });
+  } catch {
+    /* scratch */
+  }
 
   console.log(failures ? `\n${failures} FAILED` : '\nALL PACKAGED CLICK CHECKS PASSED');
   process.exit(failures ? 1 : 0);
-})().catch((e) => { console.error(e); process.exit(1); });
+})().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

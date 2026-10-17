@@ -57,11 +57,14 @@ export function settingsRoutes(router: Router, { state }: RouteDeps): void {
       // turning file access on would then read files here.
       if (!isLocalRequest(ctx)) return fail(ctx, 403, '只能在本机修改文件访问设置');
       if ('chatFileAccess' in body) {
-        if (!isFileAccessMode(body.chatFileAccess)) return fail(ctx, 400, `文件访问只能是 ${FILE_ACCESS_MODES.join('、')}`);
+        if (!isFileAccessMode(body.chatFileAccess))
+          return fail(ctx, 400, `文件访问只能是 ${FILE_ACCESS_MODES.join('、')}`);
         patch.chatFileAccess = body.chatFileAccess;
       }
       if ('fileBlocklist' in body) {
-        const raw = Array.isArray(body.fileBlocklist) ? body.fileBlocklist : String(body.fileBlocklist || '').split(/\r?\n/);
+        const raw = Array.isArray(body.fileBlocklist)
+          ? body.fileBlocklist
+          : String(body.fileBlocklist || '').split(/\r?\n/);
         const list = raw.map((x) => String(x).trim()).filter(Boolean);
         if (list.length > 500) return fail(ctx, 400, '禁止访问的路径最多 500 条');
         patch.fileBlocklist = list;

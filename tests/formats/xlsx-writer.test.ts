@@ -51,7 +51,11 @@ test('formatNumber keeps integers exact and trims float noise', () => {
 test('round-trips a from-scratch workbook through the reader', () => {
   const buf = writeSimpleSheet({
     sheetName: '数据',
-    rows: [['名称', '数量'], ['甲', 1], ['乙', 2.5]],
+    rows: [
+      ['名称', '数量'],
+      ['甲', 1],
+      ['乙', 2.5],
+    ],
   });
   const wb = readWorkbook(buf);
   assert.strictEqual(wb.sheets.length, 1);
@@ -69,13 +73,23 @@ test('writes multiple sheets with correct indices and relationships', () => {
     ],
   });
   const wb = readWorkbook(buf);
-  assert.deepStrictEqual(wb.sheets.map((s) => s.name), ['一', '二', '三']);
-  assert.deepStrictEqual(wb.sheets.map((s) => s.state), ['visible', 'visible', 'hidden']);
-  assert.deepStrictEqual(wb.sheets.map((s) => s.cells[0].value), ['x', 'y', 'z']);
+  assert.deepStrictEqual(
+    wb.sheets.map((s) => s.name),
+    ['一', '二', '三'],
+  );
+  assert.deepStrictEqual(
+    wb.sheets.map((s) => s.state),
+    ['visible', 'visible', 'hidden'],
+  );
+  assert.deepStrictEqual(
+    wb.sheets.map((s) => s.cells[0].value),
+    ['x', 'y', 'z'],
+  );
   // Sheet order must follow rId order, not part numbering.
-  assert.deepStrictEqual(wb.sheets.map((s) => s.path), [
-    'xl/worksheets/sheet1.xml', 'xl/worksheets/sheet2.xml', 'xl/worksheets/sheet3.xml',
-  ]);
+  assert.deepStrictEqual(
+    wb.sheets.map((s) => s.path),
+    ['xl/worksheets/sheet1.xml', 'xl/worksheets/sheet2.xml', 'xl/worksheets/sheet3.xml'],
+  );
 });
 
 // ------------------------------------------------------------- template mode
@@ -87,10 +101,14 @@ test('writing into a template inherits styles and keeps indices valid', () => {
   // Copy the template's rows, then append generated rows using the template's
   // own style indices — the core of "generate into a template".
   const cells = tSheet.cells.map((c) => ({
-    ref: c.ref, col: c.col, row: c.row, value: c.value, styleIndex: c.styleIndex,
+    ref: c.ref,
+    col: c.col,
+    row: c.row,
+    value: c.value,
+    styleIndex: c.styleIndex,
   }));
   cells.push({ ref: 'A7', col: 1, row: 7, value: '新生成的公司', styleIndex: 0 });
-  cells.push({ ref: 'B7', col: 2, row: 7, value: 999.5, styleIndex: 2 });   // ¥#,##0.00
+  cells.push({ ref: 'B7', col: 2, row: 7, value: 999.5, styleIndex: 2 }); // ¥#,##0.00
   cells.push({ ref: 'D7', col: 4, row: 7, value: '已完成', styleIndex: 4 }); // @ text
   cells.push({ ref: 'A8', col: 1, row: 8, value: '<尖&括号>', styleIndex: 1 });
 
@@ -162,7 +180,15 @@ test('template output stays a valid package: every part is declared', () => {
 
 test('sharedStrings part is omitted when nothing is a string', () => {
   const out = writeWorkbook({
-    sheets: [{ name: 'N', cells: [{ ref: 'A1', value: 1 }, { ref: 'A2', value: 2 }] }],
+    sheets: [
+      {
+        name: 'N',
+        cells: [
+          { ref: 'A1', value: 1 },
+          { ref: 'A2', value: 2 },
+        ],
+      },
+    ],
   });
   const zip = readZip(out);
   assert.ok(!zip.has('xl/sharedStrings.xml'));
@@ -186,7 +212,10 @@ test('zip writer round-trips through the reader, including unicode names', () =>
 });
 
 test('zip writer output is byte-identical across runs', () => {
-  const files = [{ name: 'x.txt', data: 'hello'.repeat(50) }, { name: 'y.bin', data: Buffer.alloc(10, 7) }];
+  const files = [
+    { name: 'x.txt', data: 'hello'.repeat(50) },
+    { name: 'y.bin', data: Buffer.alloc(10, 7) },
+  ];
   assert.ok(writeZip(files).equals(writeZip(files)));
 });
 
@@ -197,5 +226,8 @@ test('zip reader rejects non-zip input', () => {
 test('the workbook part is declared, or Microsoft Excel refuses the file', () => {
   const buf = writeSimpleSheet({ rows: [['a'], ['b']] });
   const types = readZip(buf).get('[Content_Types].xml').data.toString('utf8');
-  assert.match(types, /<Override PartName="\/xl\/workbook\.xml" ContentType="application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet\.main\+xml"\/>/);
+  assert.match(
+    types,
+    /<Override PartName="\/xl\/workbook\.xml" ContentType="application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet\.main\+xml"\/>/,
+  );
 });

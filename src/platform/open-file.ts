@@ -22,10 +22,29 @@
 import { spawn } from 'node:child_process';
 
 export const OPENABLE_EXT = new Set([
-  '.csv', '.tsv', '.txt', '.md', '.log', '.json', '.jsonl', '.ndjson',
-  '.xlsx', '.xls', '.docx', '.doc', '.pdf',
-  '.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.tif', '.tiff',
-  '.m3u', '.m3u8',
+  '.csv',
+  '.tsv',
+  '.txt',
+  '.md',
+  '.log',
+  '.json',
+  '.jsonl',
+  '.ndjson',
+  '.xlsx',
+  '.xls',
+  '.docx',
+  '.doc',
+  '.pdf',
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.gif',
+  '.webp',
+  '.bmp',
+  '.tif',
+  '.tiff',
+  '.m3u',
+  '.m3u8',
 ]);
 
 /** True when `filename`'s extension is one we are willing to hand to the OS. */
@@ -72,14 +91,20 @@ export function openWithSystem(file: string): Promise<void> {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      if (err) reject(err); else resolve();
+      if (err) reject(err);
+      else resolve();
     };
     const child = spawn(cmd, args, { env, stdio: 'ignore', windowsHide: true });
     // An opener that is still running after the timeout has, in practice,
     // launched the program and is waiting on it (some xdg-open backends do).
     // Not an error; stop waiting and let it run.
-    const timer = setTimeout(() => { child.unref(); done(); }, OPENER_TIMEOUT_MS);
+    const timer = setTimeout(() => {
+      child.unref();
+      done();
+    }, OPENER_TIMEOUT_MS);
     child.on('error', (err) => done(new Error(`无法调用系统打开程序：${err.message}`)));
-    child.on('exit', (code) => done(code === 0 ? undefined : new Error('系统没能打开这个文件，可能没有能打开这类文件的程序')));
+    child.on('exit', (code) =>
+      done(code === 0 ? undefined : new Error('系统没能打开这个文件，可能没有能打开这类文件的程序')),
+    );
   });
 }

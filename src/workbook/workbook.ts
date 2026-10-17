@@ -60,8 +60,17 @@ import { writeFreshWorkbook } from '../formats/xlsx-writer.ts';
 // Set by number here only because importing the writer from the spec layer
 // would make a pure data module depend on the XML layer.
 export const STYLE = {
-  DEFAULT: 0, HEADER: 1, NUMBER: 2, DATE: 3, CURRENCY: 4, PERCENT: 5, INTEGER: 6, TOTAL: 7,
-  CURRENCY_TOTAL: 8, PERCENT_TOTAL: 9, LINK: 10,
+  DEFAULT: 0,
+  HEADER: 1,
+  NUMBER: 2,
+  DATE: 3,
+  CURRENCY: 4,
+  PERCENT: 5,
+  INTEGER: 6,
+  TOTAL: 7,
+  CURRENCY_TOTAL: 8,
+  PERCENT_TOTAL: 9,
+  LINK: 10,
 } as const;
 
 /** A style index understood by src/formats/xlsx-writer.ts. */
@@ -182,21 +191,48 @@ function totalStyleFor(column: ColumnSpec | undefined): StyleIndex {
 
 /** Spellings a model might use for a type, mapped onto the canonical name. */
 const TYPE_ALIASES: Record<string, ColumnType> = {
-  string: 'text', str: 'text', strng: 'text', label: 'text',
-  num: 'number', float: 'number', decimal: 'number', double: 'number',
-  int: 'integer', whole: 'integer',
-  money: 'currency', amount: 'currency', 金额: 'currency',
-  pct: 'percent', percentage: 'percent', 百分比: 'percent',
-  datetime: 'date', time: 'date', 日期: 'date',
-  bool: 'boolean', yesno: 'boolean', 布尔: 'boolean',
-  link: 'url', hyperlink: 'url', href: 'url', uri: 'url', website: 'url',
-  链接: 'url', 网址: 'url', 超链接: 'url',
+  string: 'text',
+  str: 'text',
+  strng: 'text',
+  label: 'text',
+  num: 'number',
+  float: 'number',
+  decimal: 'number',
+  double: 'number',
+  int: 'integer',
+  whole: 'integer',
+  money: 'currency',
+  amount: 'currency',
+  金额: 'currency',
+  pct: 'percent',
+  percentage: 'percent',
+  百分比: 'percent',
+  datetime: 'date',
+  time: 'date',
+  日期: 'date',
+  bool: 'boolean',
+  yesno: 'boolean',
+  布尔: 'boolean',
+  link: 'url',
+  hyperlink: 'url',
+  href: 'url',
+  uri: 'url',
+  website: 'url',
+  链接: 'url',
+  网址: 'url',
+  超链接: 'url',
 };
 
 /** Recognised spellings of the type names themselves, in Chinese. */
 export const TYPE_LABELS: Record<ColumnType, string> = {
-  text: '文本', number: '数字', integer: '整数', currency: '金额',
-  percent: '百分比', date: '日期', boolean: '是否', url: '链接',
+  text: '文本',
+  number: '数字',
+  integer: '整数',
+  currency: '金额',
+  percent: '百分比',
+  date: '日期',
+  boolean: '是否',
+  url: '链接',
 };
 
 export const MAX_SHEETS = 12;
@@ -269,7 +305,11 @@ export function linkTarget(v: unknown): string | null {
 
 /** A heading that is present, printable, and not absurdly long. */
 function cleanName(raw: unknown, fallback: string): string {
-  let s = isBlank(raw) ? '' : String(raw).replace(/[\r\n\t]+/g, ' ').trim();
+  let s = isBlank(raw)
+    ? ''
+    : String(raw)
+        .replace(/[\r\n\t]+/g, ' ')
+        .trim();
   // Excel forbids : \ / ? * [ ] in a sheet name.
   s = s.replace(/[:\\/?*[\]]/g, '_');
   if (!s) s = fallback;
@@ -286,8 +326,11 @@ function cleanName(raw: unknown, fallback: string): string {
 function unwrapNumber(r: unknown): number | null {
   if (r === null || r === undefined) return null;
   if (typeof r === 'number') return Number.isFinite(r) ? r : null;
-  if (typeof r === 'object' && typeof (r as { value?: unknown }).value === 'number'
-    && Number.isFinite((r as { value: number }).value)) {
+  if (
+    typeof r === 'object' &&
+    typeof (r as { value?: unknown }).value === 'number' &&
+    Number.isFinite((r as { value: number }).value)
+  ) {
     return (r as { value: number }).value;
   }
   return null;
@@ -337,9 +380,7 @@ export function coerce(raw: unknown, type: ColumnType): CoerceResult {
 
     case 'date': {
       if (raw instanceof Date) {
-        return Number.isNaN(raw.getTime())
-          ? { value: null, note: '日期无效，已留空' }
-          : { value: raw, note: null };
+        return Number.isNaN(raw.getTime()) ? { value: null, note: '日期无效，已留空' } : { value: raw, note: null };
       }
       if (typeof raw === 'number' && Number.isFinite(raw)) {
         // Excel serial in, serial out.
@@ -496,7 +537,7 @@ export function normalizeSpec(raw: unknown): NormalizeResult {
 
   const sheetNames = new Set<string>();
   for (let i = 0; i < sheets.length; i++) {
-    const s: RawSheet = (sheets[i] && typeof sheets[i] === 'object') ? sheets[i] : {};
+    const s: RawSheet = sheets[i] && typeof sheets[i] === 'object' ? sheets[i] : {};
     let name = cleanName(s.name, `Sheet${i + 1}`);
     let n = 2;
     while (sheetNames.has(name.toLowerCase())) {
@@ -597,7 +638,10 @@ function normalizeSheet(s: RawSheet, name: string, notes: SpecNote[], sheetIndex
     });
   }
   for (const f of failed.values()) {
-    notes.push({ level: 'warn', message: `${where}「${f.header}」有 ${f.count} 格不是${f.reason.replace(/^.*不是/, '').replace(/，已留空$/, '')}，已留空。` });
+    notes.push({
+      level: 'warn',
+      message: `${where}「${f.header}」有 ${f.count} 格不是${f.reason.replace(/^.*不是/, '').replace(/，已留空$/, '')}，已留空。`,
+    });
   }
 
   // A sheet with data but no declared columns is common from a model that only
@@ -645,11 +689,14 @@ function normalizeSheet(s: RawSheet, name: string, notes: SpecNote[], sheetIndex
  */
 function normalizeTotals(raw: unknown, columns: ColumnSpec[], notes: SpecNote[], where: string): TotalsSpec {
   if (!raw || raw === false) return { enabled: false, label: '', sumColumns: [] };
-  if (typeof raw === 'object' && (raw as RawTotals).enabled === false) return { enabled: false, label: '', sumColumns: [] };
-  const src: RawTotals = (typeof raw === 'object') ? raw : {};
+  if (typeof raw === 'object' && (raw as RawTotals).enabled === false)
+    return { enabled: false, label: '', sumColumns: [] };
+  const src: RawTotals = typeof raw === 'object' ? raw : {};
 
-  const wanted: unknown[] = Array.isArray(src.sumColumns) ? src.sumColumns
-    : Array.isArray(src.columns) ? src.columns
+  const wanted: unknown[] = Array.isArray(src.sumColumns)
+    ? src.sumColumns
+    : Array.isArray(src.columns)
+      ? src.columns
       : [];
 
   const SUMABLE: ColumnType[] = ['number', 'currency', 'integer'];
@@ -723,8 +770,7 @@ export function validateSpec(spec: WorkbookSpec): ValidateResult {
     return { ok: false, blocking, warnings };
   }
 
-  const cellCount = spec.sheets.reduce(
-    (n, s) => n + (s.rows || []).reduce((m, r) => m + (r ? r.length : 0), 0), 0);
+  const cellCount = spec.sheets.reduce((n, s) => n + (s.rows || []).reduce((m, r) => m + (r ? r.length : 0), 0), 0);
 
   for (const s of spec.sheets) {
     const cols = s.columns || [];
@@ -769,7 +815,8 @@ export function toSheet(sheet: SheetSpec): SheetForWriter {
   columns.forEach((c, i) => {
     cells.push({
       ref: cellRef(i + 1, 1),
-      col: i + 1, row: 1,
+      col: i + 1,
+      row: 1,
       value: c.header,
       styleIndex: STYLE.HEADER,
     });
@@ -782,7 +829,13 @@ export function toSheet(sheet: SheetSpec): SheetForWriter {
       if (isBlank(v)) continue;
       const value = v instanceof Date ? dateToSerial(v) : v;
       const link = columns[i]?.type === 'url' ? linkTarget(v) : null;
-      const cell: WriteCell = { ref: cellRef(i + 1, rowNum), col: i + 1, row: rowNum, value, styleIndex: link ? STYLE.LINK : styleFor(columns[i], v) };
+      const cell: WriteCell = {
+        ref: cellRef(i + 1, rowNum),
+        col: i + 1,
+        row: rowNum,
+        value,
+        styleIndex: link ? STYLE.LINK : styleFor(columns[i], v),
+      };
       if (link) cell.link = link;
       cells.push(cell);
     }
@@ -797,7 +850,8 @@ export function toSheet(sheet: SheetSpec): SheetForWriter {
     const putLabel = totals.sumColumns.includes(0) ? labelCol : 0;
     cells.push({
       ref: cellRef(putLabel + 1, totalRow),
-      col: putLabel + 1, row: totalRow,
+      col: putLabel + 1,
+      row: totalRow,
       value: totals.label || '合计',
       styleIndex: STYLE.HEADER,
     });
@@ -814,7 +868,8 @@ export function toSheet(sheet: SheetSpec): SheetForWriter {
       }, 0);
       cells.push({
         ref: cellRef(i + 1, totalRow),
-        col: i + 1, row: totalRow,
+        col: i + 1,
+        row: totalRow,
         value: total,
         formula,
         styleIndex: totalStyleFor(columns[i]),
@@ -870,11 +925,19 @@ const AUTO_MAX = 40;
  * ¥1,250,000.00. Capped at AUTO_MAX: one long note should not make a column
  * wider than the window; the cell still holds all of it.
  */
-function columnWidths(columns: ColumnSpec[], width: number, rows: CellValue[][], totals: TotalsSpec): Array<{ min: number; max: number; width: number }> {
+function columnWidths(
+  columns: ColumnSpec[],
+  width: number,
+  rows: CellValue[][],
+  totals: TotalsSpec,
+): Array<{ min: number; max: number; width: number }> {
   const out: Array<{ min: number; max: number; width: number }> = [];
   for (let i = 0; i < width; i++) {
     const c = columns[i];
-    if (c && c.width) { out.push({ min: i + 1, max: i + 1, width: c.width }); continue; }
+    if (c && c.width) {
+      out.push({ min: i + 1, max: i + 1, width: c.width });
+      continue;
+    }
     // A bold header is a little wider than its characters, hence the larger pad.
     let widest = displayWidth((c && c.header) || '') + 4;
     for (const r of rows) {
@@ -882,7 +945,10 @@ function columnWidths(columns: ColumnSpec[], width: number, rows: CellValue[][],
       widest = Math.max(widest, cellChars(r[i], c && c.type) + 2);
     }
     if (totals.enabled && totals.sumColumns.includes(i) && rows.length) {
-      const sum = rows.reduce((s, r) => s + (typeof r[i] === 'number' && Number.isFinite(r[i]) ? (r[i] as number) : 0), 0);
+      const sum = rows.reduce(
+        (s, r) => s + (typeof r[i] === 'number' && Number.isFinite(r[i]) ? (r[i] as number) : 0),
+        0,
+      );
       widest = Math.max(widest, cellChars(sum, c && c.type) + 2);
     }
     out.push({ min: i + 1, max: i + 1, width: Math.max(AUTO_MIN, Math.min(AUTO_MAX, widest)) });
@@ -898,14 +964,18 @@ function columnWidths(columns: ColumnSpec[], width: number, rows: CellValue[][],
  */
 function cellChars(v: CellValue | undefined, type: ColumnType | undefined): number {
   if (v === null || v === undefined || v === '') return 0;
-  if (v instanceof Date) return 10;                         // yyyy-mm-dd
-  if (typeof v === 'boolean') return 5;                     // TRUE / FALSE
+  if (v instanceof Date) return 10; // yyyy-mm-dd
+  if (typeof v === 'boolean') return 5; // TRUE / FALSE
   if (typeof v === 'number') {
     const n = type === 'percent' ? v * 100 : v;
     const digits = Math.abs(n).toFixed(type === 'integer' ? 0 : 2);
     const whole = digits.split('.')[0].length;
-    return digits.length + Math.floor((whole - 1) / 3) + (n < 0 ? 1 : 0)
-      + (type === 'currency' || type === 'percent' ? 1 : 0);
+    return (
+      digits.length +
+      Math.floor((whole - 1) / 3) +
+      (n < 0 ? 1 : 0) +
+      (type === 'currency' || type === 'percent' ? 1 : 0)
+    );
   }
   return displayWidth(String(v).slice(0, AUTO_MAX * 2));
 }
@@ -913,7 +983,8 @@ function cellChars(v: CellValue | undefined, type: ColumnType | undefined): numb
 /** Approximate rendered width of a string, counting CJK as two columns. */
 export function displayWidth(s: unknown): number {
   let n = 0;
-  for (const ch of String(s)) n += /[\u1100-\u115f\u2e80-\ua4cf\uf900-\ufaff\ufe30-\ufe6f\uff00-\uff60\uffe0-\uffe6]/.test(ch) ? 2 : 1;
+  for (const ch of String(s))
+    n += /[\u1100-\u115f\u2e80-\ua4cf\uf900-\ufaff\ufe30-\ufe6f\uff00-\uff60\uffe0-\uffe6]/.test(ch) ? 2 : 1;
   return n;
 }
 
@@ -946,7 +1017,7 @@ export function writeSpec(spec: WorkbookSpec): Buffer {
 /** A short summary for the UI: what is in this workbook. */
 export function specStats(spec: WorkbookSpec | null | undefined): SpecStats {
   const sheets = (spec && spec.sheets) || [];
-  const rows = sheets.reduce((n, s) => n + ((s.rows || []).length), 0);
-  const cols = sheets.reduce((n, s) => n + ((s.columns || []).length), 0);
+  const rows = sheets.reduce((n, s) => n + (s.rows || []).length, 0);
+  const cols = sheets.reduce((n, s) => n + (s.columns || []).length, 0);
   return { sheets: sheets.length, rows, columns: cols };
 }

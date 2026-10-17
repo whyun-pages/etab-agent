@@ -46,14 +46,18 @@ const row = (ws, r, cols) => cols.map((c) => ws.getRow(r).getCell(c).value);
 // ── the low-level writer ────────────────────────────────────────────
 
 test('writeSimpleSheet: values, entities and shape read back through exceljs', async () => {
-  const ws = (await excel(writeSimpleSheet({
-    sheetName: '订单',
-    rows: [
-      ['客户名称', '合同总额', '订单日期', '备注'],
-      ['北京示例科技有限公司', 125000.5, '2026-01-15', '首次合作'],
-      ['上海另一家 & <括号>', -8800.25, '2026-03-01', '备注"引号"'],
-    ],
-  }))).getWorksheet('订单');
+  const ws = (
+    await excel(
+      writeSimpleSheet({
+        sheetName: '订单',
+        rows: [
+          ['客户名称', '合同总额', '订单日期', '备注'],
+          ['北京示例科技有限公司', 125000.5, '2026-01-15', '首次合作'],
+          ['上海另一家 & <括号>', -8800.25, '2026-03-01', '备注"引号"'],
+        ],
+      }),
+    )
+  ).getWorksheet('订单');
   assert.ok(ws, 'the sheet is missing');
   assert.strictEqual(ws.getCell('A1').value, '客户名称');
   assert.strictEqual(ws.getCell('B2').value, 125000.5);
@@ -69,7 +73,12 @@ test('writing into a template keeps its values, styles, widths and merges', asyn
   const tw = readWorkbook(template);
   const tSheet = tw.sheets[0];
   const cells = tSheet.cells.map((c) => ({
-    ref: c.ref, col: c.col, row: c.row, value: c.value, styleIndex: c.styleIndex, formula: c.formula,
+    ref: c.ref,
+    col: c.col,
+    row: c.row,
+    value: c.value,
+    styleIndex: c.styleIndex,
+    formula: c.formula,
   }));
   // New rows reuse the template's number-format styles (2 = ¥#,##0.00, 3 = date, 4 = text).
   cells.push({ ref: 'A7', col: 1, row: 7, value: '新生成的公司', styleIndex: 0 });
@@ -77,11 +86,15 @@ test('writing into a template keeps its values, styles, widths and merges', asyn
   cells.push({ ref: 'C7', col: 3, row: 7, value: 46204, styleIndex: 3 });
   cells.push({ ref: 'D7', col: 4, row: 7, value: '已完成', styleIndex: 4 });
 
-  const ws = (await excel(writeWorkbook({
-    templateBuffer: template,
-    sheets: [{ name: tSheet.name, cells, cols: tSheet.cols, merges: tSheet.merges, freeze: { rows: 1 } }],
-    shared: tw.sharedStrings,
-  }))).getWorksheet('订单明细');
+  const ws = (
+    await excel(
+      writeWorkbook({
+        templateBuffer: template,
+        sheets: [{ name: tSheet.name, cells, cols: tSheet.cols, merges: tSheet.merges, freeze: { rows: 1 } }],
+        shared: tw.sharedStrings,
+      }),
+    )
+  ).getWorksheet('订单明细');
   assert.ok(ws, 'the sheet name was not preserved');
 
   assert.strictEqual(ws.getCell('A1').value, '客户名称');
@@ -126,18 +139,27 @@ test('a file exceljs wrote reads correctly through our reader', async () => {
 // ── specs, the way the server writes them ───────────────────────────
 
 test('a typed table round-trips: names, values, number types, freeze pane', async () => {
-  const ws = (await excel(specBytes({
-    title: '销售汇总',
-    sheets: [{
-      name: '一月',
-      columns: [
-        { key: 'customer', header: '客户', type: 'text' },
-        { key: 'amount', header: '金额', type: 'currency' },
-        { key: 'count', header: '数量', type: 'integer' },
-      ],
-      rows: [['甲公司', 1234.5, 3], ['乙公司', 500, 7]],
-    }],
-  }))).worksheets[0];
+  const ws = (
+    await excel(
+      specBytes({
+        title: '销售汇总',
+        sheets: [
+          {
+            name: '一月',
+            columns: [
+              { key: 'customer', header: '客户', type: 'text' },
+              { key: 'amount', header: '金额', type: 'currency' },
+              { key: 'count', header: '数量', type: 'integer' },
+            ],
+            rows: [
+              ['甲公司', 1234.5, 3],
+              ['乙公司', 500, 7],
+            ],
+          },
+        ],
+      }),
+    )
+  ).worksheets[0];
   assert.strictEqual(ws.name, '一月');
   assert.deepStrictEqual(row(ws, 1, [1, 2, 3]), ['客户', '金额', '数量']);
   assert.deepStrictEqual(row(ws, 2, [1, 2, 3]), ['甲公司', 1234.5, 3]);
@@ -146,15 +168,25 @@ test('a typed table round-trips: names, values, number types, freeze pane', asyn
 });
 
 test('messy input still produces a readable file, with a working totals row', async () => {
-  const ws = (await excel(specBytes({
-    title: '合同',
-    sheets: [{
-      name: '明细',
-      columns: [{ header: '项目' }, { header: '金额', type: 'currency' }],
-      rows: [['首款', '一百二十五万'], ['尾款', null], ['杂费', '不能解析']],
-      totals: { enabled: true, label: '合计' },
-    }],
-  }))).worksheets[0];
+  const ws = (
+    await excel(
+      specBytes({
+        title: '合同',
+        sheets: [
+          {
+            name: '明细',
+            columns: [{ header: '项目' }, { header: '金额', type: 'currency' }],
+            rows: [
+              ['首款', '一百二十五万'],
+              ['尾款', null],
+              ['杂费', '不能解析'],
+            ],
+            totals: { enabled: true, label: '合计' },
+          },
+        ],
+      }),
+    )
+  ).worksheets[0];
   assert.strictEqual(ws.getRow(2).getCell(2).value, 1250000, 'the Chinese numeral is not a number');
   assert.strictEqual(ws.getRow(3).getCell(2).value, null, 'a blank did not stay blank');
   assert.strictEqual(ws.getRow(4).getCell(2).value, null, 'an unusable value became text');
@@ -167,14 +199,23 @@ test('messy input still produces a readable file, with a working totals row', as
 });
 
 test('a date is a date, not a string', async () => {
-  const ws = (await excel(specBytes({
-    title: '日程',
-    sheets: [{
-      name: 'S',
-      columns: [{ header: '签约日', type: 'date' }, { header: '备注' }],
-      rows: [['2026-03-01', 'done'], ['2025-12-31', '']],
-    }],
-  }))).worksheets[0];
+  const ws = (
+    await excel(
+      specBytes({
+        title: '日程',
+        sheets: [
+          {
+            name: 'S',
+            columns: [{ header: '签约日', type: 'date' }, { header: '备注' }],
+            rows: [
+              ['2026-03-01', 'done'],
+              ['2025-12-31', ''],
+            ],
+          },
+        ],
+      }),
+    )
+  ).worksheets[0];
   const v = ws.getRow(2).getCell(1).value;
   assert.ok(v instanceof Date, `got ${typeof v}`);
   assert.strictEqual(v.toISOString().slice(0, 10), '2026-03-01');
@@ -182,34 +223,48 @@ test('a date is a date, not a string', async () => {
 });
 
 test('money, percent and integers carry their formats and stay numbers', async () => {
-  const ws = (await excel(specBytes({
-    title: 'T',
-    sheets: [{
-      name: 'S',
-      columns: [
-        { header: '金额', type: 'currency' },
-        { header: '占比', type: 'percent' },
-        { header: '数量', type: 'integer' },
-      ],
-      rows: [[1234.5, 0.1567, 42]],
-    }],
-  }))).worksheets[0];
+  const ws = (
+    await excel(
+      specBytes({
+        title: 'T',
+        sheets: [
+          {
+            name: 'S',
+            columns: [
+              { header: '金额', type: 'currency' },
+              { header: '占比', type: 'percent' },
+              { header: '数量', type: 'integer' },
+            ],
+            rows: [[1234.5, 0.1567, 42]],
+          },
+        ],
+      }),
+    )
+  ).worksheets[0];
   const fmt = (c) => String(ws.getRow(2).getCell(c).numFmt || '');
   assert.ok(fmt(1).includes('¥'), fmt(1));
   assert.ok(fmt(2).includes('%'), fmt(2));
   assert.ok(fmt(3).length > 0, 'the integer column has no format');
-  assert.deepStrictEqual(row(ws, 2, [1, 2, 3]).map((x) => typeof x), ['number', 'number', 'number']);
+  assert.deepStrictEqual(
+    row(ws, 2, [1, 2, 3]).map((x) => typeof x),
+    ['number', 'number', 'number'],
+  );
 });
 
 test('more than one sheet', async () => {
-  const wb = await excel(specBytes({
-    title: '年报',
-    sheets: [
-      { name: '摘要', columns: [{ header: '项' }, { header: '值', type: 'number' }], rows: [['收入', 100]] },
-      { name: '明细', columns: [{ header: '日期', type: 'date' }], rows: [['2026-01-05']] },
-    ],
-  }));
-  assert.deepStrictEqual(wb.worksheets.map((w) => w.name), ['摘要', '明细']);
+  const wb = await excel(
+    specBytes({
+      title: '年报',
+      sheets: [
+        { name: '摘要', columns: [{ header: '项' }, { header: '值', type: 'number' }], rows: [['收入', 100]] },
+        { name: '明细', columns: [{ header: '日期', type: 'date' }], rows: [['2026-01-05']] },
+      ],
+    }),
+  );
+  assert.deepStrictEqual(
+    wb.worksheets.map((w) => w.name),
+    ['摘要', '明细'],
+  );
   assert.strictEqual(wb.worksheets[0].getRow(2).getCell(2).value, 100);
   assert.ok(wb.worksheets[1].getRow(2).getCell(1).value instanceof Date);
 });

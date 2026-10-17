@@ -36,7 +36,10 @@ test('reads a streaming-style zip with data descriptors and zip64 extra', () => 
 // ------------------------------------------------------------------ workbook
 test('parses sheets, order, hidden state and relationship targets', () => {
   const wb = readWorkbook(fixtureA());
-  assert.deepStrictEqual(wb.sheets.map((s) => s.name), ['订单明细', '隐藏配置']);
+  assert.deepStrictEqual(
+    wb.sheets.map((s) => s.name),
+    ['订单明细', '隐藏配置'],
+  );
   assert.strictEqual(wb.sheets[0].state, 'visible');
   assert.strictEqual(wb.sheets[1].state, 'hidden');
   assert.strictEqual(wb.sheets[0].path, 'xl/worksheets/sheet1.xml');
@@ -120,7 +123,7 @@ test('parses number formats, fonts and fills', () => {
   const st = wb.styles;
   assert.strictEqual(st.numFmts[164], 'yyyy"年"m"月"d"日"');
   assert.strictEqual(st.numFmts[165], '¥#,##0.00');
-  assert.strictEqual(st.numFmts[14], 'm/d/yyyy');       // builtin survives
+  assert.strictEqual(st.numFmts[14], 'm/d/yyyy'); // builtin survives
   assert.strictEqual(st.fonts[1].bold, true);
   assert.strictEqual(st.fonts[1].color, '#FFFFFF');
   assert.strictEqual(st.fonts[2].italic, true);

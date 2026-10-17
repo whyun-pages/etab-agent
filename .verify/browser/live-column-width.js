@@ -33,48 +33,81 @@ const ROWS = 2000;
 let passed = 0;
 let failed = 0;
 function check(name, ok, detail) {
-  if (ok) { passed += 1; console.log(`  ok    ${name}`); }
-  else { failed += 1; console.log(`  FAIL  ${name}`); if (detail) console.log(`        ${detail}`); }
+  if (ok) {
+    passed += 1;
+    console.log(`  ok    ${name}`);
+  } else {
+    failed += 1;
+    console.log(`  FAIL  ${name}`);
+    if (detail) console.log(`        ${detail}`);
+  }
 }
 
 async function main() {
   console.log('column width, real browser');
   fs.mkdirSync(OUT, { recursive: true });
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'live-colwidth-'));
-  await new Settings(dataDir).save({ baseUrl: 'http://127.0.0.1:1/v1', apiKey: 'sk-not-a-real-key', model: 'stub', chatConfirmEdits: false });
+  await new Settings(dataDir).save({
+    baseUrl: 'http://127.0.0.1:1/v1',
+    apiKey: 'sk-not-a-real-key',
+    model: 'stub',
+    chatConfirmEdits: false,
+  });
 
   const server = createServer({
     dataDir,
     staticDir: path.join(ROOT, 'public'),
-    model: await modelFromTransport(async () => JSON.stringify({
-      intent: 'action',
-      reply: '已生成',
-      spec: {
-        title: '列宽探针表',
-        sheets: [{
-          name: 'S',
-          columns: [{ header: '客户', type: 'text' }, { header: '金额', type: 'number' }, { header: '备注', type: 'text', width: 30 }],
-          rows: Array.from({ length: ROWS }, (_, i) => [`客户${i + 1}`, i + 1, `第 ${i + 1} 行的备注`]),
-        }],
-      },
-    })),
+    model: await modelFromTransport(async () =>
+      JSON.stringify({
+        intent: 'action',
+        reply: '已生成',
+        spec: {
+          title: '列宽探针表',
+          sheets: [
+            {
+              name: 'S',
+              columns: [
+                { header: '客户', type: 'text' },
+                { header: '金额', type: 'number' },
+                { header: '备注', type: 'text', width: 30 },
+              ],
+              rows: Array.from({ length: ROWS }, (_, i) => [`客户${i + 1}`, i + 1, `第 ${i + 1} 行的备注`]),
+            },
+          ],
+        },
+      }),
+    ),
   });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   const base = `http://127.0.0.1:${server.address().port}`;
 
-  const created = await (await fetch(`${base}/api/sessions`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).json();
+  const created = await (
+    await fetch(`${base}/api/sessions`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+  ).json();
   const id = created.session.id;
-  await fetch(`${base}/api/sessions/${id}/turn`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: '做一个表' }) });
-  const stored = () => JSON.parse(fs.readFileSync(path.join(dataDir, 'sessions', `${id}.json`), 'utf8')).spec.sheets[0].columns;
+  await fetch(`${base}/api/sessions/${id}/turn`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message: '做一个表' }),
+  });
+  const stored = () =>
+    JSON.parse(fs.readFileSync(path.join(dataDir, 'sessions', `${id}.json`), 'utf8')).spec.sheets[0].columns;
 
   let page = null;
   try {
     page = await openPage({
-      edge: findEdge(), profile: path.join(OUT, 'colwidth-profile'), url: base, port: 9766, window: '1440,900', waitForSelector: '.rail',
+      edge: findEdge(),
+      profile: path.join(OUT, 'colwidth-profile'),
+      url: base,
+      port: 9766,
+      window: '1440,900',
+      waitForSelector: '.rail',
     });
     await sleep(1500);
 
-    const look = () => page.evaluate(`(() => {
+    const look = () =>
+      page
+        .evaluate(`(() => {
       const ths = [...document.querySelectorAll('.preview__body table.grid thead th:not(.rownum)')];
       const body = document.querySelector('.preview__body');
       return JSON.stringify({
@@ -83,16 +116,23 @@ async function main() {
         top: body.scrollTop,
         handles: document.querySelectorAll('.grid__resize').length,
       });
-    })()`).then(JSON.parse);
+    })()`)
+        .then(JSON.parse);
 
     const first = await look();
     // 10 chars (the auto width for a short header) is 75px, 30 chars is 215px.
-    check('columns are drawn at the file\'s widths', first.widths[0] === 75 && first.widths[2] === 215, JSON.stringify(first.widths));
+    check(
+      "columns are drawn at the file's widths",
+      first.widths[0] === 75 && first.widths[2] === 215,
+      JSON.stringify(first.widths),
+    );
     check('every column has a drag handle', first.handles === 3, JSON.stringify(first));
 
     // Page in more rows and scroll down, so the save has something to lose.
     for (let i = 0; i < 2; i++) {
-      await page.evaluate(`(() => { const b = document.querySelector('.preview__body'); b.scrollTop = b.scrollHeight; })()`);
+      await page.evaluate(
+        `(() => { const b = document.querySelector('.preview__body'); b.scrollTop = b.scrollHeight; })()`,
+      );
       await sleep(500);
     }
     await page.evaluate(`document.querySelector('.preview__body').scrollTop = 900`);
@@ -101,11 +141,14 @@ async function main() {
     check('rows were paged in before the drag', before.rows > 41, JSON.stringify(before));
 
     // Drag column B's right edge 70px to the right with real mouse events.
-    const at = await page.evaluate(`(() => {
+    const at = await page
+      .evaluate(`(() => {
       const r = document.querySelectorAll('.grid__resize')[1].getBoundingClientRect();
       return JSON.stringify({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
-    })()`).then(JSON.parse);
-    const mouse = (type, x, buttons) => page.send('Input.dispatchMouseEvent', { type, x, y: at.y, button: 'left', buttons, clickCount: 1 });
+    })()`)
+      .then(JSON.parse);
+    const mouse = (type, x, buttons) =>
+      page.send('Input.dispatchMouseEvent', { type, x, y: at.y, button: 'left', buttons, clickCount: 1 });
     await mouse('mouseMoved', at.x, 0);
     await mouse('mousePressed', at.x, 1);
     for (let dx = 10; dx <= 70; dx += 10) await mouse('mouseMoved', at.x + dx, 1);
@@ -116,7 +159,11 @@ async function main() {
 
     const after = await look();
     check('the width holds after the save', after.widths[1] === first.widths[1] + 70, JSON.stringify(after.widths));
-    check('the other columns did not move', after.widths[0] === first.widths[0] && after.widths[2] === first.widths[2], JSON.stringify(after.widths));
+    check(
+      'the other columns did not move',
+      after.widths[0] === first.widths[0] && after.widths[2] === first.widths[2],
+      JSON.stringify(after.widths),
+    );
     check('the paged-in rows are still there', after.rows === before.rows, `${before.rows} -> ${after.rows}`);
     check('the scroll position is kept', after.top === before.top, `${before.top} -> ${after.top}`);
 
@@ -131,7 +178,9 @@ async function main() {
     check('the downloaded xlsx has the dragged width', colB && colB.width === 20, JSON.stringify(sheet.cols));
 
     // More rows still page in under the new key.
-    await page.evaluate(`(() => { const b = document.querySelector('.preview__body'); b.scrollTop = b.scrollHeight; })()`);
+    await page.evaluate(
+      `(() => { const b = document.querySelector('.preview__body'); b.scrollTop = b.scrollHeight; })()`,
+    );
     await sleep(800);
     const more = await look();
     check('paging carries on after the save', more.rows > after.rows, `${after.rows} -> ${more.rows}`);
@@ -142,15 +191,28 @@ async function main() {
     await page.evaluate('location.reload()');
     await sleep(2000);
     const reopened = await look();
-    check('the width survives reopening the session', reopened.widths[1] === first.widths[1] + 70, JSON.stringify(reopened.widths));
+    check(
+      'the width survives reopening the session',
+      reopened.widths[1] === first.widths[1] + 70,
+      JSON.stringify(reopened.widths),
+    );
   } finally {
-    if (page) { try { await closePage(page, { trashProfile: true }); } catch {} }
+    if (page) {
+      try {
+        await closePage(page, { trashProfile: true });
+      } catch {}
+    }
     await new Promise((r) => server.close(r));
-    try { fs.rmSync(dataDir, { recursive: true, force: true }); } catch {}
+    try {
+      fs.rmSync(dataDir, { recursive: true, force: true });
+    } catch {}
   }
 
   console.log(`\n${failed === 0 ? 'COLUMN WIDTH CHECKS PASSED' : `${failed} FAILED`} (${passed} ok)`);
   process.exit(failed === 0 ? 0 : 1);
 }
 
-main().catch((err) => { console.error(err); process.exit(1); });
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

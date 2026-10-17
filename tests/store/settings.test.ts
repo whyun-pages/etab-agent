@@ -65,10 +65,14 @@ test('concurrent saves apply in call order and lose none', async (t) => {
   const dir = scratch(t);
   const store = new Settings(dir);
   const keys = ['baseUrl', 'apiKey', 'model', 'useForAttachments', 'chatCanEdit', 'chatConfirmEdits'];
-  const valueFor = (k, i) => (k === 'baseUrl' ? `https://host-${i}.test/v1`
-    : k === 'apiKey' ? `sk-${i}`
-      : k === 'model' ? `model-${i}`
-        : Boolean(i % 2));
+  const valueFor = (k, i) =>
+    k === 'baseUrl'
+      ? `https://host-${i}.test/v1`
+      : k === 'apiKey'
+        ? `sk-${i}`
+        : k === 'model'
+          ? `model-${i}`
+          : Boolean(i % 2);
 
   const expected = {};
   const ops = [];

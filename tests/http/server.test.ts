@@ -41,11 +41,13 @@ function request(base, method, urlPath, { body, headers } = {}) {
     const req = http.request(base + urlPath, { method, headers }, (res) => {
       const chunks = [];
       res.on('data', (c) => chunks.push(c));
-      res.on('end', () => resolve({
-        status: res.statusCode,
-        headers: res.headers,
-        buffer: Buffer.concat(chunks),
-      }));
+      res.on('end', () =>
+        resolve({
+          status: res.statusCode,
+          headers: res.headers,
+          buffer: Buffer.concat(chunks),
+        }),
+      );
     });
     req.on('error', reject);
     if (body) req.write(body);
@@ -65,7 +67,11 @@ function multipart(fields) {
     head += '\r\n';
     if (f.filename) head += `Content-Type: ${f.contentType || 'application/octet-stream'}\r\n`;
     head += '\r\n';
-    parts.push(Buffer.from(head, 'utf8'), Buffer.isBuffer(f.data) ? f.data : Buffer.from(f.data || '', 'utf8'), Buffer.from('\r\n', 'utf8'));
+    parts.push(
+      Buffer.from(head, 'utf8'),
+      Buffer.isBuffer(f.data) ? f.data : Buffer.from(f.data || '', 'utf8'),
+      Buffer.from('\r\n', 'utf8'),
+    );
   }
   parts.push(Buffer.from(`--${boundary}--\r\n`, 'utf8'));
   return {
@@ -146,7 +152,7 @@ test('static serving refuses anything outside its root', async (t) => {
     '/js/../../lib/xlsx.js',
     '/..%2f..%2flib/zip.js',
     '/package.json',
-    '/tools/make-sample.js',   // a real file, just not under public/
+    '/tools/make-sample.js', // a real file, just not under public/
   ]) {
     const res = await request(base, 'GET', evil);
     assert.strictEqual(res.status, 404, `${evil} must not be served`);
@@ -226,7 +232,9 @@ test('attachments are accepted, described and clearable', async (t) => {
   const { base } = await startServer(t);
   const att = await sessionAttachments(base);
   const csv = '客户名称,数量,单价\n北京甲公司的,10,250\n上海乙,5,300\n';
-  const mp = multipart([{ name: 'files', filename: '数据.csv', data: Buffer.from(csv, 'utf8'), contentType: 'text/csv' }]);
+  const mp = multipart([
+    { name: 'files', filename: '数据.csv', data: Buffer.from(csv, 'utf8'), contentType: 'text/csv' },
+  ]);
   const up = JSON.parse((await request(base, 'POST', att, mp)).buffer.toString('utf8'));
   assert.strictEqual(up.ok, true);
   assert.strictEqual(up.attachments.length, 1);
@@ -253,7 +261,10 @@ test('attachments belong to one session', async (t) => {
   const mp = multipart([{ name: 'files', filename: 'a.csv', data: 'x,y\n1,2\n', contentType: 'text/csv' }]);
   await request(base, 'POST', a, mp);
 
-  assert.deepStrictEqual((await getJson(base, a)).attachments.map((x) => x.name), ['a.csv']);
+  assert.deepStrictEqual(
+    (await getJson(base, a)).attachments.map((x) => x.name),
+    ['a.csv'],
+  );
   assert.deepStrictEqual((await getJson(base, b)).attachments, []);
   // Clearing one session leaves the other alone.
   await request(base, 'POST', b, mp);
@@ -281,7 +292,9 @@ test('deleting a session drops its attachments; an unknown session is a 404', as
 async function startOpenServer(t) {
   const started = await startServer(t);
   const opened = [];
-  started.server.state.openFile = async (file) => { opened.push(file); };
+  started.server.state.openFile = async (file) => {
+    opened.push(file);
+  };
   started.server.state.openDir = path.join(started.dir, 'opened');
   return { ...started, opened };
 }
@@ -362,7 +375,9 @@ test('opening refuses another site and a rebinding host', async (t) => {
 
 test('a failed open is reported, not a crash', async (t) => {
   const { server, base } = await startOpenServer(t);
-  server.state.openFile = async () => { throw new Error('系统没有能打开这类文件的程序'); };
+  server.state.openFile = async () => {
+    throw new Error('系统没有能打开这类文件的程序');
+  };
   const att = await sessionAttachments(base);
   const up = await uploadOne(base, att, 'a.csv', 'a\n1\n');
   const r = await request(base, 'POST', `${att}/${up.id}/open`);

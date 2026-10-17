@@ -34,27 +34,46 @@ const OUT = path.join(__dirname, '..', 'out');
 const SHADOW = path.join(OUT, 'double-click-shadow');
 const DATA = path.join(OUT, 'double-click-data');
 
-function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
 
 function health(port) {
   return new Promise((resolve) => {
     const req = http.get({ host: '127.0.0.1', port, path: '/api/health' }, (res) => {
       let s = '';
-      res.on('data', (d) => { s += d; });
+      res.on('data', (d) => {
+        s += d;
+      });
       res.on('end', () => {
-        try { const j = JSON.parse(s); resolve(j && j.ok === true); } catch { resolve(false); }
+        try {
+          const j = JSON.parse(s);
+          resolve(j && j.ok === true);
+        } catch {
+          resolve(false);
+        }
       });
     });
     req.on('error', () => resolve(false));
-    req.setTimeout(2500, () => { req.destroy(); resolve(false); });
+    req.setTimeout(2500, () => {
+      req.destroy();
+      resolve(false);
+    });
   });
 }
 
 // ---------------------------------------------------- own Edge, own profile
 
-const EDGE = ['C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
-  'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe']
-  .find((p) => { try { return fs.statSync(p).isFile(); } catch { return false; } });
+const EDGE = [
+  'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+  'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+].find((p) => {
+  try {
+    return fs.statSync(p).isFile();
+  } catch {
+    return false;
+  }
+});
 
 let edgeKilled = 0;
 
@@ -69,26 +88,45 @@ let edgeKilled = 0;
 function killOurEdges() {
   if (!EDGE) return;
   try {
-    const out = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
-      'Get-CimInstance Win32_Process -Filter "Name=\'msedge.exe\'" | ' +
-      'Where-Object { $_.CommandLine -like \'*double-click-data*\' } | ' +
-      'ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue; $_.ProcessId }',
-    ], { encoding: 'utf8' });
-    edgeKilled += out.trim().split(/\r?\n/).map((s) => s.trim()).filter(Boolean).length;
-  } catch { /* none matched */ }
+    const out = execFileSync(
+      'powershell.exe',
+      [
+        '-NoProfile',
+        '-NonInteractive',
+        '-Command',
+        'Get-CimInstance Win32_Process -Filter "Name=\'msedge.exe\'" | ' +
+          "Where-Object { $_.CommandLine -like '*double-click-data*' } | " +
+          'ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue; $_.ProcessId }',
+      ],
+      { encoding: 'utf8' },
+    );
+    edgeKilled += out
+      .trim()
+      .split(/\r?\n/)
+      .map((s) => s.trim())
+      .filter(Boolean).length;
+  } catch {
+    /* none matched */
+  }
 }
 
 let failures = 0;
 function check(label, actual, expected) {
   const ok = JSON.stringify(actual) === JSON.stringify(expected);
   if (!ok) failures++;
-  console.log((ok ? '  ok   ' : '  FAIL ') + label +
-    (ok ? '' : `\n         expected: ${JSON.stringify(expected)}\n         actual:   ${JSON.stringify(actual)}`));
+  console.log(
+    (ok ? '  ok   ' : '  FAIL ') +
+      label +
+      (ok ? '' : `\n         expected: ${JSON.stringify(expected)}\n         actual:   ${JSON.stringify(actual)}`),
+  );
 }
 
 async function main() {
   console.log('target: ' + (USE_EXE ? 'dist/TabAgent.exe' : '.build/js/desktop.js (dev build)'));
-  if (!EDGE) { console.log('no Edge found — cannot reproduce the double-click path'); process.exit(1); }
+  if (!EDGE) {
+    console.log('no Edge found — cannot reproduce the double-click path');
+    process.exit(1);
+  }
 
   fs.rmSync(DATA, { recursive: true, force: true });
   fs.rmSync(SHADOW, { recursive: true, force: true });
@@ -115,14 +153,23 @@ async function main() {
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let aOut = '';
-  a.stdout.on('data', (d) => { aOut += d.toString(); });
-  a.stderr.on('data', (d) => { aOut += d.toString(); });
+  a.stdout.on('data', (d) => {
+    aOut += d.toString();
+  });
+  a.stderr.on('data', (d) => {
+    aOut += d.toString();
+  });
   let aExitedAt = null;
-  a.on('exit', () => { aExitedAt = Date.now(); });
+  a.on('exit', () => {
+    aExitedAt = Date.now();
+  });
 
   // The record carries the OS-chosen port.
   let rec = null;
-  for (let i = 0; i < 40 && !rec; i++) { await sleep(250); rec = readRecord(); }
+  for (let i = 0; i < 40 && !rec; i++) {
+    await sleep(250);
+    rec = readRecord();
+  }
   check('A published its instance record', !!rec && Number.isInteger(rec.port), true);
   const portA = rec ? rec.port : 0;
   console.log('     port chosen by OS: ' + portA);
@@ -137,10 +184,16 @@ async function main() {
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let bOut = '';
-  b.stdout.on('data', (d) => { bOut += d.toString(); });
-  b.stderr.on('data', (d) => { bOut += d.toString(); });
+  b.stdout.on('data', (d) => {
+    bOut += d.toString();
+  });
+  b.stderr.on('data', (d) => {
+    bOut += d.toString();
+  });
   let bExitedAt = null;
-  b.on('exit', () => { bExitedAt = Date.now(); });
+  b.on('exit', () => {
+    bExitedAt = Date.now();
+  });
 
   for (let i = 0; i < 40 && bExitedAt === null; i++) await sleep(250);
   console.log('     B output: ' + JSON.stringify(bOut.trim()));
@@ -154,7 +207,7 @@ async function main() {
   check('A.process still running', aExitedAt === null, true);
   check('A still answers health', await health(portA), true);
   const recAfter = readRecord();
-  check('record still points at A\'s port', recAfter && recAfter.port, portA);
+  check("record still points at A's port", recAfter && recAfter.port, portA);
   check('record not overwritten by B', !!recAfter && recAfter.pid === rec.pid, true);
 
   console.log('\n=== D) cleanup ===');
@@ -163,16 +216,26 @@ async function main() {
   killOurEdges();
   await sleep(1000);
   console.log('     Edge processes we started, killed: ' + edgeKilled);
-  console.log('     (the user\'s own Edge profile was never touched — B got --data-dir)');
+  console.log("     (the user's own Edge profile was never touched — B got --data-dir)");
 
-  console.log('\n' + (failures === 0
-    ? 'DOUBLE-CLICK PATH OK — second launch does not take the first down'
-    : failures + ' CHECK(S) FAILED'));
+  console.log(
+    '\n' +
+      (failures === 0
+        ? 'DOUBLE-CLICK PATH OK — second launch does not take the first down'
+        : failures + ' CHECK(S) FAILED'),
+  );
   process.exit(failures === 0 ? 0 : 1);
 }
 
 function readRecord() {
-  try { return JSON.parse(fs.readFileSync(path.join(DATA, 'instance.json'), 'utf8')); } catch { return null; }
+  try {
+    return JSON.parse(fs.readFileSync(path.join(DATA, 'instance.json'), 'utf8'));
+  } catch {
+    return null;
+  }
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

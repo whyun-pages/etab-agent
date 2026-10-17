@@ -93,7 +93,7 @@ function csvField(v: CellValue | undefined): string {
   if (typeof p === 'boolean') return p ? 'TRUE' : 'FALSE';
   if (typeof p === 'number') return Number.isFinite(p) ? String(p) : '';
   // Only text needs the guard; a date was already turned into `YYYY-MM-DD`.
-  let s = v instanceof Date ? p : (INJECTION_RE.test(p) ? `'${p}` : p);
+  let s = v instanceof Date ? p : INJECTION_RE.test(p) ? `'${p}` : p;
   if (/[",\r\n]/.test(s)) s = `"${s.replace(/"/g, '""')}"`;
   return s;
 }
@@ -147,12 +147,17 @@ export function specToJson(spec: WorkbookSpec, sheets: SheetSpec[]): string {
         // within a sheet (normalisation guarantees it), so no key collides.
         rows: s.rows.map((r) => {
           const o: Record<string, unknown> = {};
-          s.columns.forEach((c, i) => { o[c.header] = plain(r[i]); });
+          s.columns.forEach((c, i) => {
+            o[c.header] = plain(r[i]);
+          });
           return o;
         }),
       };
       if (s.totals && s.totals.enabled) {
-        sheet.totals = { label: s.totals.label || '合计', sumColumns: s.totals.sumColumns.map((i) => s.columns[i]?.header).filter(Boolean) };
+        sheet.totals = {
+          label: s.totals.label || '合计',
+          sumColumns: s.totals.sumColumns.map((i) => s.columns[i]?.header).filter(Boolean),
+        };
       }
       return sheet;
     }),

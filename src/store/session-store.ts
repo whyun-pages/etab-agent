@@ -169,7 +169,8 @@ function safeId(id: unknown): string | null {
 /** Attachment names as stored: strings only, bounded like everything else here. */
 function cleanNames(v: unknown): string[] | undefined {
   if (!Array.isArray(v)) return undefined;
-  const names = v.filter((n): n is string => typeof n === 'string' && n.length > 0)
+  const names = v
+    .filter((n): n is string => typeof n === 'string' && n.length > 0)
     .slice(0, 20)
     .map((n) => n.slice(0, 200));
   return names.length ? names : undefined;
@@ -207,7 +208,7 @@ function cleanMessage(m: MessageInput): StoredMessage | null {
     // between the assistant being chatty and the guard having fired.
     intent: typeof m.intent === 'string' ? m.intent : undefined,
     guarded: m.guarded === true ? true : undefined,
-    notes: Array.isArray(m.notes) && m.notes.length ? m.notes.slice(0, 20) as string[] : undefined,
+    notes: Array.isArray(m.notes) && m.notes.length ? (m.notes.slice(0, 20) as string[]) : undefined,
     attachments: cleanNames(m.attachments),
   };
 }
@@ -335,7 +336,11 @@ class SessionStore {
   /** Sessions on disk, newest first, without their message bodies. */
   async #listFiles(): Promise<SessionSummary[]> {
     let names = [];
-    try { names = await fs.promises.readdir(this.dir); } catch { return []; }
+    try {
+      names = await fs.promises.readdir(this.dir);
+    } catch {
+      return [];
+    }
     const out = [];
     for (const name of names) {
       if (!name.endsWith('.json')) continue;
@@ -346,9 +351,8 @@ class SessionStore {
         id: s.id,
         title: s.title,
         messages: s.messages.length,
-        rows: (s.spec && Array.isArray(s.spec.sheets))
-          ? s.spec.sheets.reduce((n, sh) => n + ((sh.rows || []).length), 0)
-          : 0,
+        rows:
+          s.spec && Array.isArray(s.spec.sheets) ? s.spec.sheets.reduce((n, sh) => n + (sh.rows || []).length, 0) : 0,
         updatedAt: s.updatedAt,
       });
     }
@@ -388,7 +392,14 @@ class SessionStore {
   create(title = ''): Promise<Session> {
     return this.#run(async () => {
       const id = newId();
-      const session: Session = { id, title, spec: null, messages: [], changes: [], updatedAt: new Date().toISOString() };
+      const session: Session = {
+        id,
+        title,
+        spec: null,
+        messages: [],
+        changes: [],
+        updatedAt: new Date().toISOString(),
+      };
       await this.#writeFile(session);
       return session;
     });

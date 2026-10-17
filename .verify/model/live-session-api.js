@@ -30,18 +30,28 @@ const HAS_LIVE = fs.existsSync(path.join(LIVE_DATA, 'settings.json'));
 const { createServer } = require(path.join(ROOT, 'src', 'http', 'server.ts'));
 const { Settings } = require(path.join(ROOT, 'src', 'store', 'settings.ts'));
 
-let pass = 0, fail = 0;
+let pass = 0,
+  fail = 0;
 const notes = [];
 function check(label, ok, detail) {
-  if (ok) { pass++; console.log(`  ok   ${label}${detail ? '  — ' + detail : ''}`); }
-  else { fail++; console.log(`  FAIL ${label}${detail ? '  — ' + detail : ''}`); }
+  if (ok) {
+    pass++;
+    console.log(`  ok   ${label}${detail ? '  — ' + detail : ''}`);
+  } else {
+    fail++;
+    console.log(`  FAIL ${label}${detail ? '  — ' + detail : ''}`);
+  }
 }
-const scrub = (s) => String(s == null ? '' : s)
-  .replace(/sk-[A-Za-z0-9_\-]{6,}/g, 'sk-***')
-  .replace(/\b[\w-]{40,}\b/g, '<long-token>');
+const scrub = (s) =>
+  String(s == null ? '' : s)
+    .replace(/sk-[A-Za-z0-9_\-]{6,}/g, 'sk-***')
+    .replace(/\b[\w-]{40,}\b/g, '<long-token>');
 
 async function main() {
-  if (!HAS_LIVE) { console.error('no live settings in ' + LIVE_DATA); process.exit(2); }
+  if (!HAS_LIVE) {
+    console.error('no live settings in ' + LIVE_DATA);
+    process.exit(2);
+  }
   if (!fs.existsSync(OUT)) fs.mkdirSync(OUT, { recursive: true });
 
   // A THROWAWAY data directory, so a live run never writes into the user's own
@@ -66,16 +76,23 @@ async function main() {
   console.log(`model : ${creds.model}   session store: ${dataDir}`);
   console.log('(real requests; the key is never printed)');
 
-  const post = (p, body) => fetch(base + p, {
-    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
-  }).then(async (r) => ({ status: r.status, json: await r.json().catch(() => null) }));
+  const post = (p, body) =>
+    fetch(base + p, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    }).then(async (r) => ({ status: r.status, json: await r.json().catch(() => null) }));
   const get = (p) => fetch(base + p).then(async (r) => ({ status: r.status, json: await r.json().catch(() => null) }));
 
   try {
     // ── 1. a fresh session
     console.log('\n--- 1) create a session ---');
     const created = await post('/api/sessions', {});
-    check('session created', created.status === 200 && Boolean(created.json.session.id), JSON.stringify(created.json).slice(0, 160));
+    check(
+      'session created',
+      created.status === 200 && Boolean(created.json.session.id),
+      JSON.stringify(created.json).slice(0, 160),
+    );
     const id = created.json.session.id;
     if (!id) throw new Error('no session id');
 
@@ -93,14 +110,21 @@ async function main() {
     // ── 3. build a table
     console.log('\n--- 3) build a table ---');
     const build = await post(`/api/sessions/${id}/turn`, {
-      message: '做一个销售台账：杭州云图 125万、上海临港 86万、深圳前海 88万，'
-        + '签约日期分别是2026年1月8日、1月22日、2月3日，加一列税率，前两个6%，最后一个13%。',
+      message:
+        '做一个销售台账：杭州云图 125万、上海临港 86万、深圳前海 88万，' +
+        '签约日期分别是2026年1月8日、1月22日、2月3日，加一列税率，前两个6%，最后一个13%。',
     });
-    console.log(`  status ${build.status}  intent=${build.json && build.json.intent}  applied=${build.json && build.json.applied}  pending=${build.json && build.json.pending}`);
+    console.log(
+      `  status ${build.status}  intent=${build.json && build.json.intent}  applied=${build.json && build.json.applied}  pending=${build.json && build.json.pending}`,
+    );
     console.log(`  reply: ${scrub(build.json && build.json.reply).slice(0, 160)}`);
     check('turn succeeded', build.status === 200 && build.json.ok === true, scrub(build.json && build.json.error));
     check('judged as an action', build.json && build.json.intent === 'action', build.json && build.json.intent);
-    check('held for confirmation', build.json && build.json.pending === true, `applied=${build.json && build.json.applied}`);
+    check(
+      'held for confirmation',
+      build.json && build.json.pending === true,
+      `applied=${build.json && build.json.applied}`,
+    );
     check('the proposal is shown before it exists', Boolean(build.json && build.json.proposed), 'proposed');
 
     const prop = build.json && build.json.proposed && build.json.proposed.preview;
@@ -108,7 +132,10 @@ async function main() {
       console.log('  proposed grid:');
       for (const row of prop.rows) console.log('    ' + JSON.stringify(row));
       check('the grid has a header and three rows', prop.rows.length === 4, `${prop.rows.length} rows`);
-      check('formats travelled with the values', Array.isArray(prop.formats) && prop.formats.length === prop.rows.length);
+      check(
+        'formats travelled with the values',
+        Array.isArray(prop.formats) && prop.formats.length === prop.rows.length,
+      );
       // The grid carries stored values, which is what a spreadsheet holds: a date
       // IS the number 46030 and a percent IS 0.06. What makes them readable is
       // the format code beside them. The first version of this check looked for
@@ -119,13 +146,22 @@ async function main() {
       const byDate = prop.rows[0].findIndex((h) => /日期/.test(String(h)));
       const dateCol = byDate >= 0 ? byDate : prop.rows[0].findIndex((h) => /签约/.test(String(h)));
       const dateFmt = dateCol >= 0 ? prop.formats[1][dateCol] : null;
-      check('a date column carries a date format', /[yd]/i.test(String(dateFmt)), `col ${dateCol} fmt ${JSON.stringify(dateFmt)}`);
+      check(
+        'a date column carries a date format',
+        /[yd]/i.test(String(dateFmt)),
+        `col ${dateCol} fmt ${JSON.stringify(dateFmt)}`,
+      );
       const serial = dateCol >= 0 ? prop.rows[1][dateCol] : null;
-      check('and the stored value is a serial number, not a string',
-        typeof serial === 'number' && serial > 40000 && serial < 60000, JSON.stringify(serial));
-      check('no date column is left unformatted',
+      check(
+        'and the stored value is a serial number, not a string',
+        typeof serial === 'number' && serial > 40000 && serial < 60000,
+        JSON.stringify(serial),
+      );
+      check(
+        'no date column is left unformatted',
         !prop.rows[0].some((h, i) => /日期/.test(String(h)) && !/[yd]/i.test(String(prop.formats[1][i]))),
-        JSON.stringify(prop.formats[1]));
+        JSON.stringify(prop.formats[1]),
+      );
     } else {
       check('the proposal carries a preview', false);
     }
@@ -134,7 +170,11 @@ async function main() {
     console.log('\n--- 4) apply the held change ---');
     const applied = await post(`/api/sessions/${id}/apply`, {});
     console.log(`  status ${applied.status}  applied=${applied.json && applied.json.applied}`);
-    check('the change applied', applied.status === 200 && applied.json.applied === true, scrub(applied.json && applied.json.error));
+    check(
+      'the change applied',
+      applied.status === 200 && applied.json.applied === true,
+      scrub(applied.json && applied.json.error),
+    );
     check('the session now holds a spec', Boolean(applied.json.session && applied.json.session.spec));
     if (applied.json.session && applied.json.session.spec) {
       const st = applied.json.session.stats;
@@ -157,7 +197,9 @@ async function main() {
     // ── 6. an edit must keep the rows it was not asked about
     console.log('\n--- 6) edit one value ---');
     const edit = await post(`/api/sessions/${id}/turn`, { message: '把杭州云图那行的金额改成 150 万' });
-    console.log(`  status ${edit.status}  intent=${edit.json && edit.json.intent}  guarded=${edit.json && edit.json.guarded}`);
+    console.log(
+      `  status ${edit.status}  intent=${edit.json && edit.json.intent}  guarded=${edit.json && edit.json.guarded}`,
+    );
     console.log(`  reply: ${scrub(edit.json && edit.json.reply).slice(0, 160)}`);
     check('turn succeeded', edit.status === 200 && edit.json.ok === true, scrub(edit.json && edit.json.error));
     check('judged as an action', edit.json && edit.json.intent === 'action', edit.json && edit.json.intent);
@@ -174,7 +216,11 @@ async function main() {
     console.log('\n--- 7) the transcript persisted ---');
     const back = await get(`/api/sessions/${id}`);
     check('the session reloads', back.status === 200 && back.json.ok === true);
-    check('the conversation is recorded', back.json.session.messages.length >= 6, `${back.json.session.messages.length} messages`);
+    check(
+      'the conversation is recorded',
+      back.json.session.messages.length >= 6,
+      `${back.json.session.messages.length} messages`,
+    );
     check('the spec survived too', Boolean(back.json.session.spec));
     check('a preview is rebuilt from the stored spec', Boolean(back.json.preview));
     check('no key material in any response', !/sk-[A-Za-z0-9]{6,}/.test(JSON.stringify(back.json)));
@@ -191,4 +237,7 @@ async function main() {
   process.exit(fail ? 1 : 0);
 }
 
-main().catch((err) => { console.error('FAILED:', scrub(err && err.stack || err)); process.exit(2); });
+main().catch((err) => {
+  console.error('FAILED:', scrub((err && err.stack) || err));
+  process.exit(2);
+});

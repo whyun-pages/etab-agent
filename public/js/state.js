@@ -108,7 +108,11 @@ export function subscribe(fn) {
 
 export function emit() {
   for (const fn of listeners) {
-    try { fn(state); } catch (err) { console.error('[render]', err); }
+    try {
+      fn(state);
+    } catch (err) {
+      console.error('[render]', err);
+    }
   }
 }
 

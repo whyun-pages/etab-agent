@@ -25,22 +25,42 @@ const PROFILE = path.join(OUT, 'edge-measure-profile');
 const PORT = 3301;
 const CDP_PORT = 9335;
 
-const EDGE = ['C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
-  'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe']
-  .find((p) => { try { return fs.statSync(p).isFile(); } catch { return false; } });
+const EDGE = [
+  'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+  'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+].find((p) => {
+  try {
+    return fs.statSync(p).isFile();
+  } catch {
+    return false;
+  }
+});
 
-function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
 
 async function findPageTarget() {
   for (let i = 0; i < 30; i++) {
     const list = await new Promise((resolve) => {
       const req = http.get({ host: '127.0.0.1', port: CDP_PORT, path: '/json/list' }, (res) => {
         let s = '';
-        res.on('data', (d) => { s += d; });
-        res.on('end', () => { try { resolve(JSON.parse(s)); } catch { resolve([]); } });
+        res.on('data', (d) => {
+          s += d;
+        });
+        res.on('end', () => {
+          try {
+            resolve(JSON.parse(s));
+          } catch {
+            resolve([]);
+          }
+        });
       });
       req.on('error', () => resolve([]));
-      req.setTimeout(1000, () => { req.destroy(); resolve([]); });
+      req.setTimeout(1000, () => {
+        req.destroy();
+        resolve([]);
+      });
     });
     const page = (list || []).find((t) => t.type === 'page' && t.webSocketDebuggerUrl);
     if (page) return page;
@@ -50,17 +70,25 @@ async function findPageTarget() {
 }
 
 class CDP {
-  constructor(ws) { this.ws = ws; this.id = 0; this.pending = new Map(); }
+  constructor(ws) {
+    this.ws = ws;
+    this.id = 0;
+    this.pending = new Map();
+  }
   static async attach(url) {
     const ws = new globalThis.WebSocket(url);
-    await new Promise((res, rej) => { ws.onopen = res; ws.onerror = () => rej(new Error('ws error')); });
+    await new Promise((res, rej) => {
+      ws.onopen = res;
+      ws.onerror = () => rej(new Error('ws error'));
+    });
     const c = new CDP(ws);
     ws.onmessage = (ev) => {
       const m = JSON.parse(ev.data);
       if (m.id && c.pending.has(m.id)) {
         const { resolve, reject } = c.pending.get(m.id);
         c.pending.delete(m.id);
-        if (m.error) reject(new Error(m.error.message)); else resolve(m.result);
+        if (m.error) reject(new Error(m.error.message));
+        else resolve(m.result);
       }
     };
     return c;
@@ -70,7 +98,12 @@ class CDP {
     this.ws.send(JSON.stringify({ id, method, params }));
     return new Promise((resolve, reject) => {
       this.pending.set(id, { resolve, reject });
-      setTimeout(() => { if (this.pending.has(id)) { this.pending.delete(id); reject(new Error(method + ' timeout')); } }, 20000);
+      setTimeout(() => {
+        if (this.pending.has(id)) {
+          this.pending.delete(id);
+          reject(new Error(method + ' timeout'));
+        }
+      }, 20000);
     });
   }
   async eval(expression) {
@@ -86,20 +119,35 @@ async function main() {
   fs.rmSync(PROFILE, { recursive: true, force: true });
 
   const server = createServer({
-    dataDir: DATA, skillDir: path.join(DATA, 'skills'), staticDir: path.join(ROOT, 'public'),
+    dataDir: DATA,
+    skillDir: path.join(DATA, 'skills'),
+    staticDir: path.join(ROOT, 'public'),
   });
   await new Promise((r) => server.listen(PORT, '127.0.0.1', r));
 
-  const edge = spawn(EDGE, [
-    '--headless=new', `--remote-debugging-port=${CDP_PORT}`, `--user-data-dir=${PROFILE}`,
-    '--no-first-run', '--no-default-browser-check', 'about:blank',
-  ], { stdio: 'ignore' });
+  const edge = spawn(
+    EDGE,
+    [
+      '--headless=new',
+      `--remote-debugging-port=${CDP_PORT}`,
+      `--user-data-dir=${PROFILE}`,
+      '--no-first-run',
+      '--no-default-browser-check',
+      'about:blank',
+    ],
+    { stdio: 'ignore' },
+  );
 
   const target = await findPageTarget();
   const cdp = await CDP.attach(target.webSocketDebuggerUrl);
   await cdp.send('Page.enable');
   await cdp.send('Runtime.enable');
-  await cdp.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
+  await cdp.send('Emulation.setDeviceMetricsOverride', {
+    width: 1280,
+    height: 900,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
   await cdp.send('Page.navigate', { url: `http://127.0.0.1:${PORT}/` });
   await sleep(2200);
 
@@ -130,4 +178,7 @@ async function main() {
   server.close();
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

@@ -32,14 +32,20 @@ const getJson = async (p) => JSON.parse((await request('GET', p)).body);
 let failures = 0;
 function check(name, cond, extra = '') {
   if (cond) console.log(`  ok   ${name}`);
-  else { failures++; console.log(`  FAIL ${name} ${extra}`); }
+  else {
+    failures++;
+    console.log(`  FAIL ${name} ${extra}`);
+  }
 }
 
 (async () => {
   // 1. Fresh data dir: the un-awaited-guard trap would make this report TRUE.
   const fresh = await getJson('/api/health');
-  check('fresh dir: modelConfigured is FALSE (guard awaited, not a truthy Promise)',
-    fresh.modelConfigured === false, JSON.stringify(fresh));
+  check(
+    'fresh dir: modelConfigured is FALSE (guard awaited, not a truthy Promise)',
+    fresh.modelConfigured === false,
+    JSON.stringify(fresh),
+  );
 
   // 2. The config gate must still fire. If `!isConfigured()` were left
   //    un-awaited, this 400 would have been a 200 (or a 500 from an empty key).
@@ -49,8 +55,11 @@ function check(name, cond, extra = '') {
   const sess = await request('POST', '/api/sessions', {});
   const sid = JSON.parse(sess.body).session.id;
   const t2 = await request('POST', `/api/sessions/${sid}/turn`, { message: '你好' });
-  check('unconfigured: a turn refuses with 400, not a crash',
-    t2.status === 400, `status ${t2.status} ${t2.body.slice(0, 120)}`);
+  check(
+    'unconfigured: a turn refuses with 400, not a crash',
+    t2.status === 400,
+    `status ${t2.status} ${t2.body.slice(0, 120)}`,
+  );
 
   // 3. Reject a non-http base URL (the validation that runs before `save`).
   const bad = await request('POST', '/api/settings', { baseUrl: 'ftp://nope' });
@@ -58,15 +67,18 @@ function check(name, cond, extra = '') {
 
   // 4. Round-trip a write, through the atomic replace.
   const wrote = await request('POST', '/api/settings', {
-    apiKey: 'sk-probe-abcdef123456', baseUrl: 'https://probe.test/v1', model: 'probe-model',
+    apiKey: 'sk-probe-abcdef123456',
+    baseUrl: 'https://probe.test/v1',
+    model: 'probe-model',
   });
   const wroteBody = JSON.parse(wrote.body);
   check('POST /api/settings succeeds', wrote.status === 200, `status ${wrote.status}`);
-  check('the write is echoed WITHOUT the key',
-    !wrote.body.includes('sk-probe-abcdef123456'), wrote.body.slice(0, 160));
-  check('echo reports hasKey:true and a masked hint',
+  check('the write is echoed WITHOUT the key', !wrote.body.includes('sk-probe-abcdef123456'), wrote.body.slice(0, 160));
+  check(
+    'echo reports hasKey:true and a masked hint',
     wroteBody.settings.hasKey === true && /3456$/.test(wroteBody.settings.keyHint || ''),
-    JSON.stringify(wroteBody.settings));
+    JSON.stringify(wroteBody.settings),
+  );
 
   // 5. It must have actually landed on disk, and be readable on a fresh GET.
   const reread = await getJson('/api/settings');

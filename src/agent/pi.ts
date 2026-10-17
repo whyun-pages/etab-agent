@@ -25,7 +25,14 @@
 
 import type * as PiAi from '@earendil-works/pi-ai';
 import type * as PiAgent from '@earendil-works/pi-agent-core';
-import type { AssistantMessageEventStream, Model, ProviderStreams, SimpleStreamOptions, StreamOptions, TranscriptContext } from '@earendil-works/pi-ai';
+import type {
+  AssistantMessageEventStream,
+  Model,
+  ProviderStreams,
+  SimpleStreamOptions,
+  StreamOptions,
+  TranscriptContext,
+} from '@earendil-works/pi-ai';
 
 /**
  * Who streams a request, by protocol
@@ -59,7 +66,11 @@ export interface Pi {
   /** Stream one request with the implementation for `model.api`. */
   stream(model: Model<any>, context: TranscriptContext, options?: StreamOptions): AssistantMessageEventStream;
   /** As `stream`, with pi's unified options — what the agent loop calls. */
-  streamSimple(model: Model<any>, context: TranscriptContext, options?: SimpleStreamOptions): AssistantMessageEventStream;
+  streamSimple(
+    model: Model<any>,
+    context: TranscriptContext,
+    options?: SimpleStreamOptions,
+  ): AssistantMessageEventStream;
 }
 
 let loading: Promise<Pi> | null = null;
@@ -98,7 +109,9 @@ export function loadPi(): Promise<Pi> {
         streamSimple: (model, context, options) => streamsFor(model).streamSimple(model, context, options),
       };
     });
-    loading.catch(() => { loading = null; });
+    loading.catch(() => {
+      loading = null;
+    });
   }
   return loading;
 }

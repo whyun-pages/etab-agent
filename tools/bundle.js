@@ -52,8 +52,9 @@ async function bundle({ entry, outfile, banner = '' }) {
     legalComments: 'none',
     logLevel: 'silent',
   });
-  const out = result.metafile.outputs[path.relative(process.cwd(), outfile).replace(/\\/g, '/')]
-    || Object.values(result.metafile.outputs)[0];
+  const out =
+    result.metafile.outputs[path.relative(process.cwd(), outfile).replace(/\\/g, '/')] ||
+    Object.values(result.metafile.outputs)[0];
   const externals = [...new Set(out.imports.filter((i) => i.external).map((i) => i.path))].sort();
   return {
     bytes: out.bytes,

@@ -23,8 +23,17 @@ import http from 'node:http';
 import zlib from 'node:zlib';
 
 import {
-  fetchUrl, readFetched, describeFetched, tableForImport, isPublicAddress,
-  parseBlocklist, blockedBy, normalizeHost, filenameFor, checkUrl, FetchError,
+  fetchUrl,
+  readFetched,
+  describeFetched,
+  tableForImport,
+  isPublicAddress,
+  parseBlocklist,
+  blockedBy,
+  normalizeHost,
+  filenameFor,
+  checkUrl,
+  FetchError,
 } from '../../src/agent/fetch-url.ts';
 
 function serve(handler) {
@@ -33,10 +42,12 @@ function serve(handler) {
       res.setHeader('connection', 'close');
       handler(req, res);
     });
-    listenLocal(server).then(() => resolve({
-      base: `http://127.0.0.1:${server.address().port}`,
-      close: () => new Promise((r) => server.close(r)),
-    }));
+    listenLocal(server).then(() =>
+      resolve({
+        base: `http://127.0.0.1:${server.address().port}`,
+        close: () => new Promise((r) => server.close(r)),
+      }),
+    );
   });
 }
 
@@ -44,19 +55,53 @@ const open = { allowPrivate: true };
 
 test('address classification', () => {
   const refused = [
-    '127.0.0.1', '10.1.2.3', '172.16.0.1', '172.31.255.255', '192.168.1.1', '169.254.169.254',
-    '100.64.0.1', '0.0.0.0', '224.0.0.1', '255.255.255.255', '192.0.2.5', '198.18.0.1',
-    '::', '::1', 'fc00::1', 'fd12:3456::1', 'fe80::1', 'ff02::1', '2001:db8::1',
-    '::ffff:127.0.0.1', '::ffff:7f00:1', '::ffff:192.168.0.1', '64:ff9b::a00:1', '2002:c0a8:101::1',
-    'not-an-ip', '1.2.3', '999.1.1.1',
+    '127.0.0.1',
+    '10.1.2.3',
+    '172.16.0.1',
+    '172.31.255.255',
+    '192.168.1.1',
+    '169.254.169.254',
+    '100.64.0.1',
+    '0.0.0.0',
+    '224.0.0.1',
+    '255.255.255.255',
+    '192.0.2.5',
+    '198.18.0.1',
+    '::',
+    '::1',
+    'fc00::1',
+    'fd12:3456::1',
+    'fe80::1',
+    'ff02::1',
+    '2001:db8::1',
+    '::ffff:127.0.0.1',
+    '::ffff:7f00:1',
+    '::ffff:192.168.0.1',
+    '64:ff9b::a00:1',
+    '2002:c0a8:101::1',
+    'not-an-ip',
+    '1.2.3',
+    '999.1.1.1',
   ];
   for (const ip of refused) assert.strictEqual(isPublicAddress(ip), false, ip);
-  const allowed = ['8.8.8.8', '1.1.1.1', '172.32.0.1', '100.128.0.1', '2606:4700::1111', '::ffff:8.8.8.8', '64:ff9b::808:808'];
+  const allowed = [
+    '8.8.8.8',
+    '1.1.1.1',
+    '172.32.0.1',
+    '100.128.0.1',
+    '2606:4700::1111',
+    '::ffff:8.8.8.8',
+    '64:ff9b::808:808',
+  ];
   for (const ip of allowed) assert.strictEqual(isPublicAddress(ip), true, ip);
 });
 
 test('blocklist entries normalise and match subdomains, not look-alikes', () => {
-  assert.deepStrictEqual(parseBlocklist('https://Example.com/path\n*.evil.org\n\nexample.com, foo.cn:8080'), ['example.com', 'evil.org', 'foo.cn']);
+  assert.deepStrictEqual(parseBlocklist('https://Example.com/path\n*.evil.org\n\nexample.com, foo.cn:8080'), [
+    'example.com',
+    'evil.org',
+    'foo.cn',
+  ]);
   assert.strictEqual(normalizeHost('[::1]:80'), '::1');
   assert.strictEqual(blockedBy('API.example.com', ['example.com']), 'example.com');
   assert.strictEqual(blockedBy('example.com.', ['example.com']), 'example.com');
@@ -78,7 +123,10 @@ test('a hostname that resolves to loopback is refused at connect time', async ()
   const srv = await serve((req, res) => res.end('secret'));
   try {
     const port = new URL(srv.base).port;
-    await assert.rejects(fetchUrl(`http://localhost:${port}/`), (err) => err instanceof FetchError && /内网或保留地址/.test(err.message));
+    await assert.rejects(
+      fetchUrl(`http://localhost:${port}/`),
+      (err) => err instanceof FetchError && /内网或保留地址/.test(err.message),
+    );
   } finally {
     await srv.close();
   }
@@ -98,7 +146,10 @@ test('reads a CSV and describes it as material, with the row count', async () =>
     assert.match(said, /共 2 行/);
     assert.match(said, /杭州\t1200/);
     const table = tableForImport(att);
-    assert.deepStrictEqual(table.columns.map((c) => c.header), ['城市', '人口']);
+    assert.deepStrictEqual(
+      table.columns.map((c) => c.header),
+      ['城市', '人口'],
+    );
     assert.strictEqual(table.columns[1].type, 'integer');
     assert.strictEqual(table.rows.length, 2);
   } finally {
@@ -170,7 +221,10 @@ test('redirects are followed, capped, and re-checked against the blocklist', asy
 });
 
 test('an error status is reported with its code', async () => {
-  const srv = await serve((req, res) => { res.statusCode = 404; res.end('nope'); });
+  const srv = await serve((req, res) => {
+    res.statusCode = 404;
+    res.end('nope');
+  });
   try {
     await assert.rejects(fetchUrl(`${srv.base}/missing.csv`, open), /HTTP 404/);
   } finally {
@@ -179,7 +233,9 @@ test('an error status is reported with its code', async () => {
 });
 
 test('a slow server runs into the deadline', async () => {
-  const srv = await serve((req, res) => { setTimeout(() => res.end('late'), 2000); });
+  const srv = await serve((req, res) => {
+    setTimeout(() => res.end('late'), 2000);
+  });
   try {
     await assert.rejects(fetchUrl(`${srv.base}/`, { ...open, timeoutMs: 200 }), /秒内没有完成/);
   } finally {
@@ -188,7 +244,10 @@ test('a slow server runs into the deadline', async () => {
 });
 
 test('file names come from the URL, else from the Content-Type', () => {
-  assert.strictEqual(filenameFor(new URL('https://x.com/a/%E6%8A%A5%E8%A1%A8.xlsx'), 'application/octet-stream'), '报表.xlsx');
+  assert.strictEqual(
+    filenameFor(new URL('https://x.com/a/%E6%8A%A5%E8%A1%A8.xlsx'), 'application/octet-stream'),
+    '报表.xlsx',
+  );
   assert.strictEqual(filenameFor(new URL('https://x.com/api/data'), 'application/json'), 'data.json');
   assert.strictEqual(filenameFor(new URL('https://x.com/'), 'text/html; charset=utf-8'), 'x.com.html');
   assert.strictEqual(filenameFor(new URL('https://x.com/report.php'), 'text/csv'), 'report.csv');
@@ -213,7 +272,10 @@ test('an m3u playlist is read as a table of channels, ready to import', async ()
     const att = await readFetched(f);
     assert.strictEqual(att.kind, 'table');
     const table = tableForImport(att);
-    assert.deepStrictEqual(table.columns.map((c) => c.header), ['频道名', '标识名', '分组', '台标', '播放地址']);
+    assert.deepStrictEqual(
+      table.columns.map((c) => c.header),
+      ['频道名', '标识名', '分组', '台标', '播放地址'],
+    );
     assert.deepStrictEqual(table.rows, [
       ['BRTV北京卫视[超清]', '北京卫视', '卫视, 高清', null, 'rtp://239.3.1.118:8001'],
       ['CCTV-1', null, null, 'http://logo/x.png', 'http://example.invalid/cctv1.m3u8'],

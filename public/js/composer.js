@@ -64,8 +64,12 @@ export function prepareComposer(sessionId, hooks) {
 
   // The IME owns the value between these two events. Reverting mid-word would
   // corrupt the composition, so only the flag is touched.
-  ta.addEventListener('compositionstart', () => { composing = true; });
-  ta.addEventListener('compositionend', () => { composing = false; });
+  ta.addEventListener('compositionstart', () => {
+    composing = true;
+  });
+  ta.addEventListener('compositionend', () => {
+    composing = false;
+  });
 
   ta.addEventListener('input', () => {
     autoGrow(ta);
@@ -124,7 +128,11 @@ export function fillComposer(text) {
   if (!ta) return false;
   ta.value = text;
   ta.focus();
-  try { ta.setSelectionRange(text.length, text.length); } catch { /* not focusable */ }
+  try {
+    ta.setSelectionRange(text.length, text.length);
+  } catch {
+    /* not focusable */
+  }
   autoGrow(ta);
   return true;
 }

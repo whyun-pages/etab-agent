@@ -48,12 +48,26 @@ function strip(src) {
   while (i < src.length) {
     const c = src[i];
     const next = src[i + 1];
-    if (c === '/' && next === '/') { while (i < src.length && src[i] !== '\n') i++; continue; }
-    if (c === '/' && next === '*') { i += 2; while (i < src.length && !(src[i] === '*' && src[i + 1] === '/')) i++; i += 2; continue; }
+    if (c === '/' && next === '/') {
+      while (i < src.length && src[i] !== '\n') i++;
+      continue;
+    }
+    if (c === '/' && next === '*') {
+      i += 2;
+      while (i < src.length && !(src[i] === '*' && src[i + 1] === '/')) i++;
+      i += 2;
+      continue;
+    }
     if (c === '"' || c === "'" || c === '`') {
-      const q = c; i++;
-      while (i < src.length && src[i] !== q) { if (src[i] === '\\') i++; i++; }
-      i++; out += ' '; continue;
+      const q = c;
+      i++;
+      while (i < src.length && src[i] !== q) {
+        if (src[i] === '\\') i++;
+        i++;
+      }
+      i++;
+      out += ' ';
+      continue;
     }
     // Regex literal or division: only treat `/` as a regex start when the
     // previous significant character cannot end an expression. Mis-classifying
@@ -68,18 +82,24 @@ function strip(src) {
         let inClass = false;
         while (i < src.length) {
           const rc = src[i];
-          if (rc === '\\') { i += 2; continue; }
+          if (rc === '\\') {
+            i += 2;
+            continue;
+          }
           if (rc === '[') inClass = true;
           else if (rc === ']') inClass = false;
-          else if (rc === '/' && !inClass) { i++; break; }
-          else if (rc === '\n') break;
+          else if (rc === '/' && !inClass) {
+            i++;
+            break;
+          } else if (rc === '\n') break;
           i++;
         }
         out += ' ';
         continue;
       }
     }
-    out += c; i++;
+    out += c;
+    i++;
   }
   return out;
 }
@@ -91,7 +111,11 @@ function exportsOf(src) {
   for (const m of src.matchAll(/export\s+(?:const|let|var)\s+([A-Za-z_$][\w$]*)/g)) names.add(m[1]);
   for (const m of src.matchAll(/export\s*\{([^}]*)\}/g)) {
     for (const p of m[1].split(',')) {
-      const n = p.trim().split(/\s+as\s+/).pop().trim();
+      const n = p
+        .trim()
+        .split(/\s+as\s+/)
+        .pop()
+        .trim();
       if (n) names.add(n);
     }
   }
@@ -101,9 +125,19 @@ function exportsOf(src) {
 /** Names this module imports. */
 function importsOf(src) {
   const names = new Set();
-  for (const m of src.matchAll(/import\s+(?:([\w$]+)\s*,?\s*)?(?:\{([^}]*)\})?\s*(?:,\s*([\w$]+))?\s*from\s*['"][^'"]+['"]/g)) {
+  for (const m of src.matchAll(
+    /import\s+(?:([\w$]+)\s*,?\s*)?(?:\{([^}]*)\})?\s*(?:,\s*([\w$]+))?\s*from\s*['"][^'"]+['"]/g,
+  )) {
     if (m[1]) names.add(m[1].trim());
-    if (m[2]) for (const p of m[2].split(',')) { const n = p.trim().split(/\s+as\s+/).pop().trim(); if (n) names.add(n); }
+    if (m[2])
+      for (const p of m[2].split(',')) {
+        const n = p
+          .trim()
+          .split(/\s+as\s+/)
+          .pop()
+          .trim();
+        if (n) names.add(n);
+      }
     if (m[3]) names.add(m[3].trim());
   }
   return names;
@@ -118,7 +152,10 @@ function importsOf(src) {
  */
 function declaredOf(src) {
   const names = new Set();
-  for (const m of src.matchAll(/(?:^|[\s;{}])(?:export\s+)?(?:default\s+)?(?:async\s+)?(?:function|class)\s*\*?\s*([A-Za-z_$][\w$]*)/gm)) names.add(m[1]);
+  for (const m of src.matchAll(
+    /(?:^|[\s;{}])(?:export\s+)?(?:default\s+)?(?:async\s+)?(?:function|class)\s*\*?\s*([A-Za-z_$][\w$]*)/gm,
+  ))
+    names.add(m[1]);
   for (const m of src.matchAll(/(?:^|[\s;{}])(?:export\s+)?(?:const|let|var)\s+([A-Za-z_$][\w$]*)/gm)) names.add(m[1]);
   // Destructured declarations: `const { a, b } = ...`
   for (const m of src.matchAll(/(?:^|[\s;{}])(?:export\s+)?(?:const|let|var)\s*\{([^}]*)\}/gm)) {
@@ -150,9 +187,9 @@ for (const f of files) {
   const flagged = new Set();
   for (const m of src.matchAll(/(?<![\w$.])([A-Za-z_$][\w$]*)\s*\(/g)) {
     const n = m[1];
-    if (!projectExports.has(n)) continue;   // not a project export -> not this bug
-    if (imported.has(n)) continue;          // imported -> fine
-    if (declared.has(n)) continue;          // declared in THIS file -> fine
+    if (!projectExports.has(n)) continue; // not a project export -> not this bug
+    if (imported.has(n)) continue; // imported -> fine
+    if (declared.has(n)) continue; // declared in THIS file -> fine
     flagged.add(n);
   }
   for (const n of flagged) {

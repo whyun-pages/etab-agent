@@ -58,7 +58,9 @@ function provider(t, script) {
   const seen = [];
   const server = http.createServer((req, res) => {
     let raw = '';
-    req.on('data', (c) => { raw += c; });
+    req.on('data', (c) => {
+      raw += c;
+    });
     req.on('end', () => {
       seen.push(raw ? JSON.parse(raw) : null);
       script(res);
@@ -66,13 +68,17 @@ function provider(t, script) {
   });
   return new Promise((resolve) => {
     listenLocal(server).then(() => {
-      t.after(() => { server.closeAllConnections(); server.close(); });
+      t.after(() => {
+        server.closeAllConnections();
+        server.close();
+      });
       resolve({ baseUrl: `http://127.0.0.1:${server.address().port}/v1`, seen });
     });
   });
 }
 
-const chunk = (d, finish = null) => `data: ${JSON.stringify({ id: 'c1', object: 'chat.completion.chunk', created: 0, model: 'm', choices: [{ index: 0, delta: d, finish_reason: finish }] })}\n\n`;
+const chunk = (d, finish = null) =>
+  `data: ${JSON.stringify({ id: 'c1', object: 'chat.completion.chunk', created: 0, model: 'm', choices: [{ index: 0, delta: d, finish_reason: finish }] })}\n\n`;
 
 /** A streamed reply: each item is one delta. */
 function streamed(...deltas) {
@@ -154,7 +160,11 @@ test('the protocol is saved, echoed, and an unknown one refused', async (t) => {
   const bad = await postJson(base, '/api/settings', { api: 'bedrock-converse-stream' });
   assert.equal(bad.status, 400);
   assert.match(bad.body.error, /不支持的接口协议/);
-  assert.equal((await getJson(base, '/api/settings')).body.settings.api, 'google-generative-ai', 'a refused value changes nothing');
+  assert.equal(
+    (await getJson(base, '/api/settings')).body.settings.api,
+    'google-generative-ai',
+    'a refused value changes nothing',
+  );
 });
 
 test('saving and fetching settings: defaults, normalisation, and refusals', async (t) => {
@@ -217,7 +227,10 @@ test('/api/settings/test reports an unreachable provider', async (t) => {
 // budget must be large enough to cover the thinking or the answer never comes.
 test('an inline reasoning block does not leak into the connection-test reply', async (t) => {
   const { base } = await boot(t);
-  const p = await provider(t, streamed({ role: 'assistant', content: '<think>The user wants two characters.</think>\n\n可用' }));
+  const p = await provider(
+    t,
+    streamed({ role: 'assistant', content: '<think>The user wants two characters.</think>\n\n可用' }),
+  );
   await postJson(base, '/api/settings', { apiKey: 'sk-ok', baseUrl: p.baseUrl, model: 'MiniMax-M3' });
   const { body } = await postJson(base, '/api/settings/test', {});
   assert.equal(body.ok, true);

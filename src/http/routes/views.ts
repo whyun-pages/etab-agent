@@ -50,7 +50,9 @@ export function publicAttachment(att: Attachment): Record<string, unknown> {
     error: att.error,
     extractError: att.extractError,
     meta: att.meta,
-    sheets: att.sheets ? att.sheets.map((s) => ({ sheet: s.sheet, header: s.header, rowCount: s.rows.length })) : undefined,
+    sheets: att.sheets
+      ? att.sheets.map((s) => ({ sheet: s.sheet, header: s.header, rowCount: s.rows.length }))
+      : undefined,
     header: att.header,
     rowCount: att.table ? att.table.rows.length : undefined,
     columns: att.table ? att.table.columns.map((c) => ({ label: c.label, type: c.type })) : undefined,

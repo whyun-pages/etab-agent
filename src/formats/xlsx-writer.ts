@@ -40,8 +40,7 @@ interface FormulaInput {
  * optional property of that name, not on two closed shapes.
  */
 function isFormulaInput(v: WriteValue): v is FormulaInput {
-  return typeof v === 'object' && v !== null && !(v instanceof Date)
-    && 'formula' in v && typeof v.formula === 'string';
+  return typeof v === 'object' && v !== null && !(v instanceof Date) && 'formula' in v && typeof v.formula === 'string';
 }
 
 type WriteValue = string | number | boolean | Date | ErrorInput | FormulaInput | null | undefined;
@@ -78,15 +77,15 @@ export class CellBuilder {
   /** Shared element assembly for the two structured cell kinds. */
   _attrs(opts: WriteOpts): { styleAttr: string; ref: string } {
     const s = opts.styleIndex != null ? opts.styleIndex : this.styleIndex;
-    const styleAttr = opts.styleAttr != null ? ` s="${opts.styleAttr}"` : (s != null && s !== 0 ? ` s="${s}"` : '');
+    const styleAttr = opts.styleAttr != null ? ` s="${opts.styleAttr}"` : s != null && s !== 0 ? ` s="${s}"` : '';
     const ref = opts.ref ? ` r="${opts.ref}"` : '';
     return { styleAttr, ref };
   }
 
   _formulaCell(formula: string, cached: unknown, opts: WriteOpts): string {
     const { styleAttr, ref } = this._attrs(opts);
-    const cachedXml = cached == null ? ''
-      : `<v>${typeof cached === 'number' ? formatNumber(cached) : escapeXml(cached)}</v>`;
+    const cachedXml =
+      cached == null ? '' : `<v>${typeof cached === 'number' ? formatNumber(cached) : escapeXml(cached)}</v>`;
     return `<c${ref}${styleAttr}><f>${escapeXml(formula)}</f>${cachedXml}</c>`;
   }
 
@@ -106,16 +105,16 @@ export class CellBuilder {
 
     const s = opts.styleIndex != null ? opts.styleIndex : this.styleIndex;
     const sAttr = opts.styleAttr != null ? opts.styleAttr : null;
-    const styleAttr = sAttr != null ? ` s="${sAttr}"` : (s != null && s !== 0 ? ` s="${s}"` : '');
+    const styleAttr = sAttr != null ? ` s="${sAttr}"` : s != null && s !== 0 ? ` s="${s}"` : '';
     const ref = opts.ref ? ` r="${opts.ref}"` : '';
     const formula = opts.formula ? `<f>${escapeXml(opts.formula)}</f>` : '';
 
     if (value === null || value === undefined || value === '') {
       return formula
         ? `<c${ref}${styleAttr}>${formula}</c>`
-        // Self-closing: an empty element carrying only a style is valid, and the
-        // skip-if-empty logic above relies on this shape.
-        : `<c${ref}${styleAttr}/>`;
+        : // Self-closing: an empty element carrying only a style is valid, and the
+          // skip-if-empty logic above relies on this shape.
+          `<c${ref}${styleAttr}/>`;
     }
 
     if (typeof value === 'number' && Number.isFinite(value)) {
@@ -141,7 +140,10 @@ export class CellBuilder {
       let idx = this._intern.get(text);
       if (idx === undefined) {
         idx = this.shared.indexOf(text);
-        if (idx === -1) { idx = this.shared.length; this.shared.push(text); }
+        if (idx === -1) {
+          idx = this.shared.length;
+          this.shared.push(text);
+        }
         this._intern.set(text, idx);
       }
       return `<c${ref}${styleAttr} t="s">${formula}<v>${idx}</v></c>`;
@@ -264,7 +266,8 @@ export function buildStylesXml(): string {
     `<xf numFmtId="0" fontId="${FONT_LINK}" fillId="0" borderId="0" xfId="0" applyFont="1"/>`,
   ].join('');
 
-  return XML_HEADER +
+  return (
+    XML_HEADER +
     `<styleSheet xmlns="${NS_MAIN}">` +
     numFmts +
     // 0 = normal, 1 = bold, 2 = bold (totals), 3 = link. A theme-less palette
@@ -288,7 +291,8 @@ export function buildStylesXml(): string {
     `<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>` +
     `<cellXfs count="11">${xfs}</cellXfs>` +
     `<cellStyles count="1"><cellStyle name="常规" xfId="0" builtinId="0"/></cellStyles>` +
-    `</styleSheet>`;
+    `</styleSheet>`
+  );
 }
 
 /**
@@ -369,7 +373,11 @@ export function writeFreshWorkbook(wb: WorkbookSpecForWriter): Buffer {
  * Serialize one worksheet.
  */
 export function buildSheetXml(sheet: SheetSpecForWriter, shared: string[]): string {
-  const builder = new CellBuilder({ shared, styleIndex: sheet.styleIndex ?? null, reuseShared: sheet.reuseShared !== false });
+  const builder = new CellBuilder({
+    shared,
+    styleIndex: sheet.styleIndex ?? null,
+    reuseShared: sheet.reuseShared !== false,
+  });
 
   // Group cells by row, sorted, so output is deterministic.
   const rows = new Map<number, SheetCellSpec[]>();
@@ -391,13 +399,16 @@ export function buildSheetXml(sheet: SheetSpecForWriter, shared: string[]): stri
 
   let body = '';
   for (const rowNum of rowNums) {
-    const cells = rows.get(rowNum)!.slice().sort((a, b) => {
-      const pa = a.ref ? parseRef(a.ref) : null;
-      const pb = b.ref ? parseRef(b.ref) : null;
-      const ca = a.col ?? (pa ? pa.col : 0);
-      const cb = b.col ?? (pb ? pb.col : 0);
-      return ca - cb;
-    });
+    const cells = rows
+      .get(rowNum)!
+      .slice()
+      .sort((a, b) => {
+        const pa = a.ref ? parseRef(a.ref) : null;
+        const pb = b.ref ? parseRef(b.ref) : null;
+        const ca = a.col ?? (pa ? pa.col : 0);
+        const cb = b.col ?? (pb ? pb.col : 0);
+        return ca - cb;
+      });
     // span attribute is optional; Excel recomputes it. Omit for smaller output.
     const h = heightByRow.get(rowNum);
     let inner = '';
@@ -421,7 +432,8 @@ export function buildSheetXml(sheet: SheetSpecForWriter, shared: string[]): stri
   const colsXml = buildCols(sheet.cols);
   const paneXml = buildPane(sheet.freeze);
 
-  return XML_HEADER +
+  return (
+    XML_HEADER +
     `<worksheet xmlns="${NS_MAIN}" xmlns:r="${NS_REL}">` +
     (sheet.dimensions ? `<dimension ref="${sheet.dimensions}"/>` : '') +
     `<sheetViews><sheetView workbookViewId="0">${paneXml}</sheetView></sheetViews>` +
@@ -429,11 +441,14 @@ export function buildSheetXml(sheet: SheetSpecForWriter, shared: string[]): stri
     colsXml +
     `<sheetData>${body}</sheetData>` +
     (sheet.merges && sheet.merges.length
-      ? `<mergeCells count="${sheet.merges.length}">` + sheet.merges.map((m) => `<mergeCell ref="${m}"/>`).join('') + `</mergeCells>`
+      ? `<mergeCells count="${sheet.merges.length}">` +
+        sheet.merges.map((m) => `<mergeCell ref="${m}"/>`).join('') +
+        `</mergeCells>`
       : '') +
     buildDataValidation(sheet.validations) +
     buildHyperlinks(sheetLinks(sheet)) +
-    `</worksheet>`;
+    `</worksheet>`
+  );
 }
 
 /**
@@ -471,23 +486,31 @@ function buildHyperlinks(links: Array<{ ref: string }>): string {
 
 /** The relationships part that resolves each `<hyperlink>`'s r:id to its URL. */
 function buildSheetRels(links: Array<{ target: string }>): string {
-  const rels = links.map((l, i) =>
-    `<Relationship Id="rId${i + 1}" Type="${NS_REL}/hyperlink" Target="${escapeXml(l.target)}" TargetMode="External"/>`
-  ).join('');
+  const rels = links
+    .map(
+      (l, i) =>
+        `<Relationship Id="rId${i + 1}" Type="${NS_REL}/hyperlink" Target="${escapeXml(l.target)}" TargetMode="External"/>`,
+    )
+    .join('');
   return XML_HEADER + `<Relationships xmlns="${NS_PKG_REL}">${rels}</Relationships>`;
 }
 
 function buildCols(cols: ColSpecOut[] | undefined): string {
   if (!cols || !cols.length) return '';
-  const items = cols.map((c) => {
-    const attrs = [
-      `min="${c.min}"`, `max="${c.max}"`,
-      c.width ? `width="${round(c.width)}" customWidth="1"` : '',
-      c.style ? `style="${c.style}"` : '',
-      c.hidden ? 'hidden="1"' : '',
-    ].filter(Boolean).join(' ');
-    return `<col ${attrs}/>`;
-  }).join('');
+  const items = cols
+    .map((c) => {
+      const attrs = [
+        `min="${c.min}"`,
+        `max="${c.max}"`,
+        c.width ? `width="${round(c.width)}" customWidth="1"` : '',
+        c.style ? `style="${c.style}"` : '',
+        c.hidden ? 'hidden="1"' : '',
+      ]
+        .filter(Boolean)
+        .join(' ');
+      return `<col ${attrs}/>`;
+    })
+    .join('');
   return `<cols>${items}</cols>`;
 }
 
@@ -498,19 +521,25 @@ function buildPane(freeze: SheetSpecForWriter['freeze']): string {
   const f = typeof freeze === 'number' ? { rows: freeze, cols: 0 } : freeze;
   const topLeft = cellRef((f.cols || 0) + 1, (f.rows || 0) + 1);
   const activePane = f.cols && f.rows ? 'bottomRight' : f.cols ? 'topRight' : 'bottomLeft';
-  return `<pane${f.cols ? ` xSplit="${f.cols}"` : ''}${f.rows ? ` ySplit="${f.rows}"` : ''}` +
+  return (
+    `<pane${f.cols ? ` xSplit="${f.cols}"` : ''}${f.rows ? ` ySplit="${f.rows}"` : ''}` +
     ` topLeftCell="${topLeft}" activePane="${activePane}" state="frozen"/>` +
-    `<selection pane="${activePane}" activeCell="${topLeft}" sqref="${topLeft}"/>`;
+    `<selection pane="${activePane}" activeCell="${topLeft}" sqref="${topLeft}"/>`
+  );
 }
 
 function buildDataValidation(validations: DataValidation[] | undefined): string {
   if (!validations || !validations.length) return '';
-  const items = validations.map((v) => {
-    const f = v.formula1 ? `<formula1>${escapeXml(v.formula1)}</formula1>` : '';
-    const f2 = v.formula2 ? `<formula2>${escapeXml(v.formula2)}</formula2>` : '';
-    return `<dataValidation type="${v.type || 'list'}"${v.allowBlank ? ' allowBlank="1"' : ''}` +
-      `${v.showError === false ? ' showErrorMessage="0"' : ''} sqref="${v.sqref}">${f}${f2}</dataValidation>`;
-  }).join('');
+  const items = validations
+    .map((v) => {
+      const f = v.formula1 ? `<formula1>${escapeXml(v.formula1)}</formula1>` : '';
+      const f2 = v.formula2 ? `<formula2>${escapeXml(v.formula2)}</formula2>` : '';
+      return (
+        `<dataValidation type="${v.type || 'list'}"${v.allowBlank ? ' allowBlank="1"' : ''}` +
+        `${v.showError === false ? ' showErrorMessage="0"' : ''} sqref="${v.sqref}">${f}${f2}</dataValidation>`
+      );
+    })
+    .join('');
   return `<dataValidations count="${validations.length}">${items}</dataValidations>`;
 }
 
@@ -592,8 +621,7 @@ export function writeWorkbook(wb: WorkbookSpecForWriter): Buffer {
 
 function buildSharedStrings(shared: string[]): string {
   const items = shared.map((s) => `<si><t xml:space="preserve">${escapeXml(s)}</t></si>`).join('');
-  return XML_HEADER +
-    `<sst xmlns="${NS_MAIN}" count="${shared.length}" uniqueCount="${shared.length}">${items}</sst>`;
+  return XML_HEADER + `<sst xmlns="${NS_MAIN}" count="${shared.length}" uniqueCount="${shared.length}">${items}</sst>`;
 }
 
 interface SheetEntry {
@@ -605,19 +633,24 @@ interface SheetEntry {
 }
 
 function buildWorkbookXml(sheets: SheetEntry[]): string {
-  const sheetTags = sheets.map((s, i) =>
-    `<sheet name="${escapeXml(s.name)}" sheetId="${i + 1}"${s.state !== 'visible' ? ` state="${s.state}"` : ''} r:id="rId${i + 1}"/>`
-  ).join('');
-  return XML_HEADER +
+  const sheetTags = sheets
+    .map(
+      (s, i) =>
+        `<sheet name="${escapeXml(s.name)}" sheetId="${i + 1}"${s.state !== 'visible' ? ` state="${s.state}"` : ''} r:id="rId${i + 1}"/>`,
+    )
+    .join('');
+  return (
+    XML_HEADER +
     `<workbook xmlns="${NS_MAIN}" xmlns:r="${NS_REL}">` +
     `<sheets>${sheetTags}</sheets>` +
     `<calcPr calcId="171027" fullCalcOnLoad="1"/>` +
-    `</workbook>`;
+    `</workbook>`
+  );
 }
 
 function buildWorkbookRels(sheets: SheetEntry[], inherited: Map<string, Buffer>, hasShared: boolean): string {
-  const rels = sheets.map((s, i) =>
-    `<Relationship Id="rId${i + 1}" Type="${NS_REL}/worksheet" Target="worksheets/${s.file}"/>`
+  const rels = sheets.map(
+    (s, i) => `<Relationship Id="rId${i + 1}" Type="${NS_REL}/worksheet" Target="worksheets/${s.file}"/>`,
   );
   let next = sheets.length + 1;
   const extra: string[] = [];
@@ -638,7 +671,9 @@ function buildWorkbookRels(sheets: SheetEntry[], inherited: Map<string, Buffer>,
 function buildRootRels(inherited: Map<string, Buffer>): string {
   const rels = [`<Relationship Id="rId1" Type="${NS_REL}/officeDocument" Target="xl/workbook.xml"/>`];
   if (inherited.has('docProps/core.xml')) {
-    rels.push(`<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>`);
+    rels.push(
+      `<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>`,
+    );
   }
   if (inherited.has('docProps/app.xml')) {
     rels.push(`<Relationship Id="rId3" Type="${NS_REL}/extended-properties" Target="docProps/app.xml"/>`);
@@ -655,29 +690,43 @@ function buildContentTypes(inherited: Map<string, Buffer>, sheetCount: number, s
     `<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>`,
   ];
   for (let i = 1; i <= sheetCount; i++) {
-    overrides.push(`<Override PartName="/xl/worksheets/sheet${i}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`);
+    overrides.push(
+      `<Override PartName="/xl/worksheets/sheet${i}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`,
+    );
   }
   if (sharedCount > 0) {
-    overrides.push(`<Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/>`);
+    overrides.push(
+      `<Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/>`,
+    );
   }
   if (inherited.has('xl/styles.xml')) {
-    overrides.push(`<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>`);
+    overrides.push(
+      `<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>`,
+    );
   }
   if (inherited.has('xl/theme/theme1.xml')) {
-    overrides.push(`<Override PartName="/xl/theme/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>`);
+    overrides.push(
+      `<Override PartName="/xl/theme/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>`,
+    );
   }
   if (inherited.has('docProps/core.xml')) {
-    overrides.push(`<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>`);
+    overrides.push(
+      `<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>`,
+    );
   }
   if (inherited.has('docProps/app.xml')) {
-    overrides.push(`<Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>`);
+    overrides.push(
+      `<Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>`,
+    );
   }
-  return XML_HEADER +
+  return (
+    XML_HEADER +
     `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">` +
     `<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>` +
     `<Default Extension="xml" ContentType="application/xml"/>` +
     overrides.join('') +
-    `</Types>`;
+    `</Types>`
+  );
 }
 
 interface SimpleSheetOptions {
@@ -690,7 +739,14 @@ interface SimpleSheetOptions {
 }
 
 /** Convenience: single-sheet workbook from a 2D array. */
-export function writeSimpleSheet({ sheetName = 'Sheet1', rows = [], cols, freeze = 0, headerStyle = 1, bodyStyle = 0 }: SimpleSheetOptions = {}): Buffer {
+export function writeSimpleSheet({
+  sheetName = 'Sheet1',
+  rows = [],
+  cols,
+  freeze = 0,
+  headerStyle = 1,
+  bodyStyle = 0,
+}: SimpleSheetOptions = {}): Buffer {
   const cells: SheetCellSpec[] = [];
   rows.forEach((row, r) => {
     const rowNum = r + 1;
@@ -698,19 +754,23 @@ export function writeSimpleSheet({ sheetName = 'Sheet1', rows = [], cols, freeze
       if (value === null || value === undefined || value === '') return;
       cells.push({
         ref: cellRef(c + 1, rowNum),
-        col: c + 1, row: rowNum, value,
+        col: c + 1,
+        row: rowNum,
+        value,
         styleIndex: rowNum === 1 ? headerStyle : bodyStyle,
       });
     });
   });
   const maxCol = Math.max(1, ...rows.map((r) => r.length));
   return writeWorkbook({
-    sheets: [{
-      name: sheetName,
-      cells,
-      cols: cols || [{ min: 1, max: maxCol, width: 18 }],
-      freeze: freeze || 0,
-      dimensions: `A1:${colName(maxCol)}${Math.max(1, rows.length)}`,
-    }],
+    sheets: [
+      {
+        name: sheetName,
+        cells,
+        cols: cols || [{ min: 1, max: maxCol, width: 18 }],
+        freeze: freeze || 0,
+        dimensions: `A1:${colName(maxCol)}${Math.max(1, rows.length)}`,
+      },
+    ],
   });
 }

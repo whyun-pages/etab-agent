@@ -96,11 +96,22 @@ function toRaw(spec: WorkbookSpec): RawSpecOut {
       // `width: null` is left out rather than passed through: normalizeSpec reads
       // it with `Number(...)`, and `Number(null)` is 0, which clamps to a width
       // of 4 — every edit would have narrowed every column.
-      columns: s.columns.map((c) => ({ key: c.key, header: c.header, type: c.type, format: c.format, ...(c.width === null ? {} : { width: c.width }) })),
+      columns: s.columns.map((c) => ({
+        key: c.key,
+        header: c.header,
+        type: c.type,
+        format: c.format,
+        ...(c.width === null ? {} : { width: c.width }),
+      })),
       rows: s.rows.map((r) => r.slice()),
-      totals: s.totals && s.totals.enabled
-        ? { enabled: true, label: s.totals.label, sumColumns: s.totals.sumColumns.map((i) => s.columns[i]?.key).filter(Boolean) }
-        : false,
+      totals:
+        s.totals && s.totals.enabled
+          ? {
+              enabled: true,
+              label: s.totals.label,
+              sumColumns: s.totals.sumColumns.map((i) => s.columns[i]?.key).filter(Boolean),
+            }
+          : false,
     })),
   };
 }
@@ -136,11 +147,14 @@ function findSheet(raw: RawSpecOut, name: unknown): RawSheetOut {
   const wanted = str(name);
   if (!wanted) {
     if (raw.sheets.length === 1) return raw.sheets[0];
-    throw new SpecOpError(`工作簿有 ${raw.sheets.length} 个工作表，请指明 sheet：${raw.sheets.map((s) => `「${s.name}」`).join('、')}`);
+    throw new SpecOpError(
+      `工作簿有 ${raw.sheets.length} 个工作表，请指明 sheet：${raw.sheets.map((s) => `「${s.name}」`).join('、')}`,
+    );
   }
-  const hit = raw.sheets.find((s) => s.name === wanted)
-    || raw.sheets.find((s) => s.name.toLowerCase() === wanted.toLowerCase());
-  if (!hit) throw new SpecOpError(`没有名为「${wanted}」的工作表。现有：${raw.sheets.map((s) => `「${s.name}」`).join('、')}`);
+  const hit =
+    raw.sheets.find((s) => s.name === wanted) || raw.sheets.find((s) => s.name.toLowerCase() === wanted.toLowerCase());
+  if (!hit)
+    throw new SpecOpError(`没有名为「${wanted}」的工作表。现有：${raw.sheets.map((s) => `「${s.name}」`).join('、')}`);
   return hit;
 }
 
@@ -149,7 +163,9 @@ function findColumn(sheet: RawSheetOut, header: unknown): number {
   const wanted = str(header);
   const idx = sheet.columns.findIndex((c) => c.header === wanted);
   if (idx === -1) {
-    throw new SpecOpError(`工作表「${sheet.name}」没有列「${wanted}」。现有列：${sheet.columns.map((c) => `「${c.header}」`).join('、') || '(无)'}`);
+    throw new SpecOpError(
+      `工作表「${sheet.name}」没有列「${wanted}」。现有列：${sheet.columns.map((c) => `「${c.header}」`).join('、') || '(无)'}`,
+    );
   }
   return idx;
 }
@@ -158,7 +174,9 @@ function findColumn(sheet: RawSheetOut, header: unknown): number {
 function rowIndex(sheet: RawSheetOut, n: unknown): number {
   const num = Number(n);
   if (!Number.isInteger(num) || num < 1 || num > sheet.rows.length) {
-    throw new SpecOpError(`行号 ${str(n) || '(空)'} 超出范围：工作表「${sheet.name}」共 ${sheet.rows.length} 行，行号从 1 开始，不含表头。`);
+    throw new SpecOpError(
+      `行号 ${str(n) || '(空)'} 超出范围：工作表「${sheet.name}」共 ${sheet.rows.length} 行，行号从 1 开始，不含表头。`,
+    );
   }
   return num - 1;
 }
@@ -282,7 +300,10 @@ function updateColumns(spec: WorkbookSpec | null, args: Record<string, unknown>)
       throw new SpecOpError(`order 必须恰好列出全部 ${sheet.columns.length} 列，每列一次。`);
     }
     sheet.columns = indices.map((i) => sheet.columns[i]);
-    sheet.rows = sheet.rows.map((r) => [...indices.map((i) => (i < r.length ? r[i] : null)), ...r.slice(indices.length)]);
+    sheet.rows = sheet.rows.map((r) => [
+      ...indices.map((i) => (i < r.length ? r[i] : null)),
+      ...r.slice(indices.length),
+    ]);
     done.push('调整了列顺序');
   }
   return finish(raw, done.length ? `「${sheet.name}」：${done.join('；')}` : `「${sheet.name}」的列没有变化`);
@@ -369,14 +390,21 @@ function query<T>(fn: () => T): T {
 }
 
 function selection(args: Record<string, unknown>): Selection {
-  return { where: list(args.where) as Selection['where'], match: str(args.match).toLowerCase() === 'any' ? 'any' : 'all' };
+  return {
+    where: list(args.where) as Selection['where'],
+    match: str(args.match).toLowerCase() === 'any' ? 'any' : 'all',
+  };
 }
 
 /** A selection in words, for summaries: 「状态 = 已签收」且「金额 > 100」. */
 function describeWhere(args: Record<string, unknown>): string {
   const conds = list(args.where).map((c) => {
     const o = (c && typeof c === 'object' ? c : {}) as Record<string, unknown>;
-    const v = Array.isArray(o.value) ? o.value.map(cellText).join('/') : o.value === undefined ? '' : ` ${cellText(o.value)}`;
+    const v = Array.isArray(o.value)
+      ? o.value.map(cellText).join('/')
+      : o.value === undefined
+        ? ''
+        : ` ${cellText(o.value)}`;
     return `「${str(o.column)} ${str(o.op) || '='}${Array.isArray(o.value) ? ` ${v}` : v}」`;
   });
   return conds.join(str(args.match).toLowerCase() === 'any' ? '或' : '且');
@@ -407,7 +435,10 @@ function deleteRows(spec: WorkbookSpec | null, args: Record<string, unknown>): O
 function updateRows(spec: WorkbookSpec | null, args: Record<string, unknown>): OpResult {
   const raw = toRaw(requireSpec(spec));
   const sheet = findSheet(raw, args.sheet);
-  const set = (args.set && typeof args.set === 'object' && !Array.isArray(args.set) ? args.set : {}) as Record<string, unknown>;
+  const set = (args.set && typeof args.set === 'object' && !Array.isArray(args.set) ? args.set : {}) as Record<
+    string,
+    unknown
+  >;
   const cols = Object.entries(set).map(([h, v]) => ({ c: findColumn(sheet, h), v }));
   if (!cols.length) throw new SpecOpError('update_rows 的 set 没有给出任何列。');
   const indices = query(() => selectRows(view(sheet), selection(args)));
@@ -419,7 +450,10 @@ function updateRows(spec: WorkbookSpec | null, args: Record<string, unknown>): O
     }
   }
   const where = list(args.where).length ? `符合${describeWhere(args)}的` : '全部';
-  return finish(raw, `已把「${sheet.name}」${where} ${indices.length} 行的 ${cols.map(({ c }) => `「${sheet.columns[c].header}」`).join('、')} 改为指定值`);
+  return finish(
+    raw,
+    `已把「${sheet.name}」${where} ${indices.length} 行的 ${cols.map(({ c }) => `「${sheet.columns[c].header}」`).join('、')} 改为指定值`,
+  );
 }
 
 /** The column type a set of computed values suggests, for a new column. */
@@ -428,7 +462,8 @@ function inferType(values: unknown[]): ColumnType {
   if (!present.length) return 'text';
   if (present.every((v) => v instanceof Date)) return 'date';
   if (present.every((v) => typeof v === 'boolean')) return 'boolean';
-  if (present.every((v) => typeof v === 'number')) return present.every((v) => Number.isInteger(v)) ? 'integer' : 'number';
+  if (present.every((v) => typeof v === 'number'))
+    return present.every((v) => Number.isInteger(v)) ? 'integer' : 'number';
   return 'text';
 }
 
@@ -467,7 +502,10 @@ function computeColumn(spec: WorkbookSpec | null, args: Record<string, unknown>)
     row[c] = v as CellValue;
   }
   const where = list(args.where).length ? `符合${describeWhere(args)}的 ${indices.length} 行` : `${indices.length} 行`;
-  return finish(raw, `已${created ? '新增' : '重新计算'}「${sheet.name}」的列「${header}」 = ${expression}（${where}）${describeFailures(failed)}`);
+  return finish(
+    raw,
+    `已${created ? '新增' : '重新计算'}「${sheet.name}」的列「${header}」 = ${expression}（${where}）${describeFailures(failed)}`,
+  );
 }
 
 /**
@@ -503,21 +541,29 @@ function lookupColumns(spec: WorkbookSpec | null, args: Record<string, unknown>)
       c = sheet.columns.length;
       const s = src.columns[from];
       sheet.columns.push({ key: header, header, type: s.type, format: s.format });
-      for (const r of sheet.rows) { while (r.length < c) r.push(null); r.push(null); }
+      for (const r of sheet.rows) {
+        while (r.length < c) r.push(null);
+        r.push(null);
+      }
     }
     return { from, c };
   });
   let missed = 0;
   for (const r of sheet.rows) {
     const hit = index.get(norm(r[key]));
-    if (!hit) { if (norm(r[key])) missed++; }
+    if (!hit) {
+      if (norm(r[key])) missed++;
+    }
     for (const { from, c } of targets) {
       while (r.length <= c) r.push(null);
       r[c] = hit ? (hit[from] ?? null) : null;
     }
   }
   const miss = missed ? `；${missed} 行在「${src.name}」里找不到对应的「${src.columns[srcKey].header}」，已留空` : '';
-  return finish(raw, `已按「${sheet.columns[key].header}」从「${src.name}」带入列：${cols.map((x) => x.header).join('、')}${miss}`);
+  return finish(
+    raw,
+    `已按「${sheet.columns[key].header}」从「${src.name}」带入列：${cols.map((x) => x.header).join('、')}${miss}`,
+  );
 }
 
 /** Collation for sorting text the way a Chinese reader expects. Fixed locale: same input, same order. */
@@ -574,7 +620,8 @@ function addSheet(spec: WorkbookSpec | null, args: Record<string, unknown>): OpR
   const raw: RawSpecOut = spec && spec.sheets.length ? toRaw(spec) : { title: str(args.title) || '工作簿', sheets: [] };
   const name = str(args.name);
   if (!name) throw new SpecOpError('add_sheet 必须给出工作表名 name。');
-  if (raw.sheets.some((s) => s.name.toLowerCase() === name.toLowerCase())) throw new SpecOpError(`工作表「${name}」已经存在。`);
+  if (raw.sheets.some((s) => s.name.toLowerCase() === name.toLowerCase()))
+    throw new SpecOpError(`工作表「${name}」已经存在。`);
   const sheet = { name, columns: list(args.columns), rows: list(args.rows), totals: args.totals ?? false };
   return finish({ ...raw, sheets: [...raw.sheets, sheet] }, `已新增工作表「${name}」`);
 }
@@ -661,9 +708,13 @@ export function readRows(spec: WorkbookSpec | null, args: Record<string, unknown
   if (!total) return `工作表「${sheet.name}」没有数据行。`;
   const from = Math.max(1, Math.min(total, Number(args.from) || 1));
   const to = Math.max(from, Math.min(total, Number(args.to) || from + 99, from + 199));
-  const lines = [`工作表「${sheet.name}」第 ${from}–${to} 行（共 ${total} 行）。列：${sheet.columns.map((c) => c.header).join('、')}`];
+  const lines = [
+    `工作表「${sheet.name}」第 ${from}–${to} 行（共 ${total} 行）。列：${sheet.columns.map((c) => c.header).join('、')}`,
+  ];
   for (let i = from - 1; i < to; i++) {
-    lines.push(`${i + 1}. ${JSON.stringify(sheet.rows[i].map((v) => (v instanceof Date ? v.toISOString().slice(0, 10) : v)))}`);
+    lines.push(
+      `${i + 1}. ${JSON.stringify(sheet.rows[i].map((v) => (v instanceof Date ? v.toISOString().slice(0, 10) : v)))}`,
+    );
   }
   return lines.join('\n');
 }

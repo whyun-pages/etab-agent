@@ -54,7 +54,11 @@ async function modelFromTransport(transport) {
       ],
     });
     let env;
-    try { env = JSON.parse(raw); } catch { env = { intent: 'answer', reply: String(raw) }; }
+    try {
+      env = JSON.parse(raw);
+    } catch {
+      env = { intent: 'answer', reply: String(raw) };
+    }
     if (env.intent === 'action' && env.spec) {
       pending.set(key, String(env.reply || ''));
       return pi.fauxAssistantMessage([pi.fauxToolCall('create_workbook', env.spec)], { stopReason: 'toolUse' });

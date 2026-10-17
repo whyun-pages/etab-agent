@@ -20,27 +20,28 @@ import path from 'node:path';
 import { exportSpec, writeExports, cleanBaseName, ExportError } from '../../src/workbook/export.ts';
 import { normalizeSpec } from '../../src/workbook/workbook.ts';
 
-const spec = () => normalizeSpec({
-  title: '销售',
-  sheets: [
-    {
-      name: '明细',
-      columns: [
-        { header: '客户', type: 'text' },
-        { header: '金额', type: 'currency' },
-        { header: '日期', type: 'date' },
-        { header: '已付', type: 'boolean' },
-      ],
-      rows: [
-        ['甲, "大"客户', 100, '2026-01-02', true],
-        ['=HYPERLINK("http://x")', -50, null, false],
-        ['多行\n备注', 0.5, '2026-03-01', null],
-      ],
-      totals: { sumColumns: ['金额'] },
-    },
-    { name: '汇总', columns: [{ header: '项', type: 'text' }], rows: [['a']] },
-  ],
-}).spec;
+const spec = () =>
+  normalizeSpec({
+    title: '销售',
+    sheets: [
+      {
+        name: '明细',
+        columns: [
+          { header: '客户', type: 'text' },
+          { header: '金额', type: 'currency' },
+          { header: '日期', type: 'date' },
+          { header: '已付', type: 'boolean' },
+        ],
+        rows: [
+          ['甲, "大"客户', 100, '2026-01-02', true],
+          ['=HYPERLINK("http://x")', -50, null, false],
+          ['多行\n备注', 0.5, '2026-03-01', null],
+        ],
+        totals: { sumColumns: ['金额'] },
+      },
+      { name: '汇总', columns: [{ header: '项', type: 'text' }], rows: [['a']] },
+    ],
+  }).spec;
 
 const text = (f) => f.bytes.toString('utf8');
 
@@ -60,13 +61,18 @@ test('a formula-looking text cell gets a leading quote; a negative number does n
 });
 
 test('the CSV totals row carries the sum the xlsx computes', () => {
-  const lines = text(exportSpec(spec(), { format: 'csv', sheet: '明细' })[0]).trim().split('\r\n');
+  const lines = text(exportSpec(spec(), { format: 'csv', sheet: '明细' })[0])
+    .trim()
+    .split('\r\n');
   assert.strictEqual(lines[lines.length - 1], '合计,50.5,,');
 });
 
 test('several sheets export as several CSV files, named apart', () => {
   const files = exportSpec(spec(), { format: 'csv' });
-  assert.deepStrictEqual(files.map((f) => f.name), ['销售-明细.csv', '销售-汇总.csv']);
+  assert.deepStrictEqual(
+    files.map((f) => f.name),
+    ['销售-明细.csv', '销售-汇总.csv'],
+  );
 });
 
 test('JSON keeps column order, writes dates as YYYY-MM-DD and names the totals', () => {
@@ -91,7 +97,11 @@ test('the same spec exports to the same bytes', () => {
   for (const format of ['xlsx', 'csv', 'json']) {
     const a = exportSpec(spec(), { format });
     const b = exportSpec(spec(), { format });
-    assert.deepStrictEqual(a.map((f) => f.bytes.toString('base64')), b.map((f) => f.bytes.toString('base64')), format);
+    assert.deepStrictEqual(
+      a.map((f) => f.bytes.toString('base64')),
+      b.map((f) => f.bytes.toString('base64')),
+      format,
+    );
   }
 });
 
@@ -115,7 +125,10 @@ test('writeExports never overwrites, even when saves race', async () => {
     fs.writeFileSync(path.join(dir, '表.csv'), 'mine');
     const f = { name: '表.csv', bytes: Buffer.from('new'), mime: 'text/csv' };
     const results = await Promise.all([writeExports(dir, [f]), writeExports(dir, [f]), writeExports(dir, [f])]);
-    const names = results.flat().map((p) => path.basename(p)).sort();
+    const names = results
+      .flat()
+      .map((p) => path.basename(p))
+      .sort();
     assert.deepStrictEqual(names, ['表 (1).csv', '表 (2).csv', '表 (3).csv']);
     assert.strictEqual(fs.readFileSync(path.join(dir, '表.csv'), 'utf8'), 'mine');
   } finally {

@@ -13,10 +13,7 @@ import assert from 'node:assert';
 import { agentMessages, specSummary, describeChange, changesSummary } from '../../src/agent/agent.ts';
 import { normalizeSpec } from '../../src/workbook/workbook.ts';
 
-import {
-  SPEC_3_ROWS,
-  specWith,
-} from '../helpers/agent-turn.ts';
+import { SPEC_3_ROWS, specWith } from '../helpers/agent-turn.ts';
 
 // ── messages and history ─────────────────────────────────────────────
 
@@ -71,7 +68,10 @@ test('agentMessages: a long assistant reply is capped, a user message is kept wh
   const longReply = '答'.repeat(1500);
   const content = agentMessages({
     message: 'x',
-    history: [{ role: 'user', content: longUser }, { role: 'assistant', content: longReply }],
+    history: [
+      { role: 'user', content: longUser },
+      { role: 'assistant', content: longReply },
+    ],
   })[1].content;
   assert.ok(content.includes(`用户：${longUser}\n`), 'user message not truncated');
   assert.ok(content.includes(`助手：${'答'.repeat(800)}…（已截断）`));
@@ -81,7 +81,10 @@ test('agentMessages: a long assistant reply is capped, a user message is kept wh
 test('agentMessages: the newest message is sent even if it alone exceeds the budget', () => {
   const content = agentMessages({
     message: 'x',
-    history: [{ role: 'user', content: '旧' }, { role: 'assistant', content: '新'.repeat(50) }],
+    history: [
+      { role: 'user', content: '旧' },
+      { role: 'assistant', content: '新'.repeat(50) },
+    ],
     historyBudget: 10,
   })[1].content;
   assert.match(content, /助手：新{50}/);
@@ -101,19 +104,33 @@ test('agentMessages: attachments in history are named, not replayed', () => {
 const specOf = (raw) => normalizeSpec(raw).spec;
 
 test('describeChange: a first spec is described as created', () => {
-  assert.strictEqual(describeChange(null, specWith(SPEC_3_ROWS.sheets[0].rows)), '新建工作簿「销售」：1 个工作表，共 3 行');
+  assert.strictEqual(
+    describeChange(null, specWith(SPEC_3_ROWS.sheets[0].rows)),
+    '新建工作簿「销售」：1 个工作表，共 3 行',
+  );
 });
 
 test('describeChange: columns, rows and totals are read off the specs', () => {
   const before = specWith(SPEC_3_ROWS.sheets[0].rows);
   const after = specOf({
     title: '销售',
-    sheets: [{
-      name: '明细',
-      columns: [{ header: '客户', type: 'text' }, { header: '金额', type: 'currency' }, { header: '备注', type: 'text' }],
-      rows: [['甲', 100, ''], ['乙', 200, ''], ['丙', 300, ''], ['丁', 400, '']],
-      totals: { enabled: true, sumColumns: ['金额'] },
-    }],
+    sheets: [
+      {
+        name: '明细',
+        columns: [
+          { header: '客户', type: 'text' },
+          { header: '金额', type: 'currency' },
+          { header: '备注', type: 'text' },
+        ],
+        rows: [
+          ['甲', 100, ''],
+          ['乙', 200, ''],
+          ['丙', 300, ''],
+          ['丁', 400, ''],
+        ],
+        totals: { enabled: true, sumColumns: ['金额'] },
+      },
+    ],
   });
   const d = describeChange(before, after);
   assert.match(d, /新增列：备注/);
@@ -124,7 +141,17 @@ test('describeChange: columns, rows and totals are read off the specs', () => {
 
 test('describeChange: an edited cell is "修改了数据"; an identical spec says nothing changed', () => {
   const before = specWith(SPEC_3_ROWS.sheets[0].rows);
-  assert.strictEqual(describeChange(before, specWith([['甲', 100], ['乙', 250], ['丙', 300]])), '修改了数据');
+  assert.strictEqual(
+    describeChange(
+      before,
+      specWith([
+        ['甲', 100],
+        ['乙', 250],
+        ['丙', 300],
+      ]),
+    ),
+    '修改了数据',
+  );
   assert.strictEqual(describeChange(before, specWith(SPEC_3_ROWS.sheets[0].rows)), '内容没有变化');
 });
 
@@ -175,11 +202,13 @@ test('agentMessages: rows beyond the budget are announced, not hidden', () => {
   // believes are missing. Saying so is the whole fix.
   const many = {
     title: 'T',
-    sheets: [{
-      name: 'S',
-      columns: [{ header: '客户' }],
-      rows: Array.from({ length: 30 }, (_, i) => [`客户${i}`]),
-    }],
+    sheets: [
+      {
+        name: 'S',
+        columns: [{ header: '客户' }],
+        rows: Array.from({ length: 30 }, (_, i) => [`客户${i}`]),
+      },
+    ],
   };
   const messages = agentMessages({ message: 'x', spec: normalizeSpec(many).spec, rowBudget: 10 });
   assert.match(messages[0].content, /第 11–30 行没有列出来/);

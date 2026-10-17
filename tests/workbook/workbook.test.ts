@@ -32,14 +32,19 @@ import {
 test('normalizeSpec: a well-formed spec survives intact', () => {
   const { spec, notes } = normalizeSpec({
     title: '销售汇总',
-    sheets: [{
-      name: '一月',
-      columns: [
-        { key: 'customer', header: '客户', type: 'text' },
-        { key: 'amount', header: '金额', type: 'currency' },
-      ],
-      rows: [['甲公司', 1000], ['乙公司', 2500]],
-    }],
+    sheets: [
+      {
+        name: '一月',
+        columns: [
+          { key: 'customer', header: '客户', type: 'text' },
+          { key: 'amount', header: '金额', type: 'currency' },
+        ],
+        rows: [
+          ['甲公司', 1000],
+          ['乙公司', 2500],
+        ],
+      },
+    ],
   });
 
   assert.strictEqual(spec.title, '销售汇总');
@@ -56,7 +61,10 @@ test('normalizeSpec: strings as columns are accepted', () => {
     title: 'T',
     sheets: [{ name: 'S', columns: ['客户', '金额'], rows: [['甲', 5]] }],
   });
-  assert.deepStrictEqual(spec.sheets[0].columns.map((c) => c.header), ['客户', '金额']);
+  assert.deepStrictEqual(
+    spec.sheets[0].columns.map((c) => c.header),
+    ['客户', '金额'],
+  );
   assert.strictEqual(spec.sheets[0].columns[0].type, 'text');
   assert.strictEqual(spec.sheets[0].rows[0][0], '甲');
 });
@@ -77,11 +85,13 @@ test('normalizeSpec: a bare table without a sheet wrapper is accepted', () => {
 
 test('normalizeSpec: object rows are mapped onto columns by header', () => {
   const { spec } = normalizeSpec({
-    sheets: [{
-      name: 'S',
-      columns: [{ header: '客户' }, { header: '金额', type: 'number' }],
-      rows: [{ 金额: '1200', 客户: '甲' }],
-    }],
+    sheets: [
+      {
+        name: 'S',
+        columns: [{ header: '客户' }, { header: '金额', type: 'number' }],
+        rows: [{ 金额: '1200', 客户: '甲' }],
+      },
+    ],
   });
   assert.strictEqual(spec.sheets[0].rows[0][0], '甲');
   assert.strictEqual(spec.sheets[0].rows[0][1], 1200);
@@ -99,7 +109,11 @@ test('normalizeSpec: total garbage does not throw, it degrades', () => {
 
 test('normalizeSpec: duplicate sheet names are made unique', () => {
   const { spec } = normalizeSpec({
-    sheets: [{ name: '数据', rows: [] }, { name: '数据', rows: [] }, { name: '数据', rows: [] }],
+    sheets: [
+      { name: '数据', rows: [] },
+      { name: '数据', rows: [] },
+      { name: '数据', rows: [] },
+    ],
   });
   const names = spec.sheets.map((s) => s.name);
   assert.strictEqual(new Set(names).size, 3, names.join(','));
@@ -122,20 +136,36 @@ test('normalizeSpec: Excel-illegal characters are stripped from names', () => {
 
 test('normalizeSpec: ragged rows are reported and padded to the column count', () => {
   const { spec, notes } = normalizeSpec({
-    sheets: [{
-      name: 'S',
-      columns: [{ header: 'A' }, { header: 'B' }, { header: 'C' }],
-      rows: [['x', 1], ['y', 2, 3, 4]],
-    }],
+    sheets: [
+      {
+        name: 'S',
+        columns: [{ header: 'A' }, { header: 'B' }, { header: 'C' }],
+        rows: [
+          ['x', 1],
+          ['y', 2, 3, 4],
+        ],
+      },
+    ],
   });
   assert.strictEqual(spec.sheets[0].rows[0].length, 3);
   assert.ok(spec.sheets[0].rows[0][2] === null, 'short row padded with null');
-  assert.ok(notes.some((n) => /不一致/.test(n.message)), JSON.stringify(notes));
+  assert.ok(
+    notes.some((n) => /不一致/.test(n.message)),
+    JSON.stringify(notes),
+  );
 });
 
 test('normalizeSpec: rows without columns get inferred columns', () => {
   const { spec, notes } = normalizeSpec({
-    sheets: [{ name: 'S', rows: [['甲', 1, true], ['乙', 2, false]] }],
+    sheets: [
+      {
+        name: 'S',
+        rows: [
+          ['甲', 1, true],
+          ['乙', 2, false],
+        ],
+      },
+    ],
   });
   assert.strictEqual(spec.sheets[0].columns.length, 3);
   assert.ok(notes.some((n) => /推断/.test(n.message)));
@@ -214,11 +244,17 @@ test('coerce: blank stays blank and is not a failure', () => {
 
 test('coerce: a blank in one column does not stop the others', () => {
   const { spec } = normalizeSpec({
-    sheets: [{
-      name: 'S',
-      columns: [{ header: '客户' }, { header: '金额', type: 'number' }],
-      rows: [['甲', null], ['乙', '不是数字'], ['丙', 100]],
-    }],
+    sheets: [
+      {
+        name: 'S',
+        columns: [{ header: '客户' }, { header: '金额', type: 'number' }],
+        rows: [
+          ['甲', null],
+          ['乙', '不是数字'],
+          ['丙', 100],
+        ],
+      },
+    ],
   });
   const rows = spec.sheets[0].rows;
   assert.strictEqual(rows[0][0], '甲');
@@ -254,7 +290,16 @@ test('validateSpec: data without columns is blocked', () => {
 test('validateSpec: all-unnamed columns are blocked', () => {
   const v = validateSpec({
     title: 'T',
-    sheets: [{ name: 'S', columns: [{ key: 'a', header: '' }, { key: 'b', header: '' }], rows: [['x', 'y']] }],
+    sheets: [
+      {
+        name: 'S',
+        columns: [
+          { key: 'a', header: '' },
+          { key: 'b', header: '' },
+        ],
+        rows: [['x', 'y']],
+      },
+    ],
   });
   assert.strictEqual(v.ok, false);
   assert.ok(/都没有名称/.test(v.blocking.join('')));
@@ -275,11 +320,16 @@ test('validateSpec: no sheets at all is blocked', () => {
 
 test('toSheet: header occupies row 1 and data starts at row 2', () => {
   const { spec } = normalizeSpec({
-    sheets: [{
-      name: 'S',
-      columns: [{ header: '客户' }, { header: '金额', type: 'number' }],
-      rows: [['甲', 100], ['乙', 200]],
-    }],
+    sheets: [
+      {
+        name: 'S',
+        columns: [{ header: '客户' }, { header: '金额', type: 'number' }],
+        rows: [
+          ['甲', 100],
+          ['乙', 200],
+        ],
+      },
+    ],
   });
   const s = toSheet(spec.sheets[0]);
   const at = (ref) => s.cells.find((c) => c.ref === ref);
@@ -313,12 +363,17 @@ test('toSheet: a Date becomes an Excel serial', () => {
 
 test('toSheet: totals row carries a real SUM formula and a cached value', () => {
   const { spec } = normalizeSpec({
-    sheets: [{
-      name: 'S',
-      columns: [{ header: '客户' }, { header: '金额', type: 'number' }],
-      rows: [['甲', 100], ['乙', 250]],
-      totals: { enabled: true, label: '合计' },
-    }],
+    sheets: [
+      {
+        name: 'S',
+        columns: [{ header: '客户' }, { header: '金额', type: 'number' }],
+        rows: [
+          ['甲', 100],
+          ['乙', 250],
+        ],
+        totals: { enabled: true, label: '合计' },
+      },
+    ],
   });
   const s = toSheet(spec.sheets[0]);
 
@@ -334,17 +389,22 @@ test('normalizeTotals: a percent column is NOT summed', () => {
   // The sum of a column of tax rates is a meaningless number. It shipped in a
   // preview once — 0.5 sitting under 6% / 13% — and it looked deliberate.
   const { spec } = normalizeSpec({
-    sheets: [{
-      name: 'S',
-      columns: [
-        { header: '客户' },
-        { header: '金额', type: 'currency' },
-        { header: '税率', type: 'percent' },
-        { header: '数量', type: 'integer' },
-      ],
-      rows: [['甲', 100, 0.06, 2], ['乙', 200, 0.13, 3]],
-      totals: { enabled: true },
-    }],
+    sheets: [
+      {
+        name: 'S',
+        columns: [
+          { header: '客户' },
+          { header: '金额', type: 'currency' },
+          { header: '税率', type: 'percent' },
+          { header: '数量', type: 'integer' },
+        ],
+        rows: [
+          ['甲', 100, 0.06, 2],
+          ['乙', 200, 0.13, 3],
+        ],
+        totals: { enabled: true },
+      },
+    ],
   });
   const t = spec.sheets[0].totals;
   assert.ok(t.enabled);
@@ -360,27 +420,34 @@ test('normalizeTotals: an explicit sumColumns list is honoured, percent included
   // If the caller explicitly asks for it, that is their call — the guard is
   // only against a sum nobody requested.
   const { spec } = normalizeSpec({
-    sheets: [{
-      name: 'S',
-      columns: [{ header: '税率', type: 'percent' }],
-      rows: [[0.06], [0.13]],
-      totals: { enabled: true, sumColumns: ['税率'] },
-    }],
+    sheets: [
+      {
+        name: 'S',
+        columns: [{ header: '税率', type: 'percent' }],
+        rows: [[0.06], [0.13]],
+        totals: { enabled: true, sumColumns: ['税率'] },
+      },
+    ],
   });
   assert.deepStrictEqual(spec.sheets[0].totals.sumColumns, [0]);
 });
 
 test('normalizeTotals: an unknown sumColumns entry is reported and dropped', () => {
   const { spec, notes } = normalizeSpec({
-    sheets: [{
-      name: 'S',
-      columns: [{ header: '金额', type: 'currency' }],
-      rows: [[100]],
-      totals: { enabled: true, sumColumns: ['金额', '不存在的列'] },
-    }],
+    sheets: [
+      {
+        name: 'S',
+        columns: [{ header: '金额', type: 'currency' }],
+        rows: [[100]],
+        totals: { enabled: true, sumColumns: ['金额', '不存在的列'] },
+      },
+    ],
   });
   assert.deepStrictEqual(spec.sheets[0].totals.sumColumns, [0]);
-  assert.ok(notes.some((n) => /不存在/.test(n.message)), JSON.stringify(notes));
+  assert.ok(
+    notes.some((n) => /不存在/.test(n.message)),
+    JSON.stringify(notes),
+  );
 });
 
 test('normalizeTotals: a bare NUMBER is a column index, not an unknown name', () => {
@@ -389,16 +456,22 @@ test('normalizeTotals: a bare NUMBER is a column index, not an unknown name', ()
   // to total a column produced NO totals row at all — the reply said 435000
   // while the preview showed three rows.
   const { spec, notes } = normalizeSpec({
-    sheets: [{
-      name: '销售台账',
-      columns: [
-        { header: '客户', type: 'text' },
-        { header: '金额', type: 'currency' },
-        { header: '签约日期', type: 'date' },
-      ],
-      rows: [['A', 120000, '2026-01-15'], ['B', 85000, '2026-02-20'], ['C', 230000, '2026-03-10']],
-      totals: { enabled: true, label: '合计', sumColumns: [1] },
-    }],
+    sheets: [
+      {
+        name: '销售台账',
+        columns: [
+          { header: '客户', type: 'text' },
+          { header: '金额', type: 'currency' },
+          { header: '签约日期', type: 'date' },
+        ],
+        rows: [
+          ['A', 120000, '2026-01-15'],
+          ['B', 85000, '2026-02-20'],
+          ['C', 230000, '2026-03-10'],
+        ],
+        totals: { enabled: true, label: '合计', sumColumns: [1] },
+      },
+    ],
   });
   const t = spec.sheets[0].totals;
   assert.strictEqual(t.enabled, true, 'index 1 is 金额, so the totals row must exist');
@@ -411,15 +484,23 @@ test('normalizeTotals: an index that is not summable is dropped, not honoured', 
   // that lands on a text or date column must not become a meaningless total,
   // and the fallback then totals the columns that DO sum.
   const { spec, notes } = normalizeSpec({
-    sheets: [{
-      name: 'S',
-      columns: [{ header: '客户', type: 'text' }, { header: '金额', type: 'currency' }],
-      rows: [['A', 100]],
-      totals: { enabled: true, sumColumns: [1, 0] },
-    }],
+    sheets: [
+      {
+        name: 'S',
+        columns: [
+          { header: '客户', type: 'text' },
+          { header: '金额', type: 'currency' },
+        ],
+        rows: [['A', 100]],
+        totals: { enabled: true, sumColumns: [1, 0] },
+      },
+    ],
   });
   assert.deepStrictEqual(spec.sheets[0].totals.sumColumns, [1], 'index 0 is text and must be refused');
-  assert.ok(notes.some((n) => /不可加/.test(n.message)), JSON.stringify(notes));
+  assert.ok(
+    notes.some((n) => /不可加/.test(n.message)),
+    JSON.stringify(notes),
+  );
 });
 
 test('normalizeTotals: an explicit but unusable list falls back, not to nothing', () => {
@@ -427,12 +508,17 @@ test('normalizeTotals: an explicit but unusable list falls back, not to nothing'
   // summed every numeric column — so naming a column wrong was worse than
   // naming none. The user asked for a 合计; total the summable columns.
   const { spec } = normalizeSpec({
-    sheets: [{
-      name: 'S',
-      columns: [{ header: '客户', type: 'text' }, { header: '金额', type: 'currency' }],
-      rows: [['A', 100]],
-      totals: { enabled: true, sumColumns: ['没有这一列'] },
-    }],
+    sheets: [
+      {
+        name: 'S',
+        columns: [
+          { header: '客户', type: 'text' },
+          { header: '金额', type: 'currency' },
+        ],
+        rows: [['A', 100]],
+        totals: { enabled: true, sumColumns: ['没有这一列'] },
+      },
+    ],
   });
   const t = spec.sheets[0].totals;
   assert.strictEqual(t.enabled, true, 'an unusable explicit list must not delete the totals row');
@@ -449,18 +535,29 @@ test('normalizeTotals: normalising twice changes nothing (the reload path)', () 
   // VANISHED the moment the session was reopened. Not idempotent = a latent bug
   // that only shows up after a reload.
   const once = normalizeSpec({
-    sheets: [{
-      name: 'S',
-      columns: [{ header: '客户', type: 'text' }, { header: '金额', type: 'currency' }],
-      rows: [['A', 100], ['B', 200]],
-      totals: { enabled: true, label: '合计', sumColumns: ['金额'] },
-    }],
+    sheets: [
+      {
+        name: 'S',
+        columns: [
+          { header: '客户', type: 'text' },
+          { header: '金额', type: 'currency' },
+        ],
+        rows: [
+          ['A', 100],
+          ['B', 200],
+        ],
+        totals: { enabled: true, label: '合计', sumColumns: ['金额'] },
+      },
+    ],
   }).spec;
 
   const twice = normalizeSpec(JSON.parse(JSON.stringify(once))).spec;
 
-  assert.deepStrictEqual(twice.sheets[0].totals, once.sheets[0].totals,
-    'a second normalise pass must be a no-op; the store runs one on every load');
+  assert.deepStrictEqual(
+    twice.sheets[0].totals,
+    once.sheets[0].totals,
+    'a second normalise pass must be a no-op; the store runs one on every load',
+  );
   assert.strictEqual(twice.sheets[0].totals.enabled, true);
 
   // And the row still reaches the bytes.
@@ -474,12 +571,18 @@ test('toSheet: totals ignore non-numeric cells instead of producing NaN', () => 
   // builds them, so a type set afterwards would leave the cells as the text
   // they were coerced to and the sum would silently skip them.
   const { spec } = normalizeSpec({
-    sheets: [{
-      name: 'S',
-      columns: [{ header: 'A' }, { header: '金额', type: 'number' }],
-      rows: [['x', 100], ['y', 'n/a'], ['z', 50]],
-      totals: { enabled: true },
-    }],
+    sheets: [
+      {
+        name: 'S',
+        columns: [{ header: 'A' }, { header: '金额', type: 'number' }],
+        rows: [
+          ['x', 100],
+          ['y', 'n/a'],
+          ['z', 50],
+        ],
+        totals: { enabled: true },
+      },
+    ],
   });
   const s = toSheet(spec.sheets[0]);
   // 'n/a' cannot be a number, so it is blank — and a blank row must not make
@@ -494,11 +597,16 @@ test('toSheet: totals ignore non-numeric cells instead of producing NaN', () => 
 
 test('toSheet: totals are opt-in, so no 合计 row appears uninvited', () => {
   const { spec } = normalizeSpec({
-    sheets: [{
-      name: 'S',
-      columns: [{ header: 'A' }, { header: '金额', type: 'number' }],
-      rows: [['x', 100], ['z', 50]],
-    }],
+    sheets: [
+      {
+        name: 'S',
+        columns: [{ header: 'A' }, { header: '金额', type: 'number' }],
+        rows: [
+          ['x', 100],
+          ['z', 50],
+        ],
+      },
+    ],
   });
   const s = toSheet(spec.sheets[0]);
   assert.strictEqual(s.totalRow, null);
@@ -514,19 +622,28 @@ test('toSheet: cached totals agree with formula.js recomputation', () => {
   // `recomputeCachedValues` returns only the cells that CHANGED, so total
   // agreement is an empty list, not a list of matches.
   const { spec } = normalizeSpec({
-    sheets: [{
-      name: 'S',
-      columns: [{ header: '客户' }, { header: '金额', type: 'number' }, { header: '数量', type: 'integer' }],
-      rows: [['甲', 1234.5, 3], ['乙', 500, 7], ['丙', 0.25, 1]],
-      totals: { enabled: true, sumColumns: ['金额', '数量'] },
-    }],
+    sheets: [
+      {
+        name: 'S',
+        columns: [{ header: '客户' }, { header: '金额', type: 'number' }, { header: '数量', type: 'integer' }],
+        rows: [
+          ['甲', 1234.5, 3],
+          ['乙', 500, 7],
+          ['丙', 0.25, 1],
+        ],
+        totals: { enabled: true, sumColumns: ['金额', '数量'] },
+      },
+    ],
   });
   const s = toSheet(spec.sheets[0]);
   const { recomputed, unresolved } = recomputeCachedValues(s.cells);
 
   assert.deepStrictEqual(unresolved, [], 'every totals formula must be evaluable');
-  assert.deepStrictEqual(recomputed, [],
-    'a non-empty list means the written cache disagreed with the formula: ' + JSON.stringify(recomputed));
+  assert.deepStrictEqual(
+    recomputed,
+    [],
+    'a non-empty list means the written cache disagreed with the formula: ' + JSON.stringify(recomputed),
+  );
 
   // And the value itself, so this cannot pass by both sides being empty.
   const sums = s.cells.filter((c) => c.formula).map((c) => c.value);
@@ -544,11 +661,13 @@ test('toSheet: no totals requested means no totals row', () => {
 
 test('toSheet: declared width is honoured, otherwise it is sized', () => {
   const { spec } = normalizeSpec({
-    sheets: [{
-      name: 'S',
-      columns: [{ header: '很长的中文表头名称', width: 30 }, { header: '金额' }],
-      rows: [],
-    }],
+    sheets: [
+      {
+        name: 'S',
+        columns: [{ header: '很长的中文表头名称', width: 30 }, { header: '金额' }],
+        rows: [],
+      },
+    ],
   });
   const s = toSheet(spec.sheets[0]);
   assert.strictEqual(s.cols[0].width, 30);
@@ -557,11 +676,17 @@ test('toSheet: declared width is honoured, otherwise it is sized', () => {
 
 test('toSheets: every sheet comes through with a name', () => {
   const { spec } = normalizeSpec({
-    sheets: [{ name: '一', columns: [{ header: 'A' }], rows: [['x']] }, { name: '二', columns: [{ header: 'B' }], rows: [['y']] }],
+    sheets: [
+      { name: '一', columns: [{ header: 'A' }], rows: [['x']] },
+      { name: '二', columns: [{ header: 'B' }], rows: [['y']] },
+    ],
   });
   const out = toSheets(spec);
   assert.strictEqual(out.sheets.length, 2);
-  assert.deepStrictEqual(out.sheets.map((s) => s.name), ['一', '二']);
+  assert.deepStrictEqual(
+    out.sheets.map((s) => s.name),
+    ['一', '二'],
+  );
   assert.strictEqual(out.title, '工作簿');
 });
 
@@ -570,7 +695,14 @@ test('toSheets: every sheet comes through with a name', () => {
 test('specStats: counts sheets, rows and columns', () => {
   const { spec } = normalizeSpec({
     sheets: [
-      { name: 'A', columns: [{ header: 'x' }, { header: 'y' }], rows: [['a', 'b'], ['c', 'd']] },
+      {
+        name: 'A',
+        columns: [{ header: 'x' }, { header: 'y' }],
+        rows: [
+          ['a', 'b'],
+          ['c', 'd'],
+        ],
+      },
       { name: 'B', columns: [{ header: 'z' }], rows: [['e']] },
     ],
   });
@@ -596,7 +728,9 @@ test('displayWidth: CJK counts double, which is why widths look right', () => {
 test('normalizeSpec is idempotent: a spec read back from disk writes the same file', () => {
   const once = normalizeSpec({
     title: 'T',
-    sheets: [{ name: 'S', columns: [{ header: '名称' }, { header: '金额', type: 'currency', width: 30 }], rows: [['甲', 1]] }],
+    sheets: [
+      { name: 'S', columns: [{ header: '名称' }, { header: '金额', type: 'currency', width: 30 }], rows: [['甲', 1]] },
+    ],
   }).spec;
   const twice = normalizeSpec(JSON.parse(JSON.stringify(once))).spec;
   assert.deepStrictEqual(twice, once);
@@ -620,8 +754,19 @@ test('linkTarget: only http(s), mailto and bare www. hosts become links', () => 
   assert.strictEqual(linkTarget('mailto:a@b.cn'), 'mailto:a@b.cn');
   assert.strictEqual(linkTarget('www.example.com/path'), 'https://www.example.com/path');
   // A target Excel would act on locally, or run, is never a link.
-  for (const bad of ['javascript:alert(1)', 'file:///C:/Windows/System32/calc.exe', '\\\\host\\share\\x.exe',
-    'C:\\x.exe', 'ftp://example.com', 'https://', 'http://a b.com', '台标', '', null, 42]) {
+  for (const bad of [
+    'javascript:alert(1)',
+    'file:///C:/Windows/System32/calc.exe',
+    '\\\\host\\share\\x.exe',
+    'C:\\x.exe',
+    'ftp://example.com',
+    'https://',
+    'http://a b.com',
+    '台标',
+    '',
+    null,
+    42,
+  ]) {
     assert.strictEqual(linkTarget(bad), null, String(bad));
   }
   assert.strictEqual(linkTarget(`https://e.com/${'a'.repeat(2100)}`), null, 'longer than Excel accepts');
@@ -629,11 +774,21 @@ test('linkTarget: only http(s), mailto and bare www. hosts become links', () => 
 
 test('toSheet: a url column carries links; text that is not a link stays plain', () => {
   const { spec } = normalizeSpec({
-    sheets: [{
-      name: 'S',
-      columns: [{ header: '频道', type: 'text' }, { header: '台标', type: 'url' }],
-      rows: [['CCTV-1', 'https://i.imgur.com/a.png'], ['CCTV-2', '暂无'], ['CCTV-3', null], ['https://not-a-url-column.com', 'javascript:alert(1)']],
-    }],
+    sheets: [
+      {
+        name: 'S',
+        columns: [
+          { header: '频道', type: 'text' },
+          { header: '台标', type: 'url' },
+        ],
+        rows: [
+          ['CCTV-1', 'https://i.imgur.com/a.png'],
+          ['CCTV-2', '暂无'],
+          ['CCTV-3', null],
+          ['https://not-a-url-column.com', 'javascript:alert(1)'],
+        ],
+      },
+    ],
   });
   assert.strictEqual(spec.sheets[0].columns[1].type, 'url');
   const { cells } = toSheet(spec.sheets[0]);
@@ -651,8 +806,18 @@ test('toSheet: a url column carries links; text that is not a link stays plain',
 test('writeSpec: url cells are real hyperlinks in the file', () => {
   const { spec } = normalizeSpec({
     sheets: [
-      { name: 'A', columns: [{ header: '名', type: 'text' }, { header: '主页', type: 'url' }],
-        rows: [['甲', 'https://a.example/?x=1&y=2'], ['乙', '无'], ['丙', 'mailto:c@example.com']] },
+      {
+        name: 'A',
+        columns: [
+          { header: '名', type: 'text' },
+          { header: '主页', type: 'url' },
+        ],
+        rows: [
+          ['甲', 'https://a.example/?x=1&y=2'],
+          ['乙', '无'],
+          ['丙', 'mailto:c@example.com'],
+        ],
+      },
       { name: 'B', columns: [{ header: '名', type: 'text' }], rows: [['丁']] },
     ],
   });
@@ -661,9 +826,15 @@ test('writeSpec: url cells are real hyperlinks in the file', () => {
   const text = (name) => zip.get(name).data.toString('utf8');
 
   const sheet = text('xl/worksheets/sheet1.xml');
-  assert.match(sheet, /<hyperlinks><hyperlink ref="B2" r:id="rId1"\/><hyperlink ref="B4" r:id="rId2"\/><\/hyperlinks><\/worksheet>$/);
+  assert.match(
+    sheet,
+    /<hyperlinks><hyperlink ref="B2" r:id="rId1"\/><hyperlink ref="B4" r:id="rId2"\/><\/hyperlinks><\/worksheet>$/,
+  );
   const rels = text('xl/worksheets/_rels/sheet1.xml.rels');
-  assert.match(rels, /Id="rId1" Type="[^"]+\/hyperlink" Target="https:\/\/a\.example\/\?x=1&amp;y=2" TargetMode="External"/);
+  assert.match(
+    rels,
+    /Id="rId1" Type="[^"]+\/hyperlink" Target="https:\/\/a\.example\/\?x=1&amp;y=2" TargetMode="External"/,
+  );
   assert.match(rels, /Id="rId2" [^>]*Target="mailto:c@example\.com"/);
   // A sheet without links gets no relationships part and no <hyperlinks>.
   assert.ok(!zip.has('xl/worksheets/_rels/sheet2.xml.rels'));
@@ -676,20 +847,22 @@ test('writeSpec: url cells are real hyperlinks in the file', () => {
 
 test('toSheet: an automatic width fits the cells as displayed, not just the header', () => {
   const { spec } = normalizeSpec({
-    sheets: [{
-      name: 'S',
-      columns: [
-        { header: '台标', type: 'url' },
-        { header: '金额', type: 'currency' },
-        { header: '是否', type: 'boolean' },
-        { header: '备注', type: 'text' },
-        { header: '宽', type: 'text', width: 7 },
-      ],
-      rows: [
-        ['https://i.imgur.com/abc123.png', 1250000, true, '很长'.repeat(100), 'x'.repeat(50)],
-        [null, null, false, null, null],
-      ],
-    }],
+    sheets: [
+      {
+        name: 'S',
+        columns: [
+          { header: '台标', type: 'url' },
+          { header: '金额', type: 'currency' },
+          { header: '是否', type: 'boolean' },
+          { header: '备注', type: 'text' },
+          { header: '宽', type: 'text', width: 7 },
+        ],
+        rows: [
+          ['https://i.imgur.com/abc123.png', 1250000, true, '很长'.repeat(100), 'x'.repeat(50)],
+          [null, null, false, null, null],
+        ],
+      },
+    ],
   });
   const widths = toSheet(spec.sheets[0]).cols.map((c) => c.width);
   assert.strictEqual(widths[0], 'https://i.imgur.com/abc123.png'.length + 2, 'the URL fits');

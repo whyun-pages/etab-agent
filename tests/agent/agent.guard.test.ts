@@ -14,12 +14,7 @@ import assert from 'node:assert';
 import { looksLikeWork, guardChange, INTENT } from '../../src/agent/agent.ts';
 import { normalizeSpec } from '../../src/workbook/workbook.ts';
 
-import {
-  turnWith,
-  SPEC_3_ROWS,
-  specWith,
-  rows10,
-} from '../helpers/agent-turn.ts';
+import { turnWith, SPEC_3_ROWS, specWith, rows10 } from '../helpers/agent-turn.ts';
 
 // ── the cheap filter ────────────────────────────────────────────────
 
@@ -86,19 +81,18 @@ test('guardChange: a small edit in a big table is judged by proportion', () => {
   // confirmation prompt and the check becomes noise the user clicks through.
   const big = (n) => ({
     title: 'T',
-    sheets: [{
-      name: 'S',
-      columns: [{ header: '客户' }, { header: '金额', type: 'currency' }],
-      rows: Array.from({ length: n }, (_, i) => [`客户${i}`, i * 100]),
-    }],
+    sheets: [
+      {
+        name: 'S',
+        columns: [{ header: '客户' }, { header: '金额', type: 'currency' }],
+        rows: Array.from({ length: n }, (_, i) => [`客户${i}`, i * 100]),
+      },
+    ],
   });
   const current = normalizeSpec(big(100)).spec;
 
   // Lost 2 of 100 — under the threshold, ordinary editing.
-  assert.strictEqual(
-    guardChange({ current, next: normalizeSpec(big(98)).spec, message: '把第一行改一下' }).ok,
-    true,
-  );
+  assert.strictEqual(guardChange({ current, next: normalizeSpec(big(98)).spec, message: '把第一行改一下' }).ok, true);
 
   // Lost 50 of 100 — not editing, and not asked for.
   const carved = guardChange({ current, next: normalizeSpec(big(50)).spec, message: '把第一行改一下' });
@@ -106,10 +100,7 @@ test('guardChange: a small edit in a big table is judged by proportion', () => {
   assert.strictEqual(carved.lostRows, 50);
 
   // The same loss, but asked for this time.
-  assert.strictEqual(
-    guardChange({ current, next: normalizeSpec(big(50)).spec, message: '删掉一半的行' }).ok,
-    true,
-  );
+  assert.strictEqual(guardChange({ current, next: normalizeSpec(big(50)).spec, message: '删掉一半的行' }).ok, true);
 });
 
 test('guardChange: an empty workbook is refused', () => {
@@ -121,11 +112,14 @@ test('guardChange: an empty workbook is refused', () => {
 // ── the turn: the guard ──────────────────────────────────────────────
 
 test('runTurn: edits that lose rows unasked become a question', async () => {
-  const res = await turnWith([
-    { tool: 'delete_rows', args: { rows: [2, 3] } },
-    { tool: 'update_cells', args: { cells: [{ row: 1, column: '金额', value: 500 }] } },
-    '已把第一行的金额改成 500。',
-  ], { message: '把第一行的金额改成 500', spec: specWith(SPEC_3_ROWS.sheets[0].rows) });
+  const res = await turnWith(
+    [
+      { tool: 'delete_rows', args: { rows: [2, 3] } },
+      { tool: 'update_cells', args: { cells: [{ row: 1, column: '金额', value: 500 }] } },
+      '已把第一行的金额改成 500。',
+    ],
+    { message: '把第一行的金额改成 500', spec: specWith(SPEC_3_ROWS.sheets[0].rows) },
+  );
   assert.strictEqual(res.intent, INTENT.QUESTION);
   assert.strictEqual(res.spec, null, 'the destructive result must not be applied');
   assert.deepStrictEqual(res.ops, [], 'nothing is offered for replay');
@@ -137,12 +131,15 @@ test('runTurn: edits that lose rows unasked become a question', async () => {
 test('runTurn: the guard judges the cumulative result, not each call', async () => {
   // Three one-row deletions are each "ordinary editing" on their own; together
   // they are the loss the guard exists for.
-  const res = await turnWith([
-    { tool: 'delete_rows', args: { rows: [10] } },
-    { tool: 'delete_rows', args: { rows: [9] } },
-    { tool: 'delete_rows', args: { rows: [8] } },
-    '整理好了。',
-  ], { message: '整理一下这个表', spec: rows10() });
+  const res = await turnWith(
+    [
+      { tool: 'delete_rows', args: { rows: [10] } },
+      { tool: 'delete_rows', args: { rows: [9] } },
+      { tool: 'delete_rows', args: { rows: [8] } },
+      '整理好了。',
+    ],
+    { message: '整理一下这个表', spec: rows10() },
+  );
   assert.strictEqual(res.intent, INTENT.QUESTION);
   assert.strictEqual(res.guarded, true);
   assert.strictEqual(res.lostRows, 3);
@@ -151,33 +148,51 @@ test('runTurn: the guard judges the cumulative result, not each call', async () 
 test('runTurn: a rebuild that drops rows is refused like any other loss', async () => {
   // The failure mode the guard was written for: "change one number" satisfied
   // by rewriting the table with one row.
-  const res = await turnWith([
-    {
-      tool: 'create_workbook',
-      args: { title: '销售', sheets: [{ name: '明细', columns: [{ header: '客户', type: 'text' }, { header: '金额', type: 'currency' }], rows: [['甲', 500]] }] },
-    },
-    '已把第一行的金额改成 500。',
-  ], { message: '把第一行的金额改成 500', spec: specWith(SPEC_3_ROWS.sheets[0].rows) });
+  const res = await turnWith(
+    [
+      {
+        tool: 'create_workbook',
+        args: {
+          title: '销售',
+          sheets: [
+            {
+              name: '明细',
+              columns: [
+                { header: '客户', type: 'text' },
+                { header: '金额', type: 'currency' },
+              ],
+              rows: [['甲', 500]],
+            },
+          ],
+        },
+      },
+      '已把第一行的金额改成 500。',
+    ],
+    { message: '把第一行的金额改成 500', spec: specWith(SPEC_3_ROWS.sheets[0].rows) },
+  );
   assert.strictEqual(res.intent, INTENT.QUESTION);
   assert.strictEqual(res.guarded, true);
 });
 
 test('runTurn: dropping rows passes when the user asked for it', async () => {
-  const res = await turnWith([
-    { tool: 'delete_rows', args: { rows: [2, 3] } },
-    '删掉了。',
-  ], { message: '删掉后面两行', spec: specWith(SPEC_3_ROWS.sheets[0].rows) });
+  const res = await turnWith([{ tool: 'delete_rows', args: { rows: [2, 3] } }, '删掉了。'], {
+    message: '删掉后面两行',
+    spec: specWith(SPEC_3_ROWS.sheets[0].rows),
+  });
   assert.strictEqual(res.intent, INTENT.ACTION);
   assert.deepStrictEqual(res.spec.sheets[0].rows, [['甲', 100]]);
 });
 
 test('runTurn: notes from normalisation are passed through', async () => {
-  const res = await turnWith([
-    { tool: 'update_cells', args: { cells: [{ row: 1, column: '金额', value: '四十几万吧' }] } },
-    '好了。',
-  ], { message: '把甲的金额改一下', spec: specWith(SPEC_3_ROWS.sheets[0].rows) });
+  const res = await turnWith(
+    [{ tool: 'update_cells', args: { cells: [{ row: 1, column: '金额', value: '四十几万吧' }] } }, '好了。'],
+    { message: '把甲的金额改一下', spec: specWith(SPEC_3_ROWS.sheets[0].rows) },
+  );
   assert.ok(Array.isArray(res.notes));
-  assert.ok(res.notes.some((n) => /不是金额/.test(n.message)), JSON.stringify(res.notes));
+  assert.ok(
+    res.notes.some((n) => /不是金额/.test(n.message)),
+    JSON.stringify(res.notes),
+  );
   // …and reach the model too, so it can tell the user.
   const result = res.contexts[1].messages.find((m) => m.role === 'toolResult');
   assert.match(result.content[0].text, /注意：/);

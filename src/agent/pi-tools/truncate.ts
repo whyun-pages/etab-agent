@@ -49,7 +49,13 @@ export function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
 }
 
-function untruncated(content: string, totalLines: number, totalBytes: number, maxLines: number, maxBytes: number): TruncationResult {
+function untruncated(
+  content: string,
+  totalLines: number,
+  totalBytes: number,
+  maxLines: number,
+  maxBytes: number,
+): TruncationResult {
   return {
     content,
     truncated: false,
@@ -76,7 +82,8 @@ export function truncateHead(content: string, options: TruncationOptions = {}): 
   const totalBytes = Buffer.byteLength(content, 'utf-8');
   const lines = splitLinesForCounting(content);
   const totalLines = lines.length;
-  if (totalLines <= maxLines && totalBytes <= maxBytes) return untruncated(content, totalLines, totalBytes, maxLines, maxBytes);
+  if (totalLines <= maxLines && totalBytes <= maxBytes)
+    return untruncated(content, totalLines, totalBytes, maxLines, maxBytes);
 
   if (Buffer.byteLength(lines[0], 'utf-8') > maxBytes) {
     return {
@@ -134,7 +141,8 @@ export function truncateTail(content: string, options: TruncationOptions = {}): 
   const totalBytes = Buffer.byteLength(content, 'utf-8');
   const lines = splitLinesForCounting(content);
   const totalLines = lines.length;
-  if (totalLines <= maxLines && totalBytes <= maxBytes) return untruncated(content, totalLines, totalBytes, maxLines, maxBytes);
+  if (totalLines <= maxLines && totalBytes <= maxBytes)
+    return untruncated(content, totalLines, totalBytes, maxLines, maxBytes);
 
   const out: string[] = [];
   let outBytes = 0;
@@ -182,7 +190,10 @@ function truncateStringToBytesFromEnd(str: string, maxBytes: number): string {
 }
 
 /** One line cut to `maxChars`, with a `[truncated]` mark. For grep matches. */
-export function truncateLine(line: string, maxChars: number = GREP_MAX_LINE_LENGTH): { text: string; wasTruncated: boolean } {
+export function truncateLine(
+  line: string,
+  maxChars: number = GREP_MAX_LINE_LENGTH,
+): { text: string; wasTruncated: boolean } {
   if (line.length <= maxChars) return { text: line, wasTruncated: false };
   return { text: `${line.slice(0, maxChars)}... [truncated]`, wasTruncated: true };
 }

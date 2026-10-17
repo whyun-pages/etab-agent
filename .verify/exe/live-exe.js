@@ -26,9 +26,12 @@ function multipart(files) {
   const b = '----exelive';
   const parts = [];
   for (const f of files) {
-    parts.push(Buffer.from(
-      `--${b}\r\nContent-Disposition: form-data; name="files"; filename="${f.filename}"\r\n` +
-      `Content-Type: ${f.contentType}\r\n\r\n`));
+    parts.push(
+      Buffer.from(
+        `--${b}\r\nContent-Disposition: form-data; name="files"; filename="${f.filename}"\r\n` +
+          `Content-Type: ${f.contentType}\r\n\r\n`,
+      ),
+    );
     parts.push(f.data);
     parts.push(Buffer.from('\r\n'));
   }
@@ -39,7 +42,10 @@ function multipart(files) {
 let failures = 0;
 function check(name, cond, extra = '') {
   if (cond) console.log(`  ok   ${name}`);
-  else { failures++; console.log(`  FAIL ${name} ${extra}`); }
+  else {
+    failures++;
+    console.log(`  FAIL ${name} ${extra}`);
+  }
 }
 
 (async () => {
@@ -50,19 +56,33 @@ function check(name, cond, extra = '') {
 
   // 2. UI assets really embedded
   const index = await request('GET', '/');
-  check('packaged exe: serves index.html from embedded assets', index.status === 200 && /<html/i.test(index.buffer.toString('utf8')), `status ${index.status}`);
+  check(
+    'packaged exe: serves index.html from embedded assets',
+    index.status === 200 && /<html/i.test(index.buffer.toString('utf8')),
+    `status ${index.status}`,
+  );
   for (const p of ['/css/app.css', '/js/app.js', '/js/views/settings.js']) {
     const r = await request('GET', p);
     check(`packaged exe: serves ${p}`, r.status === 200, `status ${r.status}`);
   }
 
   // 3. attachments (they belong to a session)
-  const owner = JSON.parse((await request('POST', '/api/sessions', '{}', { 'Content-Type': 'application/json' })).buffer.toString('utf8'));
+  const owner = JSON.parse(
+    (await request('POST', '/api/sessions', '{}', { 'Content-Type': 'application/json' })).buffer.toString('utf8'),
+  );
   const mp = multipart([
-    { filename: '数据.csv', data: Buffer.from('客户名称,数量,单价\n北京甲公司,10,250\n上海乙,5,300\n', 'utf8'), contentType: 'text/csv' },
+    {
+      filename: '数据.csv',
+      data: Buffer.from('客户名称,数量,单价\n北京甲公司,10,250\n上海乙,5,300\n', 'utf8'),
+      contentType: 'text/csv',
+    },
     { filename: 'doc.pdf', data: Buffer.from('%PDF-1.4\n%x'), contentType: 'application/pdf' },
   ]);
-  const up = JSON.parse((await request('POST', `/api/sessions/${encodeURIComponent(owner.session.id)}/attachments`, mp.buffer, mp.headers)).buffer.toString('utf8'));
+  const up = JSON.parse(
+    (
+      await request('POST', `/api/sessions/${encodeURIComponent(owner.session.id)}/attachments`, mp.buffer, mp.headers)
+    ).buffer.toString('utf8'),
+  );
   check('packaged exe: attachment upload works', up.attachments.length === 2);
   check('packaged exe: csv -> table', up.attachments[0].kind === 'table');
 
@@ -72,8 +92,18 @@ function check(name, cond, extra = '') {
   check('packaged exe: settings keeps useForAttachments', 'useForAttachments' in s.settings);
 
   // 5. sessions work end to end
-  const created = JSON.parse((await request('POST', '/api/sessions', JSON.stringify({ title: '打包验证' }), { 'Content-Type': 'application/json' })).buffer.toString('utf8'));
-  check('packaged exe: session created', created.ok === true && created.session && created.session.id, JSON.stringify(created).slice(0, 200));
+  const created = JSON.parse(
+    (
+      await request('POST', '/api/sessions', JSON.stringify({ title: '打包验证' }), {
+        'Content-Type': 'application/json',
+      })
+    ).buffer.toString('utf8'),
+  );
+  check(
+    'packaged exe: session created',
+    created.ok === true && created.session && created.session.id,
+    JSON.stringify(created).slice(0, 200),
+  );
 
   console.log(failures ? `\n${failures} FAILED` : '\nALL PACKAGED-EXE CHECKS PASSED');
   process.exit(failures ? 1 : 0);

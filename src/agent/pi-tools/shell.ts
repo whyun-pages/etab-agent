@@ -87,7 +87,9 @@ export async function getShellConfig(): Promise<ShellConfig> {
     for (const p of candidates) if (await exists(p)) return bashShellConfig(p);
     const onPath = await findExecutableOnPath('bash.exe');
     if (onPath) return bashShellConfig(onPath);
-    throw new Error(`No bash shell found. Install Git for Windows (https://git-scm.com/download/win) or add bash to PATH.\n\nSearched Git Bash in:\n${candidates.map((p) => `  ${p}`).join('\n')}`);
+    throw new Error(
+      `No bash shell found. Install Git for Windows (https://git-scm.com/download/win) or add bash to PATH.\n\nSearched Git Bash in:\n${candidates.map((p) => `  ${p}`).join('\n')}`,
+    );
   }
   if (await exists('/bin/bash')) return bashShellConfig('/bin/bash');
   const onPath = await findExecutableOnPath('bash');
@@ -101,7 +103,8 @@ const POWERSHELL_ARGS = ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'B
 export async function getPowerShellConfig(): Promise<ShellConfig> {
   if (process.platform !== 'win32') throw new Error('The powershell tool is only available on Windows.');
   const shell = (await findExecutableOnPath('pwsh.exe')) ?? (await findExecutableOnPath('powershell.exe'));
-  if (!shell) throw new Error('No PowerShell executable found. Install PowerShell or add powershell.exe/pwsh.exe to PATH.');
+  if (!shell)
+    throw new Error('No PowerShell executable found. Install PowerShell or add powershell.exe/pwsh.exe to PATH.');
   return { shell, args: [...POWERSHELL_ARGS] };
 }
 
@@ -112,19 +115,29 @@ function killProcessTree(pid: number): void {
   if (process.platform === 'win32') {
     try {
       // The System32 binary, so cleanup does not depend on PATH.
-      const child = spawn(path.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'taskkill.exe'), ['/F', '/T', '/PID', String(pid)], {
-        stdio: 'ignore',
-        detached: true,
-        windowsHide: true,
-      });
+      const child = spawn(
+        path.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'taskkill.exe'),
+        ['/F', '/T', '/PID', String(pid)],
+        {
+          stdio: 'ignore',
+          detached: true,
+          windowsHide: true,
+        },
+      );
       child.once('error', () => {});
-    } catch { /* already gone */ }
+    } catch {
+      /* already gone */
+    }
     return;
   }
   try {
     process.kill(-pid, 'SIGKILL');
   } catch {
-    try { process.kill(pid, 'SIGKILL'); } catch { /* already gone */ }
+    try {
+      process.kill(pid, 'SIGKILL');
+    } catch {
+      /* already gone */
+    }
   }
 }
 
@@ -170,9 +183,17 @@ function waitForChildProcess(child: ChildProcess): Promise<number | null> {
     const maybeFinalize = () => {
       if (exited && !settled && stdoutEnded && stderrEnded) finalize(exitCode);
     };
-    const onData = () => { if (exited && !settled) armIdleTimer(); };
-    const onStdoutEnd = () => { stdoutEnded = true; maybeFinalize(); };
-    const onStderrEnd = () => { stderrEnded = true; maybeFinalize(); };
+    const onData = () => {
+      if (exited && !settled) armIdleTimer();
+    };
+    const onStdoutEnd = () => {
+      stdoutEnded = true;
+      maybeFinalize();
+    };
+    const onStderrEnd = () => {
+      stderrEnded = true;
+      maybeFinalize();
+    };
     const onError = (err: Error) => {
       if (settled) return;
       settled = true;
@@ -281,7 +302,8 @@ async function exec(
 ): Promise<number> {
   let timeoutMs: number | undefined;
   if (timeout !== undefined) {
-    if (!Number.isFinite(timeout) || timeout <= 0) throw new Error('Invalid timeout: must be a finite number of seconds');
+    if (!Number.isFinite(timeout) || timeout <= 0)
+      throw new Error('Invalid timeout: must be a finite number of seconds');
     timeoutMs = timeout * 1000;
     if (timeoutMs > MAX_TIMEOUT_MS) throw new Error(`Invalid timeout: maximum is ${MAX_TIMEOUT_MS / 1000} seconds`);
   }
@@ -303,7 +325,9 @@ async function exec(
 
   let timedOut = false;
   let timer: NodeJS.Timeout | undefined;
-  const onAbort = () => { if (child.pid) killProcessTree(child.pid); };
+  const onAbort = () => {
+    if (child.pid) killProcessTree(child.pid);
+  };
   try {
     if (timeoutMs !== undefined) {
       timer = setTimeout(() => {
@@ -373,17 +397,26 @@ function createShellTool(Type: TypeBuilder, cwd: string, config: ShellToolConfig
 
       let exitCode: number;
       try {
-        exitCode = await exec(shell, (config.prefix ?? '') + command, cwd, { onData: (d) => output.append(d), signal, timeout });
+        exitCode = await exec(shell, (config.prefix ?? '') + command, cwd, {
+          onData: (d) => output.append(d),
+          signal,
+          timeout,
+        });
       } catch (err) {
         const { text } = format('');
         const msg = err instanceof Error ? err.message : String(err);
         if (msg === 'aborted') throw new Error(withStatus(text, 'Command aborted'));
-        if (msg.startsWith('timeout:')) throw new Error(withStatus(text, `Command timed out after ${msg.split(':')[1]} seconds`));
+        if (msg.startsWith('timeout:'))
+          throw new Error(withStatus(text, `Command timed out after ${msg.split(':')[1]} seconds`));
         throw err;
       }
       const { text, details } = format('(no output)');
       if (exitCode !== 0) {
-        return { content: [{ type: 'text', text: withStatus(text, `Command exited with code ${exitCode}`) }], details, isError: true };
+        return {
+          content: [{ type: 'text', text: withStatus(text, `Command exited with code ${exitCode}`) }],
+          details,
+          isError: true,
+        };
       }
       return { content: [{ type: 'text', text }], details };
     },

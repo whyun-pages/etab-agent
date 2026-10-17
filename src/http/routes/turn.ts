@@ -127,24 +127,38 @@ export function turnRoutes(router: Router, { state }: RouteDeps): void {
     let applied = Boolean(spec) && !confirmEdits;
     // Backstop like the one above: the tool is not offered when saving is off,
     // so a request cannot arrive — and if one did, it is dropped.
-    const exportsWanted = canSave ? (turn.exports || []) : [];
+    const exportsWanted = canSave ? turn.exports || [] : [];
     // Same backstop for writes: the tools exist only with readwrite access.
-    const writesWanted = fileAccess === 'readwrite' ? (turn.writes || []) : [];
+    const writesWanted = fileAccess === 'readwrite' ? turn.writes || [] : [];
 
     // Files read from disk become the session's attachments, as an upload
     // would — the chips show them, and the next turn can query them without
     // reading the disk again. Same name replaces, as on re-upload.
     if (turn.loaded && turn.loaded.length && (await state.sessions.load(session.id))) {
       const current = state.uploads.get(session.id) || [];
-      const fresh = turn.loaded.filter((it) => it.att).map((it): UploadedAttachment => ({
-        ...it.att!, id: crypto.randomBytes(6).toString('hex'), filename: it.filename, data: it.data,
-      }));
+      const fresh = turn.loaded
+        .filter((it) => it.att)
+        .map(
+          (it): UploadedAttachment => ({
+            ...it.att!,
+            id: crypto.randomBytes(6).toString('hex'),
+            filename: it.filename,
+            data: it.data,
+          }),
+        );
       const names = new Set(fresh.map((u) => u.name));
       state.uploads.set(session.id, [...current.filter((u) => !names.has(u.name)), ...fresh]);
     }
 
     if (pending) {
-      state.pending.set(session.id, { spec, ops, exports: exportsWanted, writes: writesWanted, message, at: Date.now() });
+      state.pending.set(session.id, {
+        spec,
+        ops,
+        exports: exportsWanted,
+        writes: writesWanted,
+        message,
+        at: Date.now(),
+      });
     } else {
       state.pending.delete(session.id);
     }
@@ -175,7 +189,9 @@ export function turnRoutes(router: Router, { state }: RouteDeps): void {
         let conflict = '';
         try {
           const next = applyOps(current.spec, ops).spec;
-          const verdict = next ? guardChange({ current: current.spec, next, message }) : { ok: false, reason: '修改结果为空' };
+          const verdict = next
+            ? guardChange({ current: current.spec, next, message })
+            : { ok: false, reason: '修改结果为空' };
           if (verdict.ok) landed = next;
           else conflict = verdict.reason;
         } catch (err) {
@@ -199,7 +215,9 @@ export function turnRoutes(router: Router, { state }: RouteDeps): void {
           if (!target) note = `${note}（没有保存文件：还没有表格。）`;
           else {
             try {
-              exportFiles = exportsWanted.flatMap((r) => exportSpec(target, r).map((file) => ({ ...file, dir: r.dir || null })));
+              exportFiles = exportsWanted.flatMap((r) =>
+                exportSpec(target, r).map((file) => ({ ...file, dir: r.dir || null })),
+              );
             } catch (err) {
               note = `${note}（没有保存文件：${messageOf(err)}）`;
             }
@@ -215,7 +233,10 @@ export function turnRoutes(router: Router, { state }: RouteDeps): void {
         // Recorded against `current.spec`, the freshest one, inside the queue
         // slot — the same reason the spec itself is written here.
         changes: landed
-          ? [...current.changes, { request: message, summary: describeChange(current.spec, landed), at: new Date().toISOString() }]
+          ? [
+              ...current.changes,
+              { request: message, summary: describeChange(current.spec, landed), at: new Date().toISOString() },
+            ]
           : current.changes,
         messages: [
           ...current.messages,
@@ -250,12 +271,22 @@ export function turnRoutes(router: Router, { state }: RouteDeps): void {
     if (pending && writesWanted.length) {
       note = `${note}（确认修改后会写入文件。）`;
     }
-    const { session: final, paths } = await saveAndNote(state, saved, replyIndex, exportDir, exportFiles, writesNow, fileOptions);
+    const { session: final, paths } = await saveAndNote(
+      state,
+      saved,
+      replyIndex,
+      exportDir,
+      exportFiles,
+      writesNow,
+      fileOptions,
+    );
 
     ctx.body = {
       ok: true,
       intent: turn.intent,
-      reply: final.messages[replyIndex] ? final.messages[replyIndex].content : final.messages[final.messages.length - 1].content,
+      reply: final.messages[replyIndex]
+        ? final.messages[replyIndex].content
+        : final.messages[final.messages.length - 1].content,
       saved: paths,
       guarded: turn.guarded === true,
       lostRows: turn.lostRows || 0,
@@ -291,7 +322,9 @@ export function turnRoutes(router: Router, { state }: RouteDeps): void {
       let landed: WorkbookSpec | null = null;
       try {
         const next = applyOps(current.spec, held.ops).spec;
-        const verdict = next ? guardChange({ current: current.spec, next, message: held.message }) : { ok: false, reason: '修改结果为空' };
+        const verdict = next
+          ? guardChange({ current: current.spec, next, message: held.message })
+          : { ok: false, reason: '修改结果为空' };
         if (verdict.ok) landed = next;
         else conflict = verdict.reason;
       } catch (err) {
@@ -383,7 +416,12 @@ async function saveAndNote(
  * the turn was seconds ago, and the folder could be a symlink by now. The
  * export folder is the user's own setting and is not second-guessed.
  */
-async function writeOutputs(defaultDir: string, files: DirectedExport[], writes: FileWrite[], fileOptions: FileAccessOptions): Promise<{ paths: string[]; errors: string[] }> {
+async function writeOutputs(
+  defaultDir: string,
+  files: DirectedExport[],
+  writes: FileWrite[],
+  fileOptions: FileAccessOptions,
+): Promise<{ paths: string[]; errors: string[] }> {
   const paths: string[] = [];
   const errors: string[] = [];
   const byDir = new Map<string, ExportFile[]>();
@@ -394,7 +432,7 @@ async function writeOutputs(defaultDir: string, files: DirectedExport[], writes:
   for (const [dir, group] of byDir) {
     try {
       const target = dir ? await checkPath(dir, fileOptions, { forWrite: true, folder: true }) : defaultDir;
-      paths.push(...await writeExports(target, group));
+      paths.push(...(await writeExports(target, group)));
     } catch (err) {
       errors.push(messageOf(err));
     }
@@ -437,7 +475,8 @@ function attachmentContext(uploads: UploadedAttachment[]): string {
     }
     if (a.textPreview) {
       const full = String(u.text || '').length;
-      const cut = full > String(a.textPreview).length ? `\n（共 ${full} 字，上面只是开头；全部内容用 read_attachment 读取）` : '';
+      const cut =
+        full > String(a.textPreview).length ? `\n（共 ${full} 字，上面只是开头；全部内容用 read_attachment 读取）` : '';
       return `${head}\n${String(a.textPreview)}${cut}`;
     }
     return `${head}（${a.note || '无法预览内容'}）`;

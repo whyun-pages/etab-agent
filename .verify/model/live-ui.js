@@ -27,9 +27,10 @@ const OUT = path.join(__dirname, '..', 'out');
 const { createServer } = require(path.join(ROOT, 'src', 'http', 'server.ts'));
 const { openPage, closePage, findEdge } = require('../support/cdp.js');
 
-const ASK = '做一个销售台账，三个客户：杭州云图科技、上海临港数据服务、深圳前海智算中心，'
-  + '合同金额分别是125万、86万、88万，签约日期分别是2026年1月8日、1月22日、2月3日，'
-  + '再加一列税率，百分之六、百分之六、百分之十三。';
+const ASK =
+  '做一个销售台账，三个客户：杭州云图科技、上海临港数据服务、深圳前海智算中心，' +
+  '合同金额分别是125万、86万、88万，签约日期分别是2026年1月8日、1月22日、2月3日，' +
+  '再加一列税率，百分之六、百分之六、百分之十三。';
 
 /** Where the real settings file lives on this machine. */
 function realHome() {
@@ -91,9 +92,11 @@ async function main() {
     waitForSelector: '.composer',
   });
 
-  const wait = (ms) => page.send('Runtime.evaluate', {
-    expression: `new Promise(r => setTimeout(r, ${ms}))`, awaitPromise: true,
-  });
+  const wait = (ms) =>
+    page.send('Runtime.evaluate', {
+      expression: `new Promise(r => setTimeout(r, ${ms}))`,
+      awaitPromise: true,
+    });
 
   await wait(1500);
 
@@ -115,7 +118,8 @@ async function main() {
   let state = null;
   for (let i = 0; i < 40; i++) {
     await wait(1500);
-    state = JSON.parse(await page.evaluate(`JSON.stringify({
+    state = JSON.parse(
+      await page.evaluate(`JSON.stringify({
       busy: Boolean(document.querySelector('.composer .spinner')),
       card: Boolean(document.querySelector('.chat__card')),
       bubbles: document.querySelectorAll('.chat__row').length,
@@ -124,7 +128,8 @@ async function main() {
       status: (document.querySelector('#status-msg') || {}).textContent || '',
       guard: (document.querySelector('.chat__guard') || {}).textContent || '',
       reply: [...document.querySelectorAll('.chat__text')].map(n => n.textContent).slice(-1)[0] || '',
-    })`));
+    })`),
+    );
     if (!state.busy && (state.cells > 0 || state.card)) break;
   }
   console.log(`  state: ${JSON.stringify(state)}`);
@@ -139,27 +144,39 @@ async function main() {
   fs.writeFileSync(path.join(OUT, '17-live-ui.png'), Buffer.from(shot.data, 'base64'));
 
   console.log('\n--- 3) the value in the grid is a value, not the word for it ---');
-  const grid = JSON.parse(await page.evaluate(`JSON.stringify(
+  const grid = JSON.parse(
+    await page.evaluate(`JSON.stringify(
     [...document.querySelectorAll('table.grid tbody tr')].map(tr =>
       [...tr.querySelectorAll('td')].map(td => td.textContent)
     )
-  )`));
+  )`),
+  );
   for (const row of grid.slice(0, 4)) console.log(`    ${JSON.stringify(row)}`);
 
   const flat = grid.flat().join(' ');
   check('a currency cell renders with a symbol', /[¥￥]/.test(flat), flat.slice(0, 60));
   check('a percent cell renders with a %', /%/.test(flat));
   check('no cell shows a raw ISO timestamp', !/\d{4}-\d{2}-\d{2}T\d{2}:/.test(flat));
-  check('no cell shows a bare five-digit serial', !grid.slice(1).flat().some((c) => /^\d{5}$/.test(String(c).trim())));
+  check(
+    'no cell shows a bare five-digit serial',
+    !grid
+      .slice(1)
+      .flat()
+      .some((c) => /^\d{5}$/.test(String(c).trim())),
+  );
 
   console.log('\n--- 4) accept the change, if one is held ---');
   if (state.card) {
-    await page.evaluate(`(() => { [...document.querySelectorAll('.chat__cardactions .btn')][0].click(); return true; })()`);
+    await page.evaluate(
+      `(() => { [...document.querySelectorAll('.chat__cardactions .btn')][0].click(); return true; })()`,
+    );
     await wait(2500);
-    const after = JSON.parse(await page.evaluate(`JSON.stringify({
+    const after = JSON.parse(
+      await page.evaluate(`JSON.stringify({
       card: Boolean(document.querySelector('.chat__card')),
       cells: document.querySelectorAll('table.grid td').length,
-    })`));
+    })`),
+    );
     check('the card is gone once answered', !after.card);
     check('the table survived the accept', after.cells > 0, `${after.cells} cells`);
   } else {
@@ -177,4 +194,7 @@ async function main() {
   process.exit(failed ? 1 : 0);
 }
 
-main().catch((err) => { console.error('FAILED:', err && err.stack || err); process.exit(2); });
+main().catch((err) => {
+  console.error('FAILED:', (err && err.stack) || err);
+  process.exit(2);
+});

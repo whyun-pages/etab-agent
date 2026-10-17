@@ -24,13 +24,18 @@ const toasts = () => document.getElementById('toasts');
  * @param {number} [opts.ms] 0 keeps it until dismissed
  */
 export function toast(opts, toneArg) {
-  const { tone = 'info', title = '', body = '', action = null, ms = 4200 } =
-    typeof opts === 'string' ? { title: opts, tone: toneArg } : opts;
+  const {
+    tone = 'info',
+    title = '',
+    body = '',
+    action = null,
+    ms = 4200,
+  } = typeof opts === 'string' ? { title: opts, tone: toneArg } : opts;
   const node = el('div', { class: `toast toast--${tone}` });
   const iconName = { ok: 'check', err: 'alert', warn: 'alert', info: 'info' }[tone] || 'info';
   node.innerHTML =
-    `<span class="row__icon" style="margin-top:1px">${icon(iconName)}</span>`
-    + `<div class="toast__body"><span class="toast__title">${esc(title)}</span>${body ? esc(body) : ''}</div>`;
+    `<span class="row__icon" style="margin-top:1px">${icon(iconName)}</span>` +
+    `<div class="toast__body"><span class="toast__title">${esc(title)}</span>${body ? esc(body) : ''}</div>`;
 
   const box = toasts();
   box.append(node);
@@ -46,11 +51,16 @@ export function toast(opts, toneArg) {
 
   if (action) {
     const btn = el('button', { class: 'toast__act', text: action.label, type: 'button' });
-    btn.addEventListener('click', () => { action.onClick(); close(); });
+    btn.addEventListener('click', () => {
+      action.onClick();
+      close();
+    });
     node.querySelector('.toast__body').append(' ', btn);
   }
 
-  node.addEventListener('click', (e) => { if (e.target === node) close(); });
+  node.addEventListener('click', (e) => {
+    if (e.target === node) close();
+  });
   if (ms > 0) setTimeout(close, ms);
   return close;
 }
@@ -120,21 +130,27 @@ export function openPalette({ items, placeholder = '输入以筛选…', emptyTe
       list.replaceChildren(el('li', { class: 'empty', text: emptyText }));
       return;
     }
-    list.replaceChildren(...filtered.map((it, i) => {
-      const btn = el('button', {
-        class: `palette__item${i === cursor ? ' is-cursor' : ''}`,
-        type: 'button',
-        html: `${iconBox(it.icon || 'file')}<span class="row__text"><span class="row__title">${esc(it.label)}</span>`
-          + `${it.sub ? `<span class="row__sub">${esc(it.sub)}</span>` : ''}</span>`,
-      });
-      btn.addEventListener('click', () => { close(); it.run(); });
-      btn.addEventListener('mousemove', () => {
-        if (cursor === i) return;
-        cursor = i;
-        paint();
-      });
-      return el('li', {}, [btn]);
-    }));
+    list.replaceChildren(
+      ...filtered.map((it, i) => {
+        const btn = el('button', {
+          class: `palette__item${i === cursor ? ' is-cursor' : ''}`,
+          type: 'button',
+          html:
+            `${iconBox(it.icon || 'file')}<span class="row__text"><span class="row__title">${esc(it.label)}</span>` +
+            `${it.sub ? `<span class="row__sub">${esc(it.sub)}</span>` : ''}</span>`,
+        });
+        btn.addEventListener('click', () => {
+          close();
+          it.run();
+        });
+        btn.addEventListener('mousemove', () => {
+          if (cursor === i) return;
+          cursor = i;
+          paint();
+        });
+        return el('li', {}, [btn]);
+      }),
+    );
   };
 
   const filter = () => {
@@ -146,12 +162,21 @@ export function openPalette({ items, placeholder = '输入以筛选…', emptyTe
 
   input.addEventListener('input', filter);
   input.addEventListener('keydown', (e) => {
-    if (e.key === 'ArrowDown') { e.preventDefault(); cursor = Math.min(cursor + 1, filtered.length - 1); paint(); }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); cursor = Math.max(cursor - 1, 0); paint(); }
-    else if (e.key === 'Enter') {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      cursor = Math.min(cursor + 1, filtered.length - 1);
+      paint();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      cursor = Math.max(cursor - 1, 0);
+      paint();
+    } else if (e.key === 'Enter') {
       e.preventDefault();
       const it = filtered[cursor];
-      if (it) { close(); it.run(); }
+      if (it) {
+        close();
+        it.run();
+      }
     }
   });
 

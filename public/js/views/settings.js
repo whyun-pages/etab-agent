@@ -31,17 +31,47 @@ import { icon } from '../icons.js';
  * a drift between the two shows up the first time someone saves.
  */
 const PROTOCOLS = [
-  { api: 'openai-completions', label: 'OpenAI 兼容（/chat/completions）', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini', hint: 'OpenAI 兼容的 /v1 地址。国内大多数服务商和自建网关都用这种。' },
-  { api: 'anthropic-messages', label: 'Anthropic Messages', baseUrl: 'https://api.anthropic.com', model: 'claude-sonnet-4-5', hint: 'Anthropic 原生接口地址，不带 /v1。兼容 Anthropic 协议的服务也可以填在这里。' },
-  { api: 'google-generative-ai', label: 'Google Gemini', baseUrl: 'https://generativelanguage.googleapis.com/v1beta', model: 'gemini-2.5-flash', hint: 'Gemini 原生接口地址，带版本号（/v1beta）。' },
+  {
+    api: 'openai-completions',
+    label: 'OpenAI 兼容（/chat/completions）',
+    baseUrl: 'https://api.openai.com/v1',
+    model: 'gpt-4o-mini',
+    hint: 'OpenAI 兼容的 /v1 地址。国内大多数服务商和自建网关都用这种。',
+  },
+  {
+    api: 'anthropic-messages',
+    label: 'Anthropic Messages',
+    baseUrl: 'https://api.anthropic.com',
+    model: 'claude-sonnet-4-5',
+    hint: 'Anthropic 原生接口地址，不带 /v1。兼容 Anthropic 协议的服务也可以填在这里。',
+  },
+  {
+    api: 'google-generative-ai',
+    label: 'Google Gemini',
+    baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
+    model: 'gemini-2.5-flash',
+    hint: 'Gemini 原生接口地址，带版本号（/v1beta）。',
+  },
 ];
 
 const protocolOf = (api) => PROTOCOLS.find((p) => p.api === api) || PROTOCOLS[0];
 
 /** The tabs, in menu order. `id` is what `state.settingsTab` holds. */
 const TABS = [
-  { id: 'model', label: '模型', icon: 'cpu', title: '模型设置', lede: '用你自己的 API key 让模型读懂你说的话，并把它变成表格。不填就什么都做不了 —— 这个应用没有内置规则可以退回。' },
-  { id: 'chat', label: '会话', icon: 'message', title: '会话设置', lede: '对话能做什么：改表格、保存文件、上网抓数据。每一项都可以单独关掉。' },
+  {
+    id: 'model',
+    label: '模型',
+    icon: 'cpu',
+    title: '模型设置',
+    lede: '用你自己的 API key 让模型读懂你说的话，并把它变成表格。不填就什么都做不了 —— 这个应用没有内置规则可以退回。',
+  },
+  {
+    id: 'chat',
+    label: '会话',
+    icon: 'message',
+    title: '会话设置',
+    lede: '对话能做什么：改表格、保存文件、上网抓数据。每一项都可以单独关掉。',
+  },
 ];
 
 const tabOf = (id) => TABS.find((t) => t.id === id) || TABS[0];
@@ -93,20 +123,26 @@ export function settingsView({ state, handlers }) {
 
   // ── menu ───────────────────────────────────────────────────────────
   const nav = el('nav', { class: 'settings__nav', 'aria-label': '设置分类' });
-  nav.appendChild(el('button', {
-    class: 'settings__back', type: 'button', title: '返回会话（Esc）',
-    html: `<span class="row__icon">${icon('back')}</span><span>返回会话</span>`,
-    onclick: handlers.onCloseSettings,
-  }));
+  nav.appendChild(
+    el('button', {
+      class: 'settings__back',
+      type: 'button',
+      title: '返回会话（Esc）',
+      html: `<span class="row__icon">${icon('back')}</span><span>返回会话</span>`,
+      onclick: handlers.onCloseSettings,
+    }),
+  );
   nav.appendChild(el('div', { class: 'settings__navtitle', text: '设置' }));
   for (const t of TABS) {
-    nav.appendChild(el('button', {
-      class: `settings__tab${t.id === tab.id ? ' is-active' : ''}`,
-      type: 'button',
-      'aria-current': t.id === tab.id ? 'page' : null,
-      html: `<span class="row__icon">${icon(t.icon)}</span><span>${esc(t.label)}</span>`,
-      onclick: () => handlers.onSettingsTab(t.id),
-    }));
+    nav.appendChild(
+      el('button', {
+        class: `settings__tab${t.id === tab.id ? ' is-active' : ''}`,
+        type: 'button',
+        'aria-current': t.id === tab.id ? 'page' : null,
+        html: `<span class="row__icon">${icon(t.icon)}</span><span>${esc(t.label)}</span>`,
+        onclick: () => handlers.onSettingsTab(t.id),
+      }),
+    );
   }
   root.appendChild(nav);
 
@@ -144,34 +180,47 @@ function actionBar({ state, handlers, tab }) {
   const actions = el('div', { class: 'settings__actions' });
   // Save writes the whole draft, both tabs: an edit made on 模型 is not lost
   // by switching to 会话 and saving there.
-  actions.appendChild(el('button', {
-    class: 'btn btn--primary', type: 'button',
-    text: busy ? '保存中…' : '保存',
-    disabled: busy,
-    onclick: () => handlers.onSaveSettings({ ...draft }),
-  }));
+  actions.appendChild(
+    el('button', {
+      class: 'btn btn--primary',
+      type: 'button',
+      text: busy ? '保存中…' : '保存',
+      disabled: busy,
+      onclick: () => handlers.onSaveSettings({ ...draft }),
+    }),
+  );
   if (tab.id === 'model') {
-    actions.appendChild(el('button', {
-      class: 'btn', type: 'button', text: '测试连接',
-      title: '用已保存的设置发一条测试消息',
-      disabled: busy || !(s.hasKey || draft.apiKey),
-      onclick: () => handlers.onTestSettings(),
-    }));
-    actions.appendChild(el('button', {
-      class: 'btn btn--danger', type: 'button', text: '清除 key',
-      disabled: busy || !s.hasKey,
-      onclick: () => handlers.onClearSettingsKey(),
-    }));
+    actions.appendChild(
+      el('button', {
+        class: 'btn',
+        type: 'button',
+        text: '测试连接',
+        title: '用已保存的设置发一条测试消息',
+        disabled: busy || !(s.hasKey || draft.apiKey),
+        onclick: () => handlers.onTestSettings(),
+      }),
+    );
+    actions.appendChild(
+      el('button', {
+        class: 'btn btn--danger',
+        type: 'button',
+        text: '清除 key',
+        disabled: busy || !s.hasKey,
+        onclick: () => handlers.onClearSettingsKey(),
+      }),
+    );
   }
   bar.appendChild(actions);
 
   const notice = state.settingsNotice;
   if (notice) {
-    bar.appendChild(el('div', {
-      class: `settings__saved settings__saved--${notice.tone}`,
-      role: notice.tone === 'err' ? 'alert' : 'status',
-      html: `<span class="row__icon">${icon(notice.tone === 'ok' ? 'check' : 'alert')}</span><span>${esc(notice.text)}</span>`,
-    }));
+    bar.appendChild(
+      el('div', {
+        class: `settings__saved settings__saved--${notice.tone}`,
+        role: notice.tone === 'err' ? 'alert' : 'status',
+        html: `<span class="row__icon">${icon(notice.tone === 'ok' ? 'check' : 'alert')}</span><span>${esc(notice.text)}</span>`,
+      }),
+    );
   }
   return bar;
 }
@@ -188,10 +237,12 @@ function modelTab(root, state) {
     const box = el('div', {
       class: `settings__result settings__result--${t.ok ? 'ok' : 'bad'}`,
     });
-    box.appendChild(el('div', {
-      class: 'settings__resulttitle',
-      text: t.ok ? '连接正常' : '连接失败',
-    }));
+    box.appendChild(
+      el('div', {
+        class: 'settings__resulttitle',
+        text: t.ok ? '连接正常' : '连接失败',
+      }),
+    );
     box.appendChild(el('pre', { class: 'settings__resultbody', text: t.ok ? `模型回复：${t.reply}` : t.error }));
     root.appendChild(box);
   }
@@ -231,27 +282,35 @@ function modelTab(root, state) {
     hint: protocol.hint,
     value: draft.baseUrl ?? s.baseUrl ?? '',
     placeholder: protocol.baseUrl,
-    onInput: (v) => { draft.baseUrl = v; },
+    onInput: (v) => {
+      draft.baseUrl = v;
+    },
   });
   form.appendChild(baseField);
 
-  form.appendChild(field({
-    label: 'API key',
-    hint: s.hasKey
-      ? `已保存 ${esc(s.keyHint || '')}。留空表示不改动；要清除请点「清除 key」。`
-      : '只保存在本机。不会回显到页面上。',
-    value: draft.apiKey ?? '',
-    type: 'password',
-    placeholder: s.hasKey ? '（已保存，留空则不修改）' : 'sk-...',
-    onInput: (v) => { draft.apiKey = v; },
-  }));
+  form.appendChild(
+    field({
+      label: 'API key',
+      hint: s.hasKey
+        ? `已保存 ${esc(s.keyHint || '')}。留空表示不改动；要清除请点「清除 key」。`
+        : '只保存在本机。不会回显到页面上。',
+      value: draft.apiKey ?? '',
+      type: 'password',
+      placeholder: s.hasKey ? '（已保存，留空则不修改）' : 'sk-...',
+      onInput: (v) => {
+        draft.apiKey = v;
+      },
+    }),
+  );
 
   const modelField = field({
     label: '模型名 (model)',
     hint: '必须填服务商支持的模型名。',
     value: draft.model ?? s.model ?? '',
     placeholder: protocol.model,
-    onInput: (v) => { draft.model = v; },
+    onInput: (v) => {
+      draft.model = v;
+    },
   });
   form.appendChild(modelField);
 
@@ -293,47 +352,65 @@ function chatTab(root, state) {
   // ── chat behaviour ─────────────────────────────────────────────────
   form.appendChild(el('div', { class: 'settings__group', text: '对话' }));
 
-  form.appendChild(toggle({
-    label: '允许对话修改字段',
-    hint: '关闭后对话只能回答问题，不会提出任何修改。',
-    checked: draft.chatCanEdit ?? s.chatCanEdit ?? true,
-    onChange: (v) => { draft.chatCanEdit = v; },
-  }));
+  form.appendChild(
+    toggle({
+      label: '允许对话修改字段',
+      hint: '关闭后对话只能回答问题，不会提出任何修改。',
+      checked: draft.chatCanEdit ?? s.chatCanEdit ?? true,
+      onChange: (v) => {
+        draft.chatCanEdit = v;
+      },
+    }),
+  );
 
-  form.appendChild(toggle({
-    label: '修改前需要确认',
-    hint: '推荐开启。关闭后对话提出的修改会直接落到预览，不再问你。',
-    checked: draft.chatConfirmEdits ?? s.chatConfirmEdits ?? true,
-    onChange: (v) => { draft.chatConfirmEdits = v; },
-  }));
+  form.appendChild(
+    toggle({
+      label: '修改前需要确认',
+      hint: '推荐开启。关闭后对话提出的修改会直接落到预览，不再问你。',
+      checked: draft.chatConfirmEdits ?? s.chatConfirmEdits ?? true,
+      onChange: (v) => {
+        draft.chatConfirmEdits = v;
+      },
+    }),
+  );
 
   // ── saving and fetching ────────────────────────────────────────────
   form.appendChild(el('div', { class: 'settings__group', text: '保存与联网' }));
 
-  form.appendChild(toggle({
-    label: '允许对话保存文件',
-    hint: '可以让对话把表格存成 xlsx / CSV / JSON 到下面的目录。同名文件不会被覆盖，会自动加编号。',
-    checked: draft.chatCanSave ?? s.chatCanSave ?? true,
-    onChange: (v) => { draft.chatCanSave = v; },
-  }));
+  form.appendChild(
+    toggle({
+      label: '允许对话保存文件',
+      hint: '可以让对话把表格存成 xlsx / CSV / JSON 到下面的目录。同名文件不会被覆盖，会自动加编号。',
+      checked: draft.chatCanSave ?? s.chatCanSave ?? true,
+      onChange: (v) => {
+        draft.chatCanSave = v;
+      },
+    }),
+  );
 
-  form.appendChild(field({
-    label: '导出目录',
-    hint: '填完整路径。留空则保存到下载文件夹。',
-    value: draft.exportDir ?? s.exportDir ?? '',
-    placeholder: s.exportDirResolved || '',
-    onInput: (v) => { draft.exportDir = v; },
-  }));
+  form.appendChild(
+    field({
+      label: '导出目录',
+      hint: '填完整路径。留空则保存到下载文件夹。',
+      value: draft.exportDir ?? s.exportDir ?? '',
+      placeholder: s.exportDirResolved || '',
+      onInput: (v) => {
+        draft.exportDir = v;
+      },
+    }),
+  );
 
   // The blocklist only means something while fetching is on, so it is shown
   // only then — toggled in place, without re-rendering the form and losing
   // whatever is typed in the other fields.
   const blockWrap = el('label', { class: 'settings__field' });
   blockWrap.appendChild(el('span', { class: 'settings__label', text: '禁止抓取的网站' }));
-  blockWrap.appendChild(el('span', {
-    class: 'settings__hint',
-    text: '每行一个域名，同时禁止它的子域名。例如填 example.com，www.example.com 也会被拒绝。',
-  }));
+  blockWrap.appendChild(
+    el('span', {
+      class: 'settings__hint',
+      text: '每行一个域名，同时禁止它的子域名。例如填 example.com，www.example.com 也会被拒绝。',
+    }),
+  );
   const blockInput = el('textarea', {
     class: 'settings__input',
     rows: '4',
@@ -341,20 +418,27 @@ function chatTab(root, state) {
     placeholder: 'example.com',
   });
   blockInput.value = draft.fetchBlocklist ?? (s.fetchBlocklist || []).join('\n');
-  blockInput.addEventListener('input', () => { draft.fetchBlocklist = blockInput.value; });
+  blockInput.addEventListener('input', () => {
+    draft.fetchBlocklist = blockInput.value;
+  });
   blockWrap.appendChild(blockInput);
 
   const canFetch = draft.chatCanFetch ?? s.chatCanFetch ?? false;
   blockWrap.hidden = !canFetch;
-  form.appendChild(toggle({
-    label: '允许对话联网抓取',
-    // The risk is stated here because this is where the decision is made:
-    // with no list of allowed sites, nothing stops a fetched page from
-    // talking the model into sending table data to another address.
-    hint: '可以让对话下载网页、CSV、JSON、xlsx 来建表或补数据。请求从本机发出；内网地址一律不抓。注意：抓到的网页内容可能诱导模型把表格数据发到别的网址，表里有敏感数据时不要开启。',
-    checked: canFetch,
-    onChange: (v) => { draft.chatCanFetch = v; blockWrap.hidden = !v; },
-  }));
+  form.appendChild(
+    toggle({
+      label: '允许对话联网抓取',
+      // The risk is stated here because this is where the decision is made:
+      // with no list of allowed sites, nothing stops a fetched page from
+      // talking the model into sending table data to another address.
+      hint: '可以让对话下载网页、CSV、JSON、xlsx 来建表或补数据。请求从本机发出；内网地址一律不抓。注意：抓到的网页内容可能诱导模型把表格数据发到别的网址，表里有敏感数据时不要开启。',
+      checked: canFetch,
+      onChange: (v) => {
+        draft.chatCanFetch = v;
+        blockWrap.hidden = !v;
+      },
+    }),
+  );
   form.appendChild(blockWrap);
 
   // ── local files ────────────────────────────────────────────────────
@@ -364,15 +448,22 @@ function chatTab(root, state) {
   // the option says so in its own words, not only in the hint.
   const fileWrap = el('label', { class: 'settings__field' });
   fileWrap.appendChild(el('span', { class: 'settings__label', text: '允许读写本机文件' }));
-  fileWrap.appendChild(el('span', {
-    class: 'settings__hint',
-    text: '开启后，在对话里给出本地路径（文件、文件夹或 zip）就能直接读取和统计。只对在本机打开的页面生效。'
-      + '注意：文件内容可能诱导模型去读别的文件，含敏感数据的位置请加到下面的禁止列表。'
-      + '「读写」还允许模型在本机执行命令，命令不受禁止列表限制，能做到你这个账户能做的任何事。',
-  }));
+  fileWrap.appendChild(
+    el('span', {
+      class: 'settings__hint',
+      text:
+        '开启后，在对话里给出本地路径（文件、文件夹或 zip）就能直接读取和统计。只对在本机打开的页面生效。' +
+        '注意：文件内容可能诱导模型去读别的文件，含敏感数据的位置请加到下面的禁止列表。' +
+        '「读写」还允许模型在本机执行命令，命令不受禁止列表限制，能做到你这个账户能做的任何事。',
+    }),
+  );
   const fileSelect = el('select', { class: 'settings__input' });
   const fileMode = draft.chatFileAccess ?? s.chatFileAccess ?? 'off';
-  for (const [value, text] of [['off', '关闭'], ['read', '只读'], ['readwrite', '读写，并允许执行命令']]) {
+  for (const [value, text] of [
+    ['off', '关闭'],
+    ['read', '只读'],
+    ['readwrite', '读写，并允许执行命令'],
+  ]) {
     const opt = el('option', { value, text });
     opt.selected = value === fileMode;
     fileSelect.appendChild(opt);
@@ -382,16 +473,26 @@ function chatTab(root, state) {
 
   const fileBlockWrap = el('label', { class: 'settings__field' });
   fileBlockWrap.appendChild(el('span', { class: 'settings__label', text: '禁止访问的路径' }));
-  fileBlockWrap.appendChild(el('span', {
-    class: 'settings__hint',
-    // The built-in list is named so nobody adds ~/.ssh "to be safe" and then
-    // wonders whether removing it here would unblock it.
-    text: '每行一个：文件夹路径（如 D:\\财务、~/私人）会连同里面的内容一起禁止；不带路径的名字（如 *.bak、合同）按文件名或文件夹名匹配。'
-      + '密钥、浏览器数据、系统目录和本程序的数据目录始终禁止，不用填。',
-  }));
-  const fileBlockInput = el('textarea', { class: 'settings__input', rows: '4', spellcheck: 'false', placeholder: 'D:\\财务\n*.bak' });
+  fileBlockWrap.appendChild(
+    el('span', {
+      class: 'settings__hint',
+      // The built-in list is named so nobody adds ~/.ssh "to be safe" and then
+      // wonders whether removing it here would unblock it.
+      text:
+        '每行一个：文件夹路径（如 D:\\财务、~/私人）会连同里面的内容一起禁止；不带路径的名字（如 *.bak、合同）按文件名或文件夹名匹配。' +
+        '密钥、浏览器数据、系统目录和本程序的数据目录始终禁止，不用填。',
+    }),
+  );
+  const fileBlockInput = el('textarea', {
+    class: 'settings__input',
+    rows: '4',
+    spellcheck: 'false',
+    placeholder: 'D:\\财务\n*.bak',
+  });
   fileBlockInput.value = draft.fileBlocklist ?? (s.fileBlocklist || []).join('\n');
-  fileBlockInput.addEventListener('input', () => { draft.fileBlocklist = fileBlockInput.value; });
+  fileBlockInput.addEventListener('input', () => {
+    draft.fileBlocklist = fileBlockInput.value;
+  });
   fileBlockWrap.appendChild(fileBlockInput);
   fileBlockWrap.hidden = fileMode === 'off';
   form.appendChild(fileBlockWrap);

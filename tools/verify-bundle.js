@@ -75,20 +75,28 @@ async function main() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tab-agent-bundle-'));
   try {
     const entry = path.join(ROOT, '.build', 'bundle-probe-entry.js');
-    fs.writeFileSync(entry, [
-      "exports.server = require('./js/http/server.js');",
-      "exports.llm = require('./js/agent/llm.js');",
-      "exports.agent = require('./js/agent/agent.js');",
-      "exports.pi = require('./js/agent/pi.js');",
-      "exports.model = require('./js/agent/model.js');",
-      '',
-    ].join('\n'));
+    fs.writeFileSync(
+      entry,
+      [
+        "exports.server = require('./js/http/server.js');",
+        "exports.llm = require('./js/agent/llm.js');",
+        "exports.agent = require('./js/agent/agent.js');",
+        "exports.pi = require('./js/agent/pi.js');",
+        "exports.model = require('./js/agent/model.js');",
+        '',
+      ].join('\n'),
+    );
     await bundle({ entry, outfile: path.join(dir, 'probe-bundle.js') });
     fs.rmSync(entry, { force: true });
     fs.writeFileSync(path.join(dir, 'run.js'), RUNNER);
     let output = '';
     try {
-      output = execFileSync(process.execPath, ['run.js'], { cwd: dir, encoding: 'utf8', timeout: 60_000, env: { ...process.env, NODE_PATH: '' } });
+      output = execFileSync(process.execPath, ['run.js'], {
+        cwd: dir,
+        encoding: 'utf8',
+        timeout: 60_000,
+        env: { ...process.env, NODE_PATH: '' },
+      });
     } catch (e) {
       output = String(e.stdout || '') + String(e.stderr || '') + `\n[runner exited: ${e.status ?? e.message}]`;
     }

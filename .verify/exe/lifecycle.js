@@ -28,7 +28,9 @@ const DATA = path.join(OUT, 'lifecycle-data');
 
 fs.mkdirSync(DATA, { recursive: true });
 
-function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
 
 function health(port) {
   return new Promise((resolve) => {
@@ -37,24 +39,40 @@ function health(port) {
       res.on('end', () => resolve(true));
     });
     req.on('error', () => resolve(false));
-    req.setTimeout(2000, () => { req.destroy(); resolve(false); });
+    req.setTimeout(2000, () => {
+      req.destroy();
+      resolve(false);
+    });
   });
 }
 
 function readRecord() {
-  try { return JSON.parse(fs.readFileSync(path.join(DATA, 'instance.json'), 'utf8')); } catch { return null; }
+  try {
+    return JSON.parse(fs.readFileSync(path.join(DATA, 'instance.json'), 'utf8'));
+  } catch {
+    return null;
+  }
 }
 
 function launch(extraArgs = []) {
   const cmd = USE_EXE
     ? { file: path.join(ROOT, 'dist', 'TabAgent.exe'), args: ['--data-dir', DATA, ...extraArgs] }
-    : { file: process.execPath, args: [path.join(ROOT, '.build', 'js', 'desktop.js'), '--data-dir', DATA, ...extraArgs] };
+    : {
+        file: process.execPath,
+        args: [path.join(ROOT, '.build', 'js', 'desktop.js'), '--data-dir', DATA, ...extraArgs],
+      };
   const child = spawn(cmd.file, cmd.args, { stdio: ['ignore', 'pipe', 'pipe'] });
   const rec = { child, output: '', exitedAt: null };
   const t0 = Date.now();
-  child.stdout.on('data', (d) => { rec.output += d.toString(); });
-  child.stderr.on('data', (d) => { rec.output += d.toString(); });
-  child.on('exit', () => { rec.exitedAt = Date.now() - t0; });
+  child.stdout.on('data', (d) => {
+    rec.output += d.toString();
+  });
+  child.stderr.on('data', (d) => {
+    rec.output += d.toString();
+  });
+  child.on('exit', () => {
+    rec.exitedAt = Date.now() - t0;
+  });
   return rec;
 }
 
@@ -69,16 +87,23 @@ $p | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction Silently
 'closed ' + $p.Count + ' edge process(es)'
 `;
   try {
-    return execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], { encoding: 'utf8' }).trim();
-  } catch (e) { return 'close failed: ' + (e.stderr || e.message); }
+    return execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], {
+      encoding: 'utf8',
+    }).trim();
+  } catch (e) {
+    return 'close failed: ' + (e.stderr || e.message);
+  }
 }
 
 let failures = 0;
 function check(label, actual, expected) {
   const ok = JSON.stringify(actual) === JSON.stringify(expected);
   if (!ok) failures++;
-  console.log((ok ? '  ok   ' : '  FAIL ') + label +
-    (ok ? '' : `\n         expected: ${JSON.stringify(expected)}\n         actual:   ${JSON.stringify(actual)}`));
+  console.log(
+    (ok ? '  ok   ' : '  FAIL ') +
+      label +
+      (ok ? '' : `\n         expected: ${JSON.stringify(expected)}\n         actual:   ${JSON.stringify(actual)}`),
+  );
 }
 
 async function main() {
@@ -88,9 +113,18 @@ async function main() {
   // ---------------------------------------------------------- stale record
   console.log('=== 1) a stale record must not block startup ===');
   // Fabricate a record pointing at a port nothing listens on.
-  fs.writeFileSync(path.join(DATA, 'instance.json'), JSON.stringify({
-    port: 3299, pid: 999999, startedAt: new Date(0).toISOString(),
-  }, null, 2));
+  fs.writeFileSync(
+    path.join(DATA, 'instance.json'),
+    JSON.stringify(
+      {
+        port: 3299,
+        pid: 999999,
+        startedAt: new Date(0).toISOString(),
+      },
+      null,
+      2,
+    ),
+  );
   check('record planted on a dead port', readRecord().port, 3299);
 
   const a = launch(['--port', '3241']);
@@ -98,7 +132,10 @@ async function main() {
   for (let i = 0; i < 30; i++) {
     await sleep(500);
     const r = readRecord();
-    if (r && r.port === 3241) { live = r; break; }
+    if (r && r.port === 3241) {
+      live = r;
+      break;
+    }
   }
   check('startup proceeded and republished the record', live && live.port, 3241);
   check('new server answers', await health(3241), true);
@@ -110,7 +147,10 @@ async function main() {
   let gone = false;
   for (let i = 0; i < 20; i++) {
     await sleep(500);
-    if (!(await health(3241))) { gone = true; break; }
+    if (!(await health(3241))) {
+      gone = true;
+      break;
+    }
   }
   check('server stopped after the window closed', gone, true);
   check('process exited', a.exitedAt !== null, true);
@@ -126,4 +166,7 @@ async function main() {
   process.exit(failures === 0 ? 0 : 1);
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

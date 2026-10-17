@@ -47,7 +47,11 @@ function readStored() {
 }
 
 function writeStored(widths) {
-  try { localStorage.setItem(KEY, JSON.stringify(widths)); } catch { /* not fatal */ }
+  try {
+    localStorage.setItem(KEY, JSON.stringify(widths));
+  } catch {
+    /* not fatal */
+  }
 }
 
 /** Clamp a proposed width against both its own bounds and the centre pane. */
@@ -101,7 +105,11 @@ export function initSplitters() {
       handle.classList.remove('is-dragging');
       document.body.style.userSelect = '';
       document.body.style.cursor = '';
-      try { handle.releasePointerCapture(e.pointerId); } catch { /* already gone */ }
+      try {
+        handle.releasePointerCapture(e.pointerId);
+      } catch {
+        /* already gone */
+      }
       if (moved) save();
     };
     handle.addEventListener('pointerup', end);
@@ -119,16 +127,21 @@ export function initSplitters() {
     // Arrow keys, so the splitter is operable without a mouse.
     handle.addEventListener('keydown', (e) => {
       const step = e.shiftKey ? 40 : 10;
-      if (e.key === 'ArrowLeft') { apply(column, trackWidth(column.css) - step * column.sign); e.preventDefault(); save(); }
-      else if (e.key === 'ArrowRight') { apply(column, trackWidth(column.css) + step * column.sign); e.preventDefault(); save(); }
+      if (e.key === 'ArrowLeft') {
+        apply(column, trackWidth(column.css) - step * column.sign);
+        e.preventDefault();
+        save();
+      } else if (e.key === 'ArrowRight') {
+        apply(column, trackWidth(column.css) + step * column.sign);
+        e.preventDefault();
+        save();
+      }
     });
   }
 
   /** The current width of a column, in pixels, straight from layout. */
   function trackWidth(cssVar) {
-    const el = cssVar === '--rail-w'
-      ? document.getElementById('rail')
-      : document.getElementById('preview-pane');
+    const el = cssVar === '--rail-w' ? document.getElementById('rail') : document.getElementById('preview-pane');
     return el ? el.getBoundingClientRect().width : 0;
   }
 

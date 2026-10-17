@@ -102,7 +102,17 @@ export function sheetWindow(wb: ParsedWorkbook, sheetName?: string, opts: Previe
 
   const sheet: ParsedSheet | undefined = wb.sheets.find((s) => s.name === sheetName) || wb.sheets[0];
   if (!sheet) {
-    return { name: '', rows: [], formats: [], merged: [], cols: [], truncated: false, startRow, totalRows: 0, totalCols: 0 };
+    return {
+      name: '',
+      rows: [],
+      formats: [],
+      merged: [],
+      cols: [],
+      truncated: false,
+      startRow,
+      totalRows: 0,
+      totalCols: 0,
+    };
   }
 
   const totalRows = sheet.maxRow || 0;
@@ -111,7 +121,9 @@ export function sheetWindow(wb: ParsedWorkbook, sheetName?: string, opts: Previe
   const rowCount = Math.max(0, lastRow - startRow + 1);
   const colLimit = Math.min(totalCols, maxCols);
   const rows: PreviewValue[][] = Array.from({ length: rowCount }, () => new Array<PreviewValue>(colLimit).fill(null));
-  const formats: Array<Array<string | null>> = Array.from({ length: rowCount }, () => new Array<string | null>(colLimit).fill(null));
+  const formats: Array<Array<string | null>> = Array.from({ length: rowCount }, () =>
+    new Array<string | null>(colLimit).fill(null),
+  );
 
   for (const c of sheet.cells || []) {
     if (c.row < startRow || c.row > lastRow || c.col > colLimit) continue;
@@ -157,7 +169,18 @@ export function sheetWindow(wb: ParsedWorkbook, sheetName?: string, opts: Previe
  */
 export function specPreview(spec: WorkbookSpec | null | undefined): PreviewGrid {
   const sheet = (spec && spec.sheets && spec.sheets[0]) || null;
-  if (!sheet) return { name: '', rows: [], formats: [], merged: [], cols: [], truncated: false, startRow: 1, totalRows: 0, totalCols: 0 };
+  if (!sheet)
+    return {
+      name: '',
+      rows: [],
+      formats: [],
+      merged: [],
+      cols: [],
+      truncated: false,
+      startRow: 1,
+      totalRows: 0,
+      totalCols: 0,
+    };
 
   const cols = sheet.columns || [];
   const dataRows = sheet.rows || [];
@@ -209,12 +232,18 @@ export function specPreview(spec: WorkbookSpec | null | undefined): PreviewGrid 
 /** The number format a column type renders with, mirroring src/formats/xlsx-writer.ts. */
 export function numFmtForType(type: ColumnType | null | undefined): string | null {
   switch (type) {
-    case 'currency': return '¥#,##0.00';
-    case 'percent': return '0.00%';
-    case 'integer': return '#,##0';
-    case 'number': return '#,##0.00';
-    case 'date': return 'yyyy-mm-dd';
-    default: return null;
+    case 'currency':
+      return '¥#,##0.00';
+    case 'percent':
+      return '0.00%';
+    case 'integer':
+      return '#,##0';
+    case 'number':
+      return '#,##0.00';
+    case 'date':
+      return 'yyyy-mm-dd';
+    default:
+      return null;
   }
 }
 

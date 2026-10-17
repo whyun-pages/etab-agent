@@ -22,7 +22,11 @@ async function parse(res) {
   const text = await res.text();
   let data = null;
   if (text) {
-    try { data = JSON.parse(text); } catch { data = { ok: false, error: text.slice(0, 300) }; }
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = { ok: false, error: text.slice(0, 300) };
+    }
   }
   if (!res.ok) {
     throw new ApiError((data && data.error) || `HTTP ${res.status}`, data);
@@ -94,7 +98,11 @@ export const api = {
     const res = await fetch(`/api/sessions/${q(id)}/workbook.${format}${query}`);
     if (!res.ok) {
       let msg = `HTTP ${res.status}`;
-      try { msg = (await res.json()).error || msg; } catch { /* keep the status text */ }
+      try {
+        msg = (await res.json()).error || msg;
+      } catch {
+        /* keep the status text */
+      }
       throw new ApiError(msg);
     }
     const blob = await res.blob();
@@ -121,7 +129,11 @@ function filenameOf(header) {
   if (!header) return null;
   const star = /filename\*=UTF-8''([^;]+)/i.exec(header);
   if (star) {
-    try { return decodeURIComponent(star[1]); } catch { /* fall through */ }
+    try {
+      return decodeURIComponent(star[1]);
+    } catch {
+      /* fall through */
+    }
   }
   const plain = /filename="([^"]+)"/i.exec(header);
   return plain ? plain[1] : null;

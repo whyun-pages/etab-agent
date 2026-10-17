@@ -13,7 +13,14 @@
 import test from 'node:test';
 import assert from 'node:assert';
 
-import { aggregate, selectRows, compileExpression, computeRows, toNumber, QueryError } from '../../src/workbook/table-query.ts';
+import {
+  aggregate,
+  selectRows,
+  compileExpression,
+  computeRows,
+  toNumber,
+  QueryError,
+} from '../../src/workbook/table-query.ts';
 
 const t = {
   header: ['订单', '状态', '金额', '日期'],
@@ -37,18 +44,32 @@ test('toNumber reads numbers people write as text', () => {
 test('aggregate: count and sum per group, largest first, blanks labelled', () => {
   const r = aggregate(t, { groupBy: ['状态'], metrics: [{ fn: 'count' }, { fn: 'sum', column: '金额' }] });
   assert.deepStrictEqual(r.header, ['状态', '行数', '金额合计']);
-  assert.deepStrictEqual(r.rows, [['已签收', 2, 1250], ['派送中', 2, 300], ['（空）', 1, 10]]);
+  assert.deepStrictEqual(r.rows, [
+    ['已签收', 2, 1250],
+    ['派送中', 2, 300],
+    ['（空）', 1, 10],
+  ]);
   assert.strictEqual(r.matched, 5);
 });
 
 test('aggregate: no groupBy is one row; an expression can be a group key', () => {
   assert.deepStrictEqual(aggregate(t, {}).rows, [[5]]);
-  const byMonth = aggregate(t, { groupBy: ['MONTH([日期])'], metrics: [{ fn: 'count', as: '单数' }], sort: { by: 'MONTH([日期])', order: 'asc' } });
-  assert.deepStrictEqual(byMonth.rows, [[5, 2], [6, 3]]);
+  const byMonth = aggregate(t, {
+    groupBy: ['MONTH([日期])'],
+    metrics: [{ fn: 'count', as: '单数' }],
+    sort: { by: 'MONTH([日期])', order: 'asc' },
+  });
+  assert.deepStrictEqual(byMonth.rows, [
+    [5, 2],
+    [6, 3],
+  ]);
 });
 
 test('aggregate: where narrows the rows; nothing matched is still an answer', () => {
-  const r = aggregate(t, { where: [{ column: '日期', op: '>=', value: '2024-06-01' }], metrics: [{ fn: 'count' }, { fn: 'distinct', column: '状态' }] });
+  const r = aggregate(t, {
+    where: [{ column: '日期', op: '>=', value: '2024-06-01' }],
+    metrics: [{ fn: 'count' }, { fn: 'distinct', column: '状态' }],
+  });
   assert.deepStrictEqual(r.rows, [[3, 2]]);
   assert.deepStrictEqual(aggregate(t, { where: [{ column: '状态', op: '=', value: '无' }] }).rows, [[0]]);
 });
@@ -57,8 +78,23 @@ test('selectRows: every condition op', () => {
   const ids = (where, match) => selectRows(t, { where, match }).map((i) => t.rows[i][0]);
   assert.deepStrictEqual(ids([{ column: '金额', op: '>', value: 100 }]), ['A1', 'A2']);
   assert.deepStrictEqual(ids([{ column: '状态', op: 'empty' }]), ['A4']);
-  assert.deepStrictEqual(ids([{ column: '状态', op: 'in', value: ['派送中'] }, { column: '金额', op: '<', value: 20 }], 'any'), ['A2', 'A4', 'A5']);
-  assert.deepStrictEqual(ids([{ column: '订单', op: 'starts_with', value: 'a' }, { column: '状态', op: 'contains', value: '签' }]), ['A1', 'A3']);
+  assert.deepStrictEqual(
+    ids(
+      [
+        { column: '状态', op: 'in', value: ['派送中'] },
+        { column: '金额', op: '<', value: 20 },
+      ],
+      'any',
+    ),
+    ['A2', 'A4', 'A5'],
+  );
+  assert.deepStrictEqual(
+    ids([
+      { column: '订单', op: 'starts_with', value: 'a' },
+      { column: '状态', op: 'contains', value: '签' },
+    ]),
+    ['A1', 'A3'],
+  );
   assert.throws(() => selectRows(t, { where: [{ column: '状态', op: 'like', value: 'x' }] }), QueryError);
   assert.throws(() => selectRows(t, { where: [{ column: '状态', op: 'in', value: 'x' }] }), /必须是数组/);
 });
@@ -78,7 +114,10 @@ test('computeRows: a row that cannot compute is null and reported, the rest comp
   const { values, failed } = computeRows(t, '[金额] / 10', [0, 4]);
   assert.strictEqual(values.get(0), 120);
   assert.strictEqual(values.get(4), null);
-  assert.deepStrictEqual(failed.map((f) => f.row), [5]);
+  assert.deepStrictEqual(
+    failed.map((f) => f.row),
+    [5],
+  );
 });
 
 test('expressions: refuse what they do not know, naming it', () => {

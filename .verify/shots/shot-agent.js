@@ -19,11 +19,12 @@ const { openPage, closePage, findEdge } = require('../support/cdp.js');
 
 const XLSX = path.join(OUT, 'live-agent-build.xlsx');
 
-const PROMPT = '做一个销售台账，三个客户：杭州云图科技有限公司、上海临港数据服务、'
-  + '深圳前海智算中心，金额分别是125万、86万、88万，签约日期分别是'
-  + '2026年1月8日、1月22日、2月3日，再加一列税率，百分之六、百分之六、百分之十三。';
+const PROMPT =
+  '做一个销售台账，三个客户：杭州云图科技有限公司、上海临港数据服务、' +
+  '深圳前海智算中心，金额分别是125万、86万、88万，签约日期分别是' +
+  '2026年1月8日、1月22日、2月3日，再加一列税率，百分之六、百分之六、百分之十三。';
 
-const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 
 /** Render a value the way its Excel format asks for. */
 function render(v, fmt) {
@@ -34,8 +35,12 @@ function render(v, fmt) {
   }
   if (typeof v === 'number') {
     const f = String(fmt || '');
-    if (f.includes('%')) return { text: (v * 100).toFixed(v * 100 % 1 ? 2 : 0) + '%', cls: 'pct' };
-    if (/[¥￥]/.test(f)) return { text: '¥' + v.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), cls: 'money' };
+    if (f.includes('%')) return { text: (v * 100).toFixed((v * 100) % 1 ? 2 : 0) + '%', cls: 'pct' };
+    if (/[¥￥]/.test(f))
+      return {
+        text: '¥' + v.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        cls: 'money',
+      };
     if (/#,##0/.test(f)) return { text: v.toLocaleString('zh-CN'), cls: 'int' };
     return { text: v.toLocaleString('zh-CN', { maximumFractionDigits: 2 }), cls: 'num' };
   }
@@ -62,7 +67,8 @@ async function main() {
     body += '<tr>';
     for (let c = 1; c <= cols; c++) {
       const cell = ws.getRow(r).getCell(c);
-      const raw = (cell.value && typeof cell.value === 'object' && 'result' in cell.value) ? cell.value.result : cell.value;
+      const raw =
+        cell.value && typeof cell.value === 'object' && 'result' in cell.value ? cell.value.result : cell.value;
       const { text, cls } = render(raw, cell.numFmt);
       body += `<td class="${cls}">${esc(text)}</td>`;
     }
@@ -130,4 +136,7 @@ async function main() {
   await closePage(page, { trashProfile: true });
 }
 
-main().catch((err) => { console.error('FAILED:', err && err.stack || err); process.exit(2); });
+main().catch((err) => {
+  console.error('FAILED:', (err && err.stack) || err);
+  process.exit(2);
+});

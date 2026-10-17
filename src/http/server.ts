@@ -85,9 +85,11 @@ const noStore: Koa.Middleware = async (ctx, next) => {
 
 /** Create the server. The caller listens. */
 function createServer(opts: ServerOptions): ServerWithState {
-  const state = opts.state || new AppState({
-    dataDir: opts.dataDir || path.join(process.cwd(), 'data'),
-  });
+  const state =
+    opts.state ||
+    new AppState({
+      dataDir: opts.dataDir || path.join(process.cwd(), 'data'),
+    });
   /**
    * Test seams for the agent model and settings.
    *

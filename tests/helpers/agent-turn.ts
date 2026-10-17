@@ -55,7 +55,7 @@ export function view(ai, context) {
 export function step(ai, s) {
   if (typeof s === 'string') return ai.fauxAssistantMessage(s);
   if (s && s.error) return ai.fauxAssistantMessage([], { stopReason: 'error', errorMessage: s.error });
-  const calls = Array.isArray(s) ? s : (s.calls || [s]);
+  const calls = Array.isArray(s) ? s : s.calls || [s];
   const content = calls.map((c) => ai.fauxToolCall(c.tool, c.args));
   if (s.text) content.unshift(ai.fauxText(s.text));
   return ai.fauxAssistantMessage(content, { stopReason: 'toolUse' });
@@ -68,10 +68,12 @@ export function step(ai, s) {
 export async function turnWith(steps, args) {
   const { ai, faux } = await loadFaux();
   const contexts = [];
-  faux.setResponses(steps.map((s) => (context) => {
-    contexts.push(view(ai, context));
-    return step(ai, s);
-  }));
+  faux.setResponses(
+    steps.map((s) => (context) => {
+      contexts.push(view(ai, context));
+      return step(ai, s);
+    }),
+  );
   const res = await runTurn({ settings: fakeSettings(), model: faux.getModel(), ...args });
   res.contexts = contexts;
   return res;
@@ -79,16 +81,26 @@ export async function turnWith(steps, args) {
 
 export const SPEC_3_ROWS = {
   title: '销售',
-  sheets: [{
-    name: '明细',
-    columns: [{ header: '客户', type: 'text' }, { header: '金额', type: 'currency' }],
-    rows: [['甲', 100], ['乙', 200], ['丙', 300]],
-  }],
+  sheets: [
+    {
+      name: '明细',
+      columns: [
+        { header: '客户', type: 'text' },
+        { header: '金额', type: 'currency' },
+      ],
+      rows: [
+        ['甲', 100],
+        ['乙', 200],
+        ['丙', 300],
+      ],
+    },
+  ],
 };
 
-export const specWith = (rows) => normalizeSpec({
-  ...SPEC_3_ROWS,
-  sheets: [{ ...SPEC_3_ROWS.sheets[0], rows }],
-}).spec;
+export const specWith = (rows) =>
+  normalizeSpec({
+    ...SPEC_3_ROWS,
+    sheets: [{ ...SPEC_3_ROWS.sheets[0], rows }],
+  }).spec;
 
 export const rows10 = () => specWith(Array.from({ length: 10 }, (_, i) => [`客户${i + 1}`, (i + 1) * 100]));

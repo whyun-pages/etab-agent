@@ -118,7 +118,9 @@ function decodeName(bytes: Buffer, utf8Flag: boolean): string {
   if (bytes.every((b) => b < 0x80)) return bytes.toString('latin1');
   try {
     return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-  } catch { /* not UTF-8 */ }
+  } catch {
+    /* not UTF-8 */
+  }
   try {
     return new TextDecoder('gbk').decode(bytes);
   } catch {
@@ -193,8 +195,12 @@ export function readZip(buf: Buffer, limits: ReadZipLimits = {}): Map<string, Zi
         const len = u16(buf, ep + 2);
         if (id === 0x0001) {
           let q = ep + 4;
-          if (uncompSize === 0xffffffff) { q += 8; }
-          if (compSize === 0xffffffff) { q += 8; }
+          if (uncompSize === 0xffffffff) {
+            q += 8;
+          }
+          if (compSize === 0xffffffff) {
+            q += 8;
+          }
           if (localOffset === 0xffffffff) localOffset = Number(buf.readBigUInt64LE(q));
           break;
         }
@@ -218,7 +224,13 @@ export function readZip(buf: Buffer, limits: ReadZipLimits = {}): Map<string, Zi
 }
 
 /** Resolve one entry's payload from its local header. */
-function readLocalEntry(buf: Buffer, localOffset: number, cdMethod: number, cdCompSize: number, budget = Infinity): Buffer {
+function readLocalEntry(
+  buf: Buffer,
+  localOffset: number,
+  cdMethod: number,
+  cdCompSize: number,
+  budget = Infinity,
+): Buffer {
   if (u32(buf, localOffset) !== SIG_LOC) throw new Error('bad local header at ' + localOffset);
   const nameLen = u16(buf, localOffset + 26);
   const extraLen = u16(buf, localOffset + 28);
@@ -239,7 +251,8 @@ function readLocalEntry(buf: Buffer, localOffset: number, cdMethod: number, cdCo
     try {
       return zlib.inflateRawSync(raw, { maxOutputLength: Math.max(1, budget) });
     } catch (err) {
-      if ((err as { code?: string }).code === 'ERR_BUFFER_TOO_LARGE' || err instanceof RangeError) throw new Error('压缩包解压后太大');
+      if ((err as { code?: string }).code === 'ERR_BUFFER_TOO_LARGE' || err instanceof RangeError)
+        throw new Error('压缩包解压后太大');
       throw err;
     }
   }
@@ -282,8 +295,8 @@ export function writeZip(files: ZipInput[], { level = 6 }: WriteOptions = {}): B
 
     const local = Buffer.alloc(30);
     local.writeUInt32LE(SIG_LOC, 0);
-    local.writeUInt16LE(20, 4);          // version needed
-    local.writeUInt16LE(0x800, 6);       // UTF-8 names
+    local.writeUInt16LE(20, 4); // version needed
+    local.writeUInt16LE(0x800, 6); // UTF-8 names
     local.writeUInt16LE(method, 8);
     local.writeUInt16LE(time, 10);
     local.writeUInt16LE(date, 12);
@@ -297,8 +310,8 @@ export function writeZip(files: ZipInput[], { level = 6 }: WriteOptions = {}): B
 
     const cen = Buffer.alloc(46);
     cen.writeUInt32LE(SIG_CEN, 0);
-    cen.writeUInt16LE(20, 4);            // version made by
-    cen.writeUInt16LE(20, 6);            // version needed
+    cen.writeUInt16LE(20, 4); // version made by
+    cen.writeUInt16LE(20, 6); // version needed
     cen.writeUInt16LE(0x800, 8);
     cen.writeUInt16LE(method, 10);
     cen.writeUInt16LE(time, 12);
@@ -307,7 +320,7 @@ export function writeZip(files: ZipInput[], { level = 6 }: WriteOptions = {}): B
     cen.writeUInt32LE(body.length, 20);
     cen.writeUInt32LE(raw.length, 24);
     cen.writeUInt16LE(nameBuf.length, 28);
-    cen.writeUInt32LE(0, 38);            // external attrs
+    cen.writeUInt32LE(0, 38); // external attrs
     cen.writeUInt32LE(offset, 42);
     central.push(cen, nameBuf);
 
@@ -333,7 +346,10 @@ export function writeZip(files: ZipInput[], { level = 6 }: WriteOptions = {}): B
  */
 export const DEFAULT_MTIME = Date.UTC(2026, 0, 1, 0, 0, 0);
 
-interface DosStamp { date: number; time: number }
+interface DosStamp {
+  date: number;
+  time: number;
+}
 
 function dosStamp(ms?: number): DosStamp {
   const d = new Date(ms == null ? DEFAULT_MTIME : ms);

@@ -15,15 +15,19 @@ const { spawn, execFileSync } = require('node:child_process');
 const ROOT = path.join(__dirname, '..', '..');
 const EXE = path.join(ROOT, 'dist', 'TabAgent.exe');
 
-function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
 
 function get(url) {
   return new Promise((resolve, reject) => {
-    http.get(url, (res) => {
-      const chunks = [];
-      res.on('data', (c) => chunks.push(c));
-      res.on('end', () => resolve({ status: res.statusCode, body: Buffer.concat(chunks).toString() }));
-    }).on('error', reject);
+    http
+      .get(url, (res) => {
+        const chunks = [];
+        res.on('data', (c) => chunks.push(c));
+        res.on('end', () => resolve({ status: res.statusCode, body: Buffer.concat(chunks).toString() }));
+      })
+      .on('error', reject);
   });
 }
 
@@ -32,7 +36,9 @@ function countProcesses(name) {
   try {
     const out = execFileSync('tasklist', ['/FI', `IMAGENAME eq ${name}`, '/NH', '/FO', 'CSV'], { encoding: 'utf8' });
     return (out.match(new RegExp(name, 'gi')) || []).length;
-  } catch { return -1; }
+  } catch {
+    return -1;
+  }
 }
 
 async function main() {
@@ -45,8 +51,12 @@ async function main() {
   const child = spawn(EXE, [], { stdio: ['ignore', 'pipe', 'pipe'] });
 
   let out = '';
-  child.stdout.on('data', (d) => { out += d.toString(); });
-  child.stderr.on('data', (d) => { out += d.toString(); });
+  child.stdout.on('data', (d) => {
+    out += d.toString();
+  });
+  child.stderr.on('data', (d) => {
+    out += d.toString();
+  });
 
   // Give it time to start the server and spawn the browser.
   await sleep(9000);
@@ -88,4 +98,7 @@ async function main() {
   console.log('process killed        : ' + (child.exitCode !== null || child.signalCode !== null));
 }
 
-main().catch((e) => { console.error(e.message); process.exit(1); });
+main().catch((e) => {
+  console.error(e.message);
+  process.exit(1);
+});

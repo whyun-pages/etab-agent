@@ -49,7 +49,11 @@ function getJson(port, urlPath) {
       res.on('data', (c) => chunks.push(c));
       res.on('end', () => {
         const text = Buffer.concat(chunks).toString('utf8');
-        try { resolve(JSON.parse(text)); } catch (err) { reject(new Error(`bad JSON from ${urlPath}: ${text.slice(0, 120)}`)); }
+        try {
+          resolve(JSON.parse(text));
+        } catch (err) {
+          reject(new Error(`bad JSON from ${urlPath}: ${text.slice(0, 120)}`));
+        }
       });
     });
     req.on('error', reject);
@@ -79,7 +83,11 @@ class CDP {
     const client = new CDP(ws);
     ws.onmessage = (evt) => {
       let msg;
-      try { msg = JSON.parse(evt.data); } catch { return; }
+      try {
+        msg = JSON.parse(evt.data);
+      } catch {
+        return;
+      }
       if (msg.id) {
         const slot = client.pending.get(msg.id);
         if (!slot) return;
@@ -92,7 +100,14 @@ class CDP {
       if (msg.method) {
         client.events.push(msg);
         const fns = client.listeners && client.listeners.get(msg.method);
-        if (fns) for (const fn of fns) { try { fn(msg.params || {}); } catch { /* a listener must not kill the socket */ } }
+        if (fns)
+          for (const fn of fns) {
+            try {
+              fn(msg.params || {});
+            } catch {
+              /* a listener must not kill the socket */
+            }
+          }
       }
     };
     return client;
@@ -120,28 +135,46 @@ class CDP {
         reject(new Error(method + ' timed out after ' + timeoutMs + ' ms'));
       }, timeoutMs);
       this.pending.set(id, {
-        resolve: (r) => { clearTimeout(timer); resolve(r); },
-        reject: (e) => { clearTimeout(timer); reject(e); },
+        resolve: (r) => {
+          clearTimeout(timer);
+          resolve(r);
+        },
+        reject: (e) => {
+          clearTimeout(timer);
+          reject(e);
+        },
       });
       this.ws.send(JSON.stringify({ id, method, params }));
     });
   }
 
-  close() { try { this.ws.close(); } catch { /* already gone */ } }
+  close() {
+    try {
+      this.ws.close();
+    } catch {
+      /* already gone */
+    }
+  }
 }
 
 // ── pids ────────────────────────────────────────────────────────────
 
 function findBrowserProcesses() {
   return new Promise((resolve) => {
-    execFile('tasklist', ['/FI', 'IMAGENAME eq msedge.exe', '/FO', 'CSV', '/NH'],
-      { windowsHide: true }, (err, stdout) => {
+    execFile(
+      'tasklist',
+      ['/FI', 'IMAGENAME eq msedge.exe', '/FO', 'CSV', '/NH'],
+      { windowsHide: true },
+      (err, stdout) => {
         if (err || !stdout) return resolve([]);
-        const pids = String(stdout).split(/\r?\n/)
+        const pids = String(stdout)
+          .split(/\r?\n/)
           .map((line) => (line.match(/^"[^"]+","(\d+)"/) || [])[1])
-          .filter(Boolean).map(Number);
+          .filter(Boolean)
+          .map(Number);
         resolve(pids);
-      });
+      },
+    );
   });
 }
 
@@ -150,8 +183,9 @@ async function killBrowsers() {
   const pids = await findBrowserProcesses();
   if (!pids.length) return 0;
   await new Promise((resolve) => {
-    execFile('taskkill', ['/F', ...pids.flatMap((p) => ['/PID', String(p)]), '/T'],
-      { windowsHide: true }, () => resolve());
+    execFile('taskkill', ['/F', ...pids.flatMap((p) => ['/PID', String(p)]), '/T'], { windowsHide: true }, () =>
+      resolve(),
+    );
   });
   return pids.length;
 }
@@ -182,18 +216,22 @@ async function openPage({ edge, profile, url, port, window = '1400,900', waitFor
   if (!edge) edge = findEdge();
   fs.mkdirSync(path.dirname(profile), { recursive: true });
 
-  const proc = spawn(edge, [
-    '--headless=new',
-    '--disable-gpu',
-    '--no-first-run',
-    '--no-default-browser-check',
-    '--disable-features=Translate,MediaRouter',
-    '--force-device-scale-factor=1',
-    `--window-size=${window}`,
-    `--remote-debugging-port=${port}`,
-    `--user-data-dir=${profile}`,
-    'about:blank',
-  ], { stdio: 'ignore' });
+  const proc = spawn(
+    edge,
+    [
+      '--headless=new',
+      '--disable-gpu',
+      '--no-first-run',
+      '--no-default-browser-check',
+      '--disable-features=Translate,MediaRouter',
+      '--force-device-scale-factor=1',
+      `--window-size=${window}`,
+      `--remote-debugging-port=${port}`,
+      `--user-data-dir=${profile}`,
+      'about:blank',
+    ],
+    { stdio: 'ignore' },
+  );
 
   let target = null;
   for (let i = 0; i < 80 && !target; i++) {
@@ -201,10 +239,16 @@ async function openPage({ edge, profile, url, port, window = '1400,900', waitFor
     try {
       const list = await getJson(port, '/json/list');
       target = list.find((t) => t.type === 'page') || null;
-    } catch { /* endpoint not up yet */ }
+    } catch {
+      /* endpoint not up yet */
+    }
   }
   if (!target) {
-    try { proc.kill(); } catch { /* ignore */ }
+    try {
+      proc.kill();
+    } catch {
+      /* ignore */
+    }
     throw new Error('Edge CDP endpoint never came up on port ' + port);
   }
 
@@ -220,7 +264,9 @@ async function openPage({ edge, profile, url, port, window = '1400,900', waitFor
     profile,
     net: cdp.net,
 
-    async send(method, params) { return cdp.send(method, params); },
+    async send(method, params) {
+      return cdp.send(method, params);
+    },
 
     /** Evaluate in the page. Throws with the page's own message on error. */
     async evaluate(expression, { awaitPromise = true } = {}) {
@@ -230,8 +276,10 @@ async function openPage({ edge, profile, url, port, window = '1400,900', waitFor
         awaitPromise,
       });
       if (r.exceptionDetails) {
-        const text = (r.exceptionDetails.exception && r.exceptionDetails.exception.description)
-          || r.exceptionDetails.text || 'unknown page error';
+        const text =
+          (r.exceptionDetails.exception && r.exceptionDetails.exception.description) ||
+          r.exceptionDetails.text ||
+          'unknown page error';
         throw new Error('page threw: ' + text.split('\n')[0]);
       }
       return r.result.value;
@@ -253,23 +301,37 @@ async function openPage({ edge, profile, url, port, window = '1400,900', waitFor
         try {
           const ready = await page.evaluate('document.readyState', { awaitPromise: false });
           if (ready !== 'complete' && ready !== 'interactive') continue;
-          if (!waitForSelector) { if (ready === 'complete') return; continue; }
-          const found = await page.evaluate(`Boolean(document.querySelector(${JSON.stringify(waitForSelector)}))`, { awaitPromise: false });
+          if (!waitForSelector) {
+            if (ready === 'complete') return;
+            continue;
+          }
+          const found = await page.evaluate(`Boolean(document.querySelector(${JSON.stringify(waitForSelector)}))`, {
+            awaitPromise: false,
+          });
           if (found) return;
-        } catch { /* navigation in flight */ }
+        } catch {
+          /* navigation in flight */
+        }
       }
       if (waitForSelector) throw new Error('selector never appeared: ' + waitForSelector);
     },
 
     /** Requests whose URL contains `needle`, from the Network.* stream. */
     requests(needle) {
-      return cdp.net.filter((m) => m.method === 'Network.requestWillBeSent'
-        && m.params && m.params.request && String(m.params.request.url).includes(needle));
+      return cdp.net.filter(
+        (m) =>
+          m.method === 'Network.requestWillBeSent' &&
+          m.params &&
+          m.params.request &&
+          String(m.params.request.url).includes(needle),
+      );
     },
 
     screenshot(file) {
-      return cdp.send('Page.captureScreenshot', { format: 'png' })
-        .then((r) => { fs.writeFileSync(file, Buffer.from(r.data, 'base64')); return file; });
+      return cdp.send('Page.captureScreenshot', { format: 'png' }).then((r) => {
+        fs.writeFileSync(file, Buffer.from(r.data, 'base64'));
+        return file;
+      });
     },
   };
 
@@ -279,9 +341,17 @@ async function openPage({ edge, profile, url, port, window = '1400,900', waitFor
 
 async function closePage(page, { trashProfile = false } = {}) {
   if (!page) return;
-  try { page.cdp.close(); } catch { /* ignore */ }
+  try {
+    page.cdp.close();
+  } catch {
+    /* ignore */
+  }
   await killBrowsers();
-  try { if (page.proc) page.proc.kill(); } catch { /* ignore */ }
+  try {
+    if (page.proc) page.proc.kill();
+  } catch {
+    /* ignore */
+  }
   await sleep(500);
   if (trashProfile && page.profile) moveToTrash(page.profile, 'tab-agent-cdp');
 }
@@ -294,6 +364,12 @@ async function closeAllBrowsers() {
 }
 
 module.exports = {
-  findEdge, openPage, closePage, closeAllBrowsers,
-  killBrowsers, moveToTrash, sleep, CDP,
+  findEdge,
+  openPage,
+  closePage,
+  closeAllBrowsers,
+  killBrowsers,
+  moveToTrash,
+  sleep,
+  CDP,
 };

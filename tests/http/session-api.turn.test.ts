@@ -12,14 +12,7 @@ import assert from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
 
-import {
-  conversation,
-  startServer,
-  post,
-  get,
-  ACTION,
-  ANSWER,
-} from '../helpers/session-server.ts';
+import { conversation, startServer, post, get, ACTION, ANSWER } from '../helpers/session-server.ts';
 
 // ── turns ───────────────────────────────────────────────────────────
 
@@ -307,9 +300,13 @@ test('read-only mode logs no change', async (t) => {
  */
 function concurrentScript({ held, heldCall, other, otherCall }) {
   let release;
-  const gate = new Promise((r) => { release = r; });
+  const gate = new Promise((r) => {
+    release = r;
+  });
   let entered;
-  const inFlight = new Promise((r) => { entered = r; });
+  const inFlight = new Promise((r) => {
+    entered = r;
+  });
   const route = (context) => {
     const user = conversation(context)[0].content;
     const after = context.messages.some((m) => m.role === 'toolResult');
@@ -334,9 +331,13 @@ test('a burst of concurrent turns on one session loses no message', async (t) =>
   const { json: created } = await post(base, '/api/sessions', {});
   const id = created.session.id;
 
-  const burst = await Promise.all(Array.from({ length: TURNS }, (_, i) =>
-    post(base, `/api/sessions/${id}/turn`, { message: `并发第 ${i} 次` })));
-  assert.ok(burst.every((b) => b.status === 200), burst.map((b) => b.status).join(','));
+  const burst = await Promise.all(
+    Array.from({ length: TURNS }, (_, i) => post(base, `/api/sessions/${id}/turn`, { message: `并发第 ${i} 次` })),
+  );
+  assert.ok(
+    burst.every((b) => b.status === 200),
+    burst.map((b) => b.status).join(','),
+  );
 
   const messages = (await get(base, `/api/sessions/${id}`)).json.session.messages;
   const asked = new Set(messages.filter((m) => m.role === 'user').map((m) => m.content));
@@ -368,8 +369,12 @@ test('two concurrent turns both land: the slower one is replayed on the newer ta
 
   const stored = JSON.parse(fs.readFileSync(path.join(dataDir, 'sessions', `${id}.json`), 'utf8'));
   const sheet = stored.spec.sheets[0];
-  assert.deepStrictEqual(sheet.columns.map((c) => c.header), ['客户名称', '金额', '备注'], 'the fast turn\'s column survived');
-  assert.strictEqual(sheet.rows[0][1], 1, 'the slow turn\'s edit landed too');
+  assert.deepStrictEqual(
+    sheet.columns.map((c) => c.header),
+    ['客户名称', '金额', '备注'],
+    "the fast turn's column survived",
+  );
+  assert.strictEqual(sheet.rows[0][1], 1, "the slow turn's edit landed too");
   assert.strictEqual(stored.changes.length, 3);
   assert.strictEqual(stored.messages.length, 6, 'every message of every turn is on disk');
 });

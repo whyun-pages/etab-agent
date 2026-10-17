@@ -22,7 +22,9 @@ $procs | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction Sile
 `;
 
 try {
-  const out = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { encoding: 'utf8' });
+  const out = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], {
+    encoding: 'utf8',
+  });
   console.log(out.trim());
 } catch (e) {
   console.error('failed: ' + (e.stderr || e.message));

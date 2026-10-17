@@ -4,25 +4,50 @@ import assert from 'node:assert';
 import { writeZip, readZip } from '../../src/formats/zip.ts';
 import { writeSimpleSheet, writeWorkbook } from '../../src/formats/xlsx-writer.ts';
 import {
-  readAttachment, parseCsv, guessDelimiter, decodeText, matrixToTable,
-  detectHeaderRow, coerce, columnType, docxText, markupToText, sniffKind,
-  imageDimensions, sheetToMatrix, jsonToTable, ingestFile,
+  readAttachment,
+  parseCsv,
+  guessDelimiter,
+  decodeText,
+  matrixToTable,
+  detectHeaderRow,
+  coerce,
+  columnType,
+  docxText,
+  markupToText,
+  sniffKind,
+  imageDimensions,
+  sheetToMatrix,
+  jsonToTable,
+  ingestFile,
 } from '../../src/formats/attachments.ts';
 
 // ---------------------------------------------------------------------- CSV
 test('CSV parsing handles quoting, embedded delimiters and newlines', () => {
   const rows = parseCsv('a,b,c\n1,"x,y",3\n');
-  assert.deepStrictEqual(rows, [['a', 'b', 'c'], ['1', 'x,y', '3']]);
+  assert.deepStrictEqual(rows, [
+    ['a', 'b', 'c'],
+    ['1', 'x,y', '3'],
+  ]);
 
   const quoted = parseCsv('name,note\n"含,逗号","换\n行"\n');
-  assert.deepStrictEqual(quoted, [['name', 'note'], ['含,逗号', '换\n行']]);
+  assert.deepStrictEqual(quoted, [
+    ['name', 'note'],
+    ['含,逗号', '换\n行'],
+  ]);
 
   // Doubled quotes unescape to one quote.
   assert.deepStrictEqual(parseCsv('"say ""hi""",2'), [['say "hi"', '2']]);
   // No trailing newline still yields the last record.
-  assert.deepStrictEqual(parseCsv('a,b\nc,d'), [['a', 'b'], ['c', 'd']]);
+  assert.deepStrictEqual(parseCsv('a,b\nc,d'), [
+    ['a', 'b'],
+    ['c', 'd'],
+  ]);
   // CRLF and lone CR both end records.
-  assert.deepStrictEqual(parseCsv('a,b\r\nc,d\re,f'), [['a', 'b'], ['c', 'd'], ['e', 'f']]);
+  assert.deepStrictEqual(parseCsv('a,b\r\nc,d\re,f'), [
+    ['a', 'b'],
+    ['c', 'd'],
+    ['e', 'f'],
+  ]);
   // BOM is stripped.
   assert.deepStrictEqual(parseCsv('\ufeffa,b'), [['a', 'b']]);
 });
@@ -46,11 +71,30 @@ test('text decoding detects BOM and invalid UTF-8', () => {
 
 // ------------------------------------------------------------------- table
 test('header row detection prefers labels over numbers', () => {
-  assert.strictEqual(detectHeaderRow([['名称', '数量'], ['甲', 1]]), 0);
+  assert.strictEqual(
+    detectHeaderRow([
+      ['名称', '数量'],
+      ['甲', 1],
+    ]),
+    0,
+  );
   // A title row above the header is skipped.
-  assert.strictEqual(detectHeaderRow([['销售报表', ''], ['名称', '数量'], ['甲', 1]]), 1);
+  assert.strictEqual(
+    detectHeaderRow([
+      ['销售报表', ''],
+      ['名称', '数量'],
+      ['甲', 1],
+    ]),
+    1,
+  );
   // Pure data has no real header; row 0 is used as a fallback.
-  assert.strictEqual(detectHeaderRow([[1, 2], [3, 4]]), 0);
+  assert.strictEqual(
+    detectHeaderRow([
+      [1, 2],
+      [3, 4],
+    ]),
+    0,
+  );
 });
 
 test('cell coercion turns obvious numerics and percentages into numbers', () => {
@@ -87,7 +131,10 @@ test('matrixToTable builds headers, rows and column types', () => {
 
 test('empty cells produce stable column lengths', () => {
   // Raw string cells stay strings in rows; typing happens per column.
-  const table = matrixToTable([['a', 'b', 'c'], ['1', '', '3']]);
+  const table = matrixToTable([
+    ['a', 'b', 'c'],
+    ['1', '', '3'],
+  ]);
   assert.strictEqual(table.rows[0].length, 3);
   assert.strictEqual(table.rows[0][1], null);
   // The empty cell is excluded from the column's value list.
@@ -98,7 +145,11 @@ test('empty cells produce stable column lengths', () => {
 test('xlsx attachment is read into tables per sheet', async () => {
   const buf = writeSimpleSheet({
     sheetName: '明细',
-    rows: [['项目', '金额'], ['甲', 100], ['乙', 250.5]],
+    rows: [
+      ['项目', '金额'],
+      ['甲', 100],
+      ['乙', 250.5],
+    ],
   });
   const att = await readAttachment(buf, 'data.xlsx');
   assert.strictEqual(att.kind, 'table');
@@ -123,7 +174,8 @@ test('tsv is parsed with tabs regardless of content', async () => {
 
 test('json array of objects becomes a table', async () => {
   const json = JSON.stringify([
-    { 客户: '甲', 金额: 100 }, { 客户: '乙', 金额: 200 },
+    { 客户: '甲', 金额: 100 },
+    { 客户: '乙', 金额: 200 },
   ]);
   const att = await readAttachment(Buffer.from(json, 'utf8'), 'rows.json');
   assert.strictEqual(att.kind, 'table');
@@ -173,7 +225,10 @@ test('docx text and embedded tables are extracted', async () => {
 
 test('docx detection works from magic bytes even with a wrong extension', async () => {
   const buf = writeZip([
-    { name: 'word/document.xml', data: '<w:document xmlns:w="x"><w:body><w:p><w:r><w:t>内容</w:t></w:r></w:p></w:body></w:document>' },
+    {
+      name: 'word/document.xml',
+      data: '<w:document xmlns:w="x"><w:body><w:p><w:r><w:t>内容</w:t></w:r></w:p></w:body></w:document>',
+    },
   ]);
   const att = await readAttachment(buf, 'mystery.bin');
   assert.strictEqual(att.kind, 'text');
@@ -214,7 +269,9 @@ test('a failing image extractor is recorded, not fatal', async () => {
   const png = Buffer.alloc(33);
   png.writeUInt32BE(0x89504e47, 0);
   const att = await readAttachment(png, 'x.png', {
-    imageExtractor: async () => { throw new Error('vision unavailable'); },
+    imageExtractor: async () => {
+      throw new Error('vision unavailable');
+    },
   });
   assert.strictEqual(att.kind, 'image');
   assert.match(att.extractError, /vision unavailable/);
@@ -241,7 +298,8 @@ test('pdf is explicitly reported as unsupported', async () => {
 });
 
 test('html attachment is stripped to readable text', async () => {
-  const html = '<html><body><h1>标题</h1><p>第一段 &amp; 更多</p><script>var x=1;</script><table><tr><td>甲</td><td>乙</td></tr></table></body></html>';
+  const html =
+    '<html><body><h1>标题</h1><p>第一段 &amp; 更多</p><script>var x=1;</script><table><tr><td>甲</td><td>乙</td></tr></table></body></html>';
   const att = await readAttachment(Buffer.from(html, 'utf8'), 'page.html');
   assert.strictEqual(att.kind, 'text');
   assert.match(att.text, /标题/);
@@ -252,7 +310,8 @@ test('html attachment is stripped to readable text', async () => {
 
 test('sheetToMatrix lays cells onto a dense grid using cached values', () => {
   const matrix = sheetToMatrix({
-    maxRow: 2, maxCol: 3,
+    maxRow: 2,
+    maxCol: 3,
     cells: [
       { row: 1, col: 1, value: 'a' },
       { row: 1, col: 3, value: 'c' },
@@ -261,7 +320,10 @@ test('sheetToMatrix lays cells onto a dense grid using cached values', () => {
       { row: 1, col: 2, value: { error: '#N/A' } },
     ],
   });
-  assert.deepStrictEqual(matrix, [['a', null, 'c'], [null, 5, 10]]);
+  assert.deepStrictEqual(matrix, [
+    ['a', null, 'c'],
+    [null, 5, 10],
+  ]);
 });
 
 test('markupToText keeps block structure', () => {
@@ -273,7 +335,13 @@ test('a workbook with several sheets can select a sheet explicitly', async () =>
   const buf = writeWorkbook({
     sheets: [
       { name: '第一', cells: [{ ref: 'A1', value: '甲' }] },
-      { name: '第二', cells: [{ ref: 'A1', value: '乙' }, { ref: 'B1', value: '丙' }] },
+      {
+        name: '第二',
+        cells: [
+          { ref: 'A1', value: '乙' },
+          { ref: 'B1', value: '丙' },
+        ],
+      },
     ],
   });
   const att = await readAttachment(buf, 'multi.xlsx', { sheet: '第二' });
@@ -290,15 +358,26 @@ test('ingestFile: a zip becomes one attachment per readable member, named by its
     { name: 'tool.exe', data: 'MZ' },
   ]);
   const { items, skipped } = await ingestFile(zip, 'box3.zip');
-  assert.deepStrictEqual(items.map((i) => i.name), ['box3.zip/订单/5月.csv', 'box3.zip/说明.txt']);
-  assert.deepStrictEqual(items.map((i) => i.filename), ['5月.csv', '说明.txt']);
+  assert.deepStrictEqual(
+    items.map((i) => i.name),
+    ['box3.zip/订单/5月.csv', 'box3.zip/说明.txt'],
+  );
+  assert.deepStrictEqual(
+    items.map((i) => i.filename),
+    ['5月.csv', '说明.txt'],
+  );
   assert.strictEqual(items[0].att.kind, 'table');
   assert.strictEqual(items[0].att.table.rows.length, 2);
   assert.deepStrictEqual(skipped, ['tool.exe']);
 });
 
 test('ingestFile: an xlsx is a zip but stays one workbook', async () => {
-  const buf = writeSimpleSheet({ rows: [['a', 'b'], [1, 2]] });
+  const buf = writeSimpleSheet({
+    rows: [
+      ['a', 'b'],
+      [1, 2],
+    ],
+  });
   const { items } = await ingestFile(buf, 'x.xlsx');
   assert.strictEqual(items.length, 1);
   assert.strictEqual(items[0].att.kind, 'table');
@@ -326,7 +405,9 @@ test('zip names: GBK without the UTF-8 flag decodes as Chinese', () => {
   }
   for (const sig of [0x04034b50, 0x02014b50]) {
     let p = -1;
-    while ((p = zip.indexOf(Buffer.from([sig & 0xff, (sig >> 8) & 0xff, (sig >> 16) & 0xff, sig >>> 24]), p + 1)) !== -1) {
+    while (
+      (p = zip.indexOf(Buffer.from([sig & 0xff, (sig >> 8) & 0xff, (sig >> 16) & 0xff, sig >>> 24]), p + 1)) !== -1
+    ) {
       const flagAt = p + (sig === 0x04034b50 ? 6 : 8);
       zip.writeUInt16LE(zip.readUInt16LE(flagAt) & ~0x800, flagAt);
     }

@@ -48,7 +48,9 @@ const EXE = path.join(ROOT, 'dist', 'TabAgent.exe');
 
 const { createServer } = require(path.join(ROOT, 'src', 'http', 'server.ts'));
 
-function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
 
 function get(urlPath, port = PORT) {
   return new Promise((resolve, reject) => {
@@ -64,7 +66,11 @@ function get(urlPath, port = PORT) {
 
 /** Minimal DevTools client over the global WebSocket (Node 22+). */
 class CDP {
-  constructor(ws) { this.ws = ws; this.id = 0; this.pending = new Map(); }
+  constructor(ws) {
+    this.ws = ws;
+    this.id = 0;
+    this.pending = new Map();
+  }
 
   static async attach(wsUrl) {
     const ws = new WebSocket(wsUrl);
@@ -75,7 +81,11 @@ class CDP {
     const client = new CDP(ws);
     ws.onmessage = (ev) => {
       let msg;
-      try { msg = JSON.parse(ev.data); } catch { return; }
+      try {
+        msg = JSON.parse(ev.data);
+      } catch {
+        return;
+      }
       const slot = client.pending.get(msg.id);
       if (!slot) return;
       client.pending.delete(msg.id);
@@ -92,14 +102,26 @@ class CDP {
         reject(new Error(method + ' timed out'));
       }, 20000);
       this.pending.set(id, {
-        resolve: (r) => { clearTimeout(timer); resolve(r); },
-        reject: (e) => { clearTimeout(timer); reject(e); },
+        resolve: (r) => {
+          clearTimeout(timer);
+          resolve(r);
+        },
+        reject: (e) => {
+          clearTimeout(timer);
+          reject(e);
+        },
       });
       this.ws.send(JSON.stringify({ id, method, params }));
     });
   }
 
-  close() { try { this.ws.close(); } catch { /* ignore */ } }
+  close() {
+    try {
+      this.ws.close();
+    } catch {
+      /* ignore */
+    }
+  }
 }
 
 /**
@@ -183,7 +205,11 @@ async function main() {
     let up = null;
     for (let i = 0; i < 80 && !up; i++) {
       await sleep(250);
-      try { up = JSON.parse((await get('/api/health')).body); } catch { /* not up yet */ }
+      try {
+        up = JSON.parse((await get('/api/health')).body);
+      } catch {
+        /* not up yet */
+      }
     }
     if (!up) throw new Error('packaged exe never answered /api/health');
     console.log(`packaged exe listening on ${PORT}`);
@@ -192,12 +218,17 @@ async function main() {
     await new Promise((r) => server.listen(PORT, '127.0.0.1', r));
   }
 
-  const edge = spawn(EDGE, [
-    `--remote-debugging-port=${CDP_PORT}`,
-    `--user-data-dir=${PROFILE}`,
-    '--no-first-run', '--no-default-browser-check',
-    'about:blank',
-  ], { stdio: 'ignore', detached: true });
+  const edge = spawn(
+    EDGE,
+    [
+      `--remote-debugging-port=${CDP_PORT}`,
+      `--user-data-dir=${PROFILE}`,
+      '--no-first-run',
+      '--no-default-browser-check',
+      'about:blank',
+    ],
+    { stdio: 'ignore', detached: true },
+  );
   edge.unref();
 
   let page = null;
@@ -206,7 +237,9 @@ async function main() {
     try {
       const res = await get('/json/list', CDP_PORT);
       page = JSON.parse(res.body).find((t) => t.type === 'page') || null;
-    } catch { /* not up yet */ }
+    } catch {
+      /* not up yet */
+    }
   }
   if (!page) throw new Error('Edge CDP never came up');
 
@@ -215,7 +248,10 @@ async function main() {
   await cdp.send('Page.enable');
   // The viewport is the whole point: the app lays out from it.
   await cdp.send('Emulation.setDeviceMetricsOverride', {
-    width: 1280, height: HEIGHT, deviceScaleFactor: 1, mobile: false,
+    width: 1280,
+    height: HEIGHT,
+    deviceScaleFactor: 1,
+    mobile: false,
   });
 
   await cdp.send('Page.navigate', { url: `http://127.0.0.1:${PORT}/` });
@@ -258,22 +294,52 @@ async function main() {
     const rows = JSON.parse(res.result.value);
 
     console.log(`\n=== view: ${view}   viewport height: ${HEIGHT} ===`);
-    console.log('  ' + 'selector'.padEnd(15) + 'clientH'.padStart(8) + 'scrollH'.padStart(9)
-      + '  ' + 'overflowY'.padEnd(10) + ' verdict');
+    console.log(
+      '  ' +
+        'selector'.padEnd(15) +
+        'clientH'.padStart(8) +
+        'scrollH'.padStart(9) +
+        '  ' +
+        'overflowY'.padEnd(10) +
+        ' verdict',
+    );
     for (const r of rows) {
-      const verdict = r.sel === 'viewport' ? `innerHeight=${r.clientH}`
-        : r.clipped ? 'CLIPPED — content unreachable'
-        : r.hasMore ? 'overflows, scrollable' : 'fits';
+      const verdict =
+        r.sel === 'viewport'
+          ? `innerHeight=${r.clientH}`
+          : r.clipped
+            ? 'CLIPPED — content unreachable'
+            : r.hasMore
+              ? 'overflows, scrollable'
+              : 'fits';
       if (r.clipped) failures++;
-      console.log('  ' + r.sel.padEnd(15) + String(r.clientH).padStart(8) + String(r.scrollH).padStart(9)
-        + '  ' + r.overflowY.padEnd(10) + ' ' + verdict);
+      console.log(
+        '  ' +
+          r.sel.padEnd(15) +
+          String(r.clientH).padStart(8) +
+          String(r.scrollH).padStart(9) +
+          '  ' +
+          r.overflowY.padEnd(10) +
+          ' ' +
+          verdict,
+      );
     }
   }
 
   cdp.close();
   if (server) server.close();
-  if (exe) { try { exe.kill(); } catch { /* ignore */ } }
-  try { edge.kill(); } catch { /* ignore */ }
+  if (exe) {
+    try {
+      exe.kill();
+    } catch {
+      /* ignore */
+    }
+  }
+  try {
+    edge.kill();
+  } catch {
+    /* ignore */
+  }
   await sleep(400);
 
   console.log('');

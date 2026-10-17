@@ -20,9 +20,21 @@ function rec(type, data) {
   h.writeUInt16LE(data.length, 2);
   return Buffer.concat([h, data]);
 }
-const u16 = (n) => { const b = Buffer.alloc(2); b.writeUInt16LE(n); return b; };
-const u32 = (n) => { const b = Buffer.alloc(4); b.writeUInt32LE(n >>> 0); return b; };
-const f64 = (n) => { const b = Buffer.alloc(8); b.writeDoubleLE(n); return b; };
+const u16 = (n) => {
+  const b = Buffer.alloc(2);
+  b.writeUInt16LE(n);
+  return b;
+};
+const u32 = (n) => {
+  const b = Buffer.alloc(4);
+  b.writeUInt32LE(n >>> 0);
+  return b;
+};
+const f64 = (n) => {
+  const b = Buffer.alloc(8);
+  b.writeDoubleLE(n);
+  return b;
+};
 const cell = (r, c, xf = 0) => Buffer.concat([u16(r), u16(c), u16(xf)]);
 
 /** XLUnicodeString body: 16-bit when any char needs it, else compressed. */
@@ -40,13 +52,17 @@ const EOF = rec(0x000a, Buffer.alloc(0));
  * `sst` is either an array of strings or a ready-made SST(+CONTINUE) buffer.
  */
 function biff({ sheets, sst = [] }) {
-  const sstRec = Buffer.isBuffer(sst) ? sst
+  const sstRec = Buffer.isBuffer(sst)
+    ? sst
     : rec(0x00fc, Buffer.concat([u32(sst.length), u32(sst.length), ...sst.map((s) => ustr(s))]));
   const bounds = sheets.map((s) => Buffer.concat([u32(0), Buffer.from([0, 0]), ustr(s.name, 1)]));
   const globalsLen = bof(5).length + sstRec.length + bounds.reduce((n, b) => n + 4 + b.length, 0) + EOF.length;
   const subs = sheets.map((s) => Buffer.concat([bof(0x10), s.body, EOF]));
   let pos = globalsLen;
-  for (let i = 0; i < bounds.length; i++) { bounds[i].writeUInt32LE(pos, 0); pos += subs[i].length; }
+  for (let i = 0; i < bounds.length; i++) {
+    bounds[i].writeUInt32LE(pos, 0);
+    pos += subs[i].length;
+  }
   return Buffer.concat([bof(5), sstRec, ...bounds.map((b) => rec(0x0085, b)), EOF, ...subs]);
 }
 
@@ -85,7 +101,10 @@ function cfb(stream, streamName = 'Workbook') {
     return first;
   };
 
-  let rootStart = ENDOFCHAIN, rootSize = 0, miniFatStart = ENDOFCHAIN, streamStart;
+  let rootStart = ENDOFCHAIN,
+    rootSize = 0,
+    miniFatStart = ENDOFCHAIN,
+    streamStart;
   if (stream.length < 4096) {
     const n = Math.ceil(stream.length / 64);
     const mf = new Array(SS / 4).fill(FREESECT);
@@ -139,24 +158,33 @@ test('RK numbers decode as integers, truncated doubles and ×100 variants', () =
 
 test('a small workbook in the mini stream reads into sheets and cells', () => {
   const body = Buffer.concat([
-    rec(0x00fd, Buffer.concat([cell(0, 0), u32(0)])),            // LABELSST 姓名
-    rec(0x00fd, Buffer.concat([cell(0, 1), u32(1)])),            // LABELSST 金额
+    rec(0x00fd, Buffer.concat([cell(0, 0), u32(0)])), // LABELSST 姓名
+    rec(0x00fd, Buffer.concat([cell(0, 1), u32(1)])), // LABELSST 金额
     rec(0x00fd, Buffer.concat([cell(1, 0), u32(2)])),
-    rec(0x0203, Buffer.concat([cell(1, 1), f64(250.5)])),        // NUMBER
-    rec(0x0204, Buffer.concat([cell(2, 0), ustr('老李')])),       // LABEL
-    rec(0x027e, Buffer.concat([cell(2, 1), u32(rk(100))])),      // RK
+    rec(0x0203, Buffer.concat([cell(1, 1), f64(250.5)])), // NUMBER
+    rec(0x0204, Buffer.concat([cell(2, 0), ustr('老李')])), // LABEL
+    rec(0x027e, Buffer.concat([cell(2, 1), u32(rk(100))])), // RK
   ]);
   const buf = cfb(biff({ sheets: [{ name: '名单', body }], sst: ['姓名', '金额', '老王'] }));
   assert.ok(isCfb(buf));
   const wb = readXls(buf);
-  assert.deepStrictEqual(wb.sheets.map((s) => s.name), ['名单']);
-  assert.deepStrictEqual(sheetToMatrix(wb.sheets[0]), [['姓名', '金额'], ['老王', 250.5], ['老李', 100]]);
+  assert.deepStrictEqual(
+    wb.sheets.map((s) => s.name),
+    ['名单'],
+  );
+  assert.deepStrictEqual(sheetToMatrix(wb.sheets[0]), [
+    ['姓名', '金额'],
+    ['老王', 250.5],
+    ['老李', 100],
+  ]);
 });
 
 test('a stream over the mini cutoff is read from regular sectors', () => {
   // 500 rows of NUMBER records is ~9 KB: well past the 4096-byte cutoff and
   // across several FAT-chained sectors.
-  const body = Buffer.concat(Array.from({ length: 500 }, (_, i) => rec(0x0203, Buffer.concat([cell(i, 0), f64(i * 1.5)]))));
+  const body = Buffer.concat(
+    Array.from({ length: 500 }, (_, i) => rec(0x0203, Buffer.concat([cell(i, 0), f64(i * 1.5)]))),
+  );
   const stream = biff({ sheets: [{ name: 'S', body }] });
   assert.ok(stream.length > 4096);
   const buf = cfb(stream);
@@ -172,11 +200,11 @@ test('MULRK, BOOLERR and formula cached results', () => {
   const special = (kind, v) => Buffer.from([kind, 0, v, 0, 0, 0, 0xff, 0xff]);
   const body = Buffer.concat([
     rec(0x00bd, mulrk),
-    rec(0x0205, Buffer.concat([cell(1, 0), Buffer.from([1, 0])])),     // TRUE
-    rec(0x0205, Buffer.concat([cell(1, 1), Buffer.from([0x07, 1])])),  // #DIV/0!
+    rec(0x0205, Buffer.concat([cell(1, 0), Buffer.from([1, 0])])), // TRUE
+    rec(0x0205, Buffer.concat([cell(1, 1), Buffer.from([0x07, 1])])), // #DIV/0!
     formula(2, 0, f64(6)),
     formula(2, 1, special(0, 0)),
-    rec(0x0207, ustr('合计')),                                         // STRING after FORMULA
+    rec(0x0207, ustr('合计')), // STRING after FORMULA
     formula(2, 2, special(1, 1)),
   ]);
   const m = sheetToMatrix(readXls(cfb(biff({ sheets: [{ name: 'S', body }] }))).sheets[0]);
@@ -205,7 +233,9 @@ test('an SST string split by CONTINUE switches width at the boundary', () => {
 test('cells after an embedded chart substream are kept', () => {
   const body = Buffer.concat([
     rec(0x0203, Buffer.concat([cell(0, 0), f64(1)])),
-    bof(0x20), rec(0x0203, Buffer.concat([cell(9, 9), f64(99)])), EOF, // chart, nested
+    bof(0x20),
+    rec(0x0203, Buffer.concat([cell(9, 9), f64(99)])),
+    EOF, // chart, nested
     rec(0x0203, Buffer.concat([cell(1, 0), f64(2)])),
   ]);
   const cells = readXls(cfb(biff({ sheets: [{ name: 'S', body }] }))).sheets[0].cells;
@@ -225,19 +255,39 @@ test('sniffKind recognises .xls by content, even under a wrong extension', async
 test('xls attachment end-to-end: header found below a notes block', async () => {
   // The shape of a typical import template: instructions on top, then a blank
   // row, then the real header and sample rows.
-  const strings = ['填写须知', '1、姓名不超过 32 个字符', '姓名（必填）', '手机号/邮箱（必填）', '部门', '老王', '西南大区', '老李', '东北大区'];
+  const strings = [
+    '填写须知',
+    '1、姓名不超过 32 个字符',
+    '姓名（必填）',
+    '手机号/邮箱（必填）',
+    '部门',
+    '老王',
+    '西南大区',
+    '老李',
+    '东北大区',
+  ];
   const s = (r, c, i) => rec(0x00fd, Buffer.concat([cell(r, c), u32(i)]));
   const body = Buffer.concat([
-    s(0, 0, 0), s(1, 0, 1),
-    s(3, 0, 2), s(3, 1, 3), s(3, 2, 4),
-    s(4, 0, 5), rec(0x0203, Buffer.concat([cell(4, 1), f64(12111112002)])), s(4, 2, 6),
-    s(5, 0, 7), rec(0x0203, Buffer.concat([cell(5, 1), f64(12111112003)])), s(5, 2, 8),
+    s(0, 0, 0),
+    s(1, 0, 1),
+    s(3, 0, 2),
+    s(3, 1, 3),
+    s(3, 2, 4),
+    s(4, 0, 5),
+    rec(0x0203, Buffer.concat([cell(4, 1), f64(12111112002)])),
+    s(4, 2, 6),
+    s(5, 0, 7),
+    rec(0x0203, Buffer.concat([cell(5, 1), f64(12111112003)])),
+    s(5, 2, 8),
   ]);
   const att = await readAttachment(cfb(biff({ sheets: [{ name: 'Sheet1', body }], sst: strings })), 'member.xls');
   assert.strictEqual(att.kind, 'table');
   assert.deepStrictEqual(att.meta.sheetNames, ['Sheet1']);
   assert.deepStrictEqual(att.header, ['姓名（必填）', '手机号/邮箱（必填）', '部门']);
-  assert.deepStrictEqual(att.rows, [['老王', 12111112002, '西南大区'], ['老李', 12111112003, '东北大区']]);
+  assert.deepStrictEqual(att.rows, [
+    ['老王', 12111112002, '西南大区'],
+    ['老李', 12111112003, '东北大区'],
+  ]);
 });
 
 test('encrypted and BIFF5 workbooks are reported, not misread', async () => {

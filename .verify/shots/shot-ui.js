@@ -42,17 +42,27 @@ async function startApp() {
 function call(port, method, urlPath, body) {
   return new Promise((resolve, reject) => {
     const payload = body === undefined ? null : Buffer.from(JSON.stringify(body), 'utf8');
-    const req = http.request({
-      host: '127.0.0.1', port, method, path: urlPath,
-      headers: payload ? { 'Content-Type': 'application/json', 'Content-Length': payload.length } : {},
-    }, (res) => {
-      const chunks = [];
-      res.on('data', (c) => chunks.push(c));
-      res.on('end', () => {
-        const text = Buffer.concat(chunks).toString('utf8');
-        try { resolve(JSON.parse(text)); } catch { resolve({ raw: text }); }
-      });
-    });
+    const req = http.request(
+      {
+        host: '127.0.0.1',
+        port,
+        method,
+        path: urlPath,
+        headers: payload ? { 'Content-Type': 'application/json', 'Content-Length': payload.length } : {},
+      },
+      (res) => {
+        const chunks = [];
+        res.on('data', (c) => chunks.push(c));
+        res.on('end', () => {
+          const text = Buffer.concat(chunks).toString('utf8');
+          try {
+            resolve(JSON.parse(text));
+          } catch {
+            resolve({ raw: text });
+          }
+        });
+      },
+    );
     req.on('error', reject);
     if (payload) req.write(payload);
     req.end();
@@ -65,36 +75,53 @@ function seedSession(dataDir) {
   const store = new SessionStore(dataDir);
   const spec = {
     title: '销售台账',
-    sheets: [{
-      name: '销售台账',
-      columns: [
-        { header: '客户名称', type: 'text' },
-        { header: '合同金额', type: 'currency' },
-        { header: '签约日期', type: 'date' },
-        { header: '税率', type: 'percent' },
-        { header: '负责人', type: 'text' },
-      ],
-      rows: [
-        // ISO strings, not Date objects: this is the shape that reaches the
-        // server (the model emits JSON), and seeding the wrong one produced a
-        // screenshot whose date column rendered as a raw ISO string. The
-        // preview was fine; the fixture was not.
-        ['杭州云图科技有限公司', 1250000, '2026-01-08', 0.06, '陈默'],
-        ['上海临港数据服务', 860000, '2026-01-22', 0.06, '林一舟'],
-        ['深圳前海智算中心', 880000, '2026-02-03', 0.13, '赵启'],
-      ],
-      totals: { enabled: true, sumColumns: [1] },
-    }],
+    sheets: [
+      {
+        name: '销售台账',
+        columns: [
+          { header: '客户名称', type: 'text' },
+          { header: '合同金额', type: 'currency' },
+          { header: '签约日期', type: 'date' },
+          { header: '税率', type: 'percent' },
+          { header: '负责人', type: 'text' },
+        ],
+        rows: [
+          // ISO strings, not Date objects: this is the shape that reaches the
+          // server (the model emits JSON), and seeding the wrong one produced a
+          // screenshot whose date column rendered as a raw ISO string. The
+          // preview was fine; the fixture was not.
+          ['杭州云图科技有限公司', 1250000, '2026-01-08', 0.06, '陈默'],
+          ['上海临港数据服务', 860000, '2026-01-22', 0.06, '林一舟'],
+          ['深圳前海智算中心', 880000, '2026-02-03', 0.13, '赵启'],
+        ],
+        totals: { enabled: true, sumColumns: [1] },
+      },
+    ],
   };
   const s = store.create('销售台账');
   store.save({
     ...s,
     spec,
     messages: [
-      { role: 'user', content: '做一个销售台账，三个客户：杭州云图、上海临港、深圳前海，金额分别是125万、86万、88万，签约日期分别是2026年1月8日、1月22日、2月3日，再加一列税率，百分之六、百分之六、百分之十三。', at: new Date().toISOString() },
-      { role: 'assistant', content: '已创建销售台账，5 列 3 行。金额按元存储，税率按百分比格式；合计行只汇总金额。', at: new Date().toISOString(), intent: 'action' },
+      {
+        role: 'user',
+        content:
+          '做一个销售台账，三个客户：杭州云图、上海临港、深圳前海，金额分别是125万、86万、88万，签约日期分别是2026年1月8日、1月22日、2月3日，再加一列税率，百分之六、百分之六、百分之十三。',
+        at: new Date().toISOString(),
+      },
+      {
+        role: 'assistant',
+        content: '已创建销售台账，5 列 3 行。金额按元存储，税率按百分比格式；合计行只汇总金额。',
+        at: new Date().toISOString(),
+        intent: 'action',
+      },
       { role: 'user', content: '把杭州云图那行的金额改成 150 万，再加一列负责人。', at: new Date().toISOString() },
-      { role: 'assistant', content: '改好了。金额已改为 150 万，负责人列也加上了。', at: new Date().toISOString(), intent: 'action' },
+      {
+        role: 'assistant',
+        content: '改好了。金额已改为 150 万，负责人列也加上了。',
+        at: new Date().toISOString(),
+        intent: 'action',
+      },
     ],
   });
   return s.id;
@@ -172,4 +199,7 @@ async function main() {
   void call;
 }
 
-main().catch((err) => { console.error('FAILED:', err && err.stack || err); process.exit(2); });
+main().catch((err) => {
+  console.error('FAILED:', (err && err.stack) || err);
+  process.exit(2);
+});

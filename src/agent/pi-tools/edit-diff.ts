@@ -109,7 +109,11 @@ function applyReplacements(content: string, replacements: MatchedEdit[], offset 
  * original, rewriting only the lines they touch: every other line keeps its
  * original bytes, so a fuzzy match does not quietly re-quote the whole file.
  */
-function applyReplacementsPreservingUnchangedLines(originalContent: string, baseContent: string, replacements: MatchedEdit[]): string {
+function applyReplacementsPreservingUnchangedLines(
+  originalContent: string,
+  baseContent: string,
+  replacements: MatchedEdit[],
+): string {
   const originalLines = splitLinesWithEndings(originalContent);
   const baseLines = getLineSpans(baseContent);
   if (originalLines.length !== baseLines.length) {
@@ -139,7 +143,10 @@ function applyReplacementsPreservingUnchangedLines(originalContent: string, base
 }
 
 /** `oldText` in `content`: exactly first, then in fuzzy-normalised space. */
-function fuzzyFindText(content: string, oldText: string): { found: boolean; index: number; matchLength: number; usedFuzzyMatch: boolean } {
+function fuzzyFindText(
+  content: string,
+  oldText: string,
+): { found: boolean; index: number; matchLength: number; usedFuzzyMatch: boolean } {
   const exact = content.indexOf(oldText);
   if (exact !== -1) return { found: true, index: exact, matchLength: oldText.length, usedFuzzyMatch: false };
   const fuzzyOld = normalizeForFuzzyMatch(oldText);
@@ -153,15 +160,19 @@ function countOccurrences(content: string, oldText: string): number {
 }
 
 function notFound(path: string, i: number, total: number): Error {
-  return new Error(total === 1
-    ? `Could not find the exact text in ${path}. The old text must match exactly including all whitespace and newlines.`
-    : `Could not find edits[${i}] in ${path}. The oldText must match exactly including all whitespace and newlines.`);
+  return new Error(
+    total === 1
+      ? `Could not find the exact text in ${path}. The old text must match exactly including all whitespace and newlines.`
+      : `Could not find edits[${i}] in ${path}. The oldText must match exactly including all whitespace and newlines.`,
+  );
 }
 
 function duplicate(path: string, i: number, total: number, n: number): Error {
-  return new Error(total === 1
-    ? `Found ${n} occurrences of the text in ${path}. The text must be unique. Please provide more context to make it unique.`
-    : `Found ${n} occurrences of edits[${i}] in ${path}. Each oldText must be unique. Please provide more context to make it unique.`);
+  return new Error(
+    total === 1
+      ? `Found ${n} occurrences of the text in ${path}. The text must be unique. Please provide more context to make it unique.`
+      : `Found ${n} occurrences of edits[${i}] in ${path}. Each oldText must be unique. Please provide more context to make it unique.`,
+  );
 }
 
 /**
@@ -170,11 +181,19 @@ function duplicate(path: string, i: number, total: number, n: number): Error {
  * overlap. If any needed the fuzzy match, the whole operation runs in
  * normalised space and is laid back over the original line by line.
  */
-export function applyEditsToNormalizedContent(normalizedContent: string, edits: Edit[], path: string): { baseContent: string; newContent: string } {
+export function applyEditsToNormalizedContent(
+  normalizedContent: string,
+  edits: Edit[],
+  path: string,
+): { baseContent: string; newContent: string } {
   const normalized = edits.map((e) => ({ oldText: normalizeToLF(e.oldText), newText: normalizeToLF(e.newText) }));
   normalized.forEach((e, i) => {
     if (e.oldText.length === 0) {
-      throw new Error(normalized.length === 1 ? `oldText must not be empty in ${path}.` : `edits[${i}].oldText must not be empty in ${path}.`);
+      throw new Error(
+        normalized.length === 1
+          ? `oldText must not be empty in ${path}.`
+          : `edits[${i}].oldText must not be empty in ${path}.`,
+      );
     }
   });
   const usedFuzzy = normalized.some((e) => fuzzyFindText(normalizedContent, e.oldText).usedFuzzyMatch);
@@ -192,16 +211,20 @@ export function applyEditsToNormalizedContent(normalizedContent: string, edits: 
     const prev = matched[i - 1];
     const cur = matched[i];
     if (prev.matchIndex + prev.matchLength > cur.matchIndex) {
-      throw new Error(`edits[${prev.editIndex}] and edits[${cur.editIndex}] overlap in ${path}. Merge them into one edit or target disjoint regions.`);
+      throw new Error(
+        `edits[${prev.editIndex}] and edits[${cur.editIndex}] overlap in ${path}. Merge them into one edit or target disjoint regions.`,
+      );
     }
   }
   const newContent = usedFuzzy
     ? applyReplacementsPreservingUnchangedLines(normalizedContent, base, matched)
     : applyReplacements(base, matched);
   if (newContent === normalizedContent) {
-    throw new Error(normalized.length === 1
-      ? `No changes made to ${path}. The replacement produced identical content. This might indicate an issue with special characters or the text not existing as expected.`
-      : `No changes made to ${path}. The replacements produced identical content.`);
+    throw new Error(
+      normalized.length === 1
+        ? `No changes made to ${path}. The replacement produced identical content. This might indicate an issue with special characters or the text not existing as expected.`
+        : `No changes made to ${path}. The replacements produced identical content.`,
+    );
   }
   return { baseContent: normalizedContent, newContent };
 }

@@ -29,17 +29,24 @@ const PORT_B = Number(process.argv[3] || 3202);
 
 fs.mkdirSync(DATA, { recursive: true });
 
-function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
 
 function health(port) {
   return new Promise((resolve) => {
     const req = http.get({ host: '127.0.0.1', port, path: '/api/health' }, (res) => {
       let s = '';
-      res.on('data', (d) => { s += d; });
+      res.on('data', (d) => {
+        s += d;
+      });
       res.on('end', () => resolve({ up: res.statusCode === 200, body: s.replace(/\s+/g, ' ') }));
     });
     req.on('error', (e) => resolve({ up: false, err: e.code }));
-    req.setTimeout(3000, () => { req.destroy(); resolve({ up: false, err: 'timeout' }); });
+    req.setTimeout(3000, () => {
+      req.destroy();
+      resolve({ up: false, err: 'timeout' });
+    });
   });
 }
 
@@ -63,9 +70,16 @@ function launch(port, label) {
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   const rec = { label, port, child, started, exitedAt: null, code: null, output: '' };
-  child.stdout.on('data', (d) => { rec.output += d.toString(); });
-  child.stderr.on('data', (d) => { rec.output += d.toString(); });
-  child.on('exit', (code) => { rec.exitedAt = Date.now() - started; rec.code = code; });
+  child.stdout.on('data', (d) => {
+    rec.output += d.toString();
+  });
+  child.stderr.on('data', (d) => {
+    rec.output += d.toString();
+  });
+  child.on('exit', (code) => {
+    rec.exitedAt = Date.now() - started;
+    rec.code = code;
+  });
   return rec;
 }
 
@@ -74,7 +88,10 @@ async function main() {
   const a = launch(PORT_A, 'A');
   const aHealth = await waitHealthy(PORT_A);
   console.log('  A served: ' + (aHealth ? 'YES  ' + aHealth.body : 'NO'));
-  if (!aHealth) { a.child.kill(); process.exit(1); }
+  if (!aHealth) {
+    a.child.kill();
+    process.exit(1);
+  }
   await sleep(2000);
   console.log('  A process ' + (a.exitedAt === null ? 'alive' : 'exited after ' + a.exitedAt + 'ms'));
 
@@ -83,7 +100,9 @@ async function main() {
   const bHealth = await waitHealthy(PORT_B, 12000);
   console.log('  B served: ' + (bHealth ? 'YES  ' + bHealth.body : 'NO'));
   await sleep(3000);
-  console.log('  B process: ' + (b.exitedAt === null ? 'alive' : 'exited after ' + b.exitedAt + 'ms (code ' + b.code + ')'));
+  console.log(
+    '  B process: ' + (b.exitedAt === null ? 'alive' : 'exited after ' + b.exitedAt + 'ms (code ' + b.code + ')'),
+  );
 
   console.log('\n=== C) re-check both ports ===');
   const a2 = await health(PORT_A);
@@ -119,4 +138,7 @@ async function main() {
   process.exit(0);
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

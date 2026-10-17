@@ -86,7 +86,10 @@ test('read: an image comes back as an image block', async (t) => {
   const png = Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex');
   fs.writeFileSync(path.join(s.docs, 'a.png'), png);
   const k = await turnTools(s);
-  assert.strictEqual(await k.read({ path: path.join(s.docs, 'a.png') }), 'Read image file [image/png]\n[image image/png]');
+  assert.strictEqual(
+    await k.read({ path: path.join(s.docs, 'a.png') }),
+    'Read image file [image/png]\n[image image/png]',
+  );
 });
 
 test('write and edit record without touching the disk, and a read sees the record', async (t) => {
@@ -98,7 +101,10 @@ test('write and edit record without touching the disk, and a read sees the recor
   assert.strictEqual(fs.existsSync(target), false, 'nothing on disk during the turn');
   assert.strictEqual(await k.read({ path: target }), '# 汇总\n共 3 单\n');
 
-  assert.match(await k.edit({ path: target, edits: [{ oldText: '共 3 单', newText: '共 4 单' }] }), /^Successfully replaced 1 block\(s\)/);
+  assert.match(
+    await k.edit({ path: target, edits: [{ oldText: '共 3 单', newText: '共 4 单' }] }),
+    /^Successfully replaced 1 block\(s\)/,
+  );
   assert.strictEqual(k.writes.length, 1, 'the edit replaced the recorded write, not added a second');
   assert.strictEqual(k.writes[0].content, '# 汇总\n共 4 单\n');
 
@@ -114,8 +120,14 @@ test('write and edit keep the write rules: text only, nothing blocked, unique ma
   const k = await turnTools(s);
   await assert.rejects(k.write({ path: path.join(s.docs, 'run.bat'), content: 'x' }), /只能写文本类文件/);
   await assert.rejects(k.write({ path: path.join(s.data, 'notes.txt'), content: 'x' }), /禁止访问/);
-  await assert.rejects(k.edit({ path: '~/.ssh/config', edits: [{ oldText: 'Host', newText: 'H' }] }), /Could not edit file.*禁止访问/);
-  await assert.rejects(k.edit({ path: path.join(s.docs, '订单', '5月.csv'), edits: [{ oldText: 'A', newText: 'x' }] }), /Found 2 occurrences/);
+  await assert.rejects(
+    k.edit({ path: '~/.ssh/config', edits: [{ oldText: 'Host', newText: 'H' }] }),
+    /Could not edit file.*禁止访问/,
+  );
+  await assert.rejects(
+    k.edit({ path: path.join(s.docs, '订单', '5月.csv'), edits: [{ oldText: 'A', newText: 'x' }] }),
+    /Found 2 occurrences/,
+  );
   assert.strictEqual(k.writes.length, 0);
 });
 
@@ -132,16 +144,28 @@ test('ls, find and grep leave blocked entries out', async (t) => {
 test('grep: path:line output, glob filter, context, and the blocklist', async (t) => {
   const s = scratch(t);
   const k = await turnTools(s);
-  assert.strictEqual(await k.grep({ pattern: '已签收', path: s.docs }), '订单/5月.csv:2: A1,已签收\n订单/深/6月.csv:2: B1,已签收');
-  assert.strictEqual(await k.grep({ pattern: 'b1', ignoreCase: true, glob: '6月.csv', path: s.docs }), '订单/深/6月.csv:2: B1,已签收');
-  assert.strictEqual(await k.grep({ pattern: '第2行', path: path.join(s.docs, '说明.txt'), context: 1 }), '说明.txt-1- 第1行\n说明.txt:2: 第2行\n说明.txt-3- 第3行');
+  assert.strictEqual(
+    await k.grep({ pattern: '已签收', path: s.docs }),
+    '订单/5月.csv:2: A1,已签收\n订单/深/6月.csv:2: B1,已签收',
+  );
+  assert.strictEqual(
+    await k.grep({ pattern: 'b1', ignoreCase: true, glob: '6月.csv', path: s.docs }),
+    '订单/深/6月.csv:2: B1,已签收',
+  );
+  assert.strictEqual(
+    await k.grep({ pattern: '第2行', path: path.join(s.docs, '说明.txt'), context: 1 }),
+    '说明.txt-1- 第1行\n说明.txt:2: 第2行\n说明.txt-3- 第3行',
+  );
   assert.strictEqual(await k.grep({ pattern: 'KEY', path: s.docs }), 'No matches found', 'server.pem is never opened');
   assert.strictEqual(await k.grep({ pattern: '.', literal: true, path: s.docs }), 'No matches found');
 });
 
 test('the shell tool runs a command and reports a failing exit code', async () => {
   const { ai } = await loadPi();
-  const tool = process.platform === 'win32' ? shell.createPowerShellTool(ai.Type, os.tmpdir()) : shell.createBashTool(ai.Type, os.tmpdir());
+  const tool =
+    process.platform === 'win32'
+      ? shell.createPowerShellTool(ai.Type, os.tmpdir())
+      : shell.createBashTool(ai.Type, os.tmpdir());
   const ok = await tool.execute('t', { command: 'echo 你好' });
   assert.strictEqual(ok.isError, undefined);
   assert.strictEqual(ok.content[0].text.trim(), '你好');

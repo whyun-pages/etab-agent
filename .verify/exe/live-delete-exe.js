@@ -34,7 +34,10 @@ const BASE = `http://127.0.0.1:${PORT}`;
 let failures = 0;
 function check(name, cond, extra = '') {
   if (cond) console.log(`  ok   ${name}`);
-  else { failures++; console.log(`  FAIL ${name}  ${extra}`); }
+  else {
+    failures++;
+    console.log(`  FAIL ${name}  ${extra}`);
+  }
 }
 
 async function waitForHealth(timeoutMs = 20000) {
@@ -50,13 +53,18 @@ async function waitForHealth(timeoutMs = 20000) {
 }
 
 async function main() {
-  if (!fs.existsSync(EXE)) { console.error(`no exe at ${EXE} — run pnpm build`); process.exit(1); }
+  if (!fs.existsSync(EXE)) {
+    console.error(`no exe at ${EXE} — run pnpm build`);
+    process.exit(1);
+  }
   fs.mkdirSync(OUT, { recursive: true });
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'xldel-exe-'));
 
   console.log(`  (launching ${path.basename(EXE)} on ${PORT})`);
   const exe = spawn(EXE, ['--port', String(PORT), '--data-dir', dataDir], {
-    cwd: ROOT, stdio: 'ignore', windowsHide: true,
+    cwd: ROOT,
+    stdio: 'ignore',
+    windowsHide: true,
   });
 
   let page = null;
@@ -69,13 +77,18 @@ async function main() {
 
     // 2. the embedded bundle carries the fix, not a stale copy
     const js = await fetch(`${BASE}/js/app.js`).then((r) => r.text());
-    check('embedded app.js imports openModal + closeModal (the fix shipped)',
-      /openModal\s*,\s*closeModal/.test(js), 'import line missing from the exe bundle');
+    check(
+      'embedded app.js imports openModal + closeModal (the fix shipped)',
+      /openModal\s*,\s*closeModal/.test(js),
+      'import line missing from the exe bundle',
+    );
 
     // Seed two sessions THROUGH the exe, so the rail has rows.
     const mk = async (title) => {
       const res = await fetch(`${BASE}/api/sessions`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }),
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title }),
       });
       return (await res.json()).session.id;
     };
@@ -94,7 +107,8 @@ async function main() {
 
     const rowCount = () => page.evaluate('document.querySelectorAll(".rail__item").length');
     const modalText = () => page.evaluate('(document.querySelector(".modal") || {}).textContent || ""');
-    const hitAt = (x, y) => page.evaluate(`(() => {
+    const hitAt = (x, y) =>
+      page.evaluate(`(() => {
       const el = document.elementFromPoint(${x}, ${y});
       if (!el) return 'null';
       const del = el.closest('.rail__del');
@@ -111,14 +125,19 @@ async function main() {
       await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 });
       await sleep(300);
     }
-    const rowBoxOf = (title) => page.evaluate(`(() => {
+    const rowBoxOf = (title) =>
+      page
+        .evaluate(`(() => {
       const rows = [...document.querySelectorAll('.rail__item')];
       const row = rows.find((r) => (r.querySelector('.rail__name') || {}).textContent === ${JSON.stringify(title)});
       if (!row) return null;
       const r = row.getBoundingClientRect();
       return JSON.stringify({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
-    })()`).then((s) => (s ? JSON.parse(s) : null));
-    const delBoxOf = (title) => page.evaluate(`(() => {
+    })()`)
+        .then((s) => (s ? JSON.parse(s) : null));
+    const delBoxOf = (title) =>
+      page
+        .evaluate(`(() => {
       const rows = [...document.querySelectorAll('.rail__item')];
       const row = rows.find((r) => (r.querySelector('.rail__name') || {}).textContent === ${JSON.stringify(title)});
       if (!row) return null;
@@ -126,7 +145,8 @@ async function main() {
       if (!el) return null;
       const r = el.getBoundingClientRect();
       return JSON.stringify({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
-    })()`).then((s) => (s ? JSON.parse(s) : null));
+    })()`)
+        .then((s) => (s ? JSON.parse(s) : null));
 
     // 3. rows rendered
     const rows = await rowCount();
@@ -154,15 +174,20 @@ async function main() {
     check('the modal names the session', modal.includes('要删掉的会话'), JSON.stringify(modal.slice(0, 120)));
 
     // 6. the modal's 删除 button round-trips
-    const delBtnBox = await page.evaluate(`(() => {
+    const delBtnBox = await page
+      .evaluate(`(() => {
       const btns = [...document.querySelectorAll('.modal button')];
       const el = btns.find((b) => b.textContent.trim() === '删除');
       if (!el) return null;
       const r = el.getBoundingClientRect();
       return JSON.stringify({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
-    })()`).then((s) => (s ? JSON.parse(s) : null));
+    })()`)
+      .then((s) => (s ? JSON.parse(s) : null));
     check('the modal has a 删除 button', !!delBtnBox, JSON.stringify(delBtnBox));
-    if (delBtnBox) { await clickAt(delBtnBox.x, delBtnBox.y); await sleep(800); }
+    if (delBtnBox) {
+      await clickAt(delBtnBox.x, delBtnBox.y);
+      await sleep(800);
+    }
 
     const rowsAfter = await rowCount();
     check('the rail lost the row', rowsAfter === 1, `got ${rowsAfter}`);
@@ -171,14 +196,25 @@ async function main() {
     const survivor = await fetch(`${BASE}/api/sessions/${idB}`).then((r) => r.status);
     check('the other session survived', survivor === 200, `status ${survivor}`);
   } finally {
-    if (page) { try { await closePage(page, { trashProfile: true }); } catch {} }
-    try { exe.kill(); } catch {}
+    if (page) {
+      try {
+        await closePage(page, { trashProfile: true });
+      } catch {}
+    }
+    try {
+      exe.kill();
+    } catch {}
     await sleep(800);
-    try { fs.rmSync(dataDir, { recursive: true, force: true }); } catch {}
+    try {
+      fs.rmSync(dataDir, { recursive: true, force: true });
+    } catch {}
   }
 
   console.log(failures === 0 ? '\nPACKAGED DELETE CLICK CHECKS PASSED' : `\n${failures} FAILED`);
   process.exit(failures === 0 ? 0 : 1);
 }
 
-main().catch((err) => { console.error(err); process.exit(1); });
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

@@ -44,8 +44,14 @@ const { openPage, closePage, findEdge, sleep } = require('../support/cdp.js');
 let passed = 0;
 let failed = 0;
 function check(name, ok, detail) {
-  if (ok) { passed += 1; console.log(`  ok    ${name}`); }
-  else { failed += 1; console.log(`  FAIL  ${name}`); if (detail) console.log(`        ${detail}`); }
+  if (ok) {
+    passed += 1;
+    console.log(`  ok    ${name}`);
+  } else {
+    failed += 1;
+    console.log(`  FAIL  ${name}`);
+    if (detail) console.log(`        ${detail}`);
+  }
 }
 
 const tmpdir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'live-totals-'));
@@ -65,8 +71,13 @@ function fakeSettings() {
     secrets: () => ({ baseUrl: record.baseUrl, apiKey: record.apiKey, model: record.model }),
     isConfigured: () => true,
     publicSettings: () => ({
-      baseUrl: record.baseUrl, model: record.model, hasKey: true, keyHint: 'sk-…key',
-      useForAttachments: false, chatCanEdit: true, chatConfirmEdits: false,
+      baseUrl: record.baseUrl,
+      model: record.model,
+      hasKey: true,
+      keyHint: 'sk-…key',
+      useForAttachments: false,
+      chatCanEdit: true,
+      chatConfirmEdits: false,
     }),
   };
 }
@@ -87,15 +98,21 @@ function totalsTransport() {
         reply: '已为你创建销售台账，包含三个客户的金额和签约日期。',
         spec: {
           title: '销售台账',
-          sheets: [{
-            name: '销售台账',
-            columns: [
-              { header: '客户', type: 'text' },
-              { header: '金额', type: 'currency' },
-              { header: '签约日期', type: 'date' },
-            ],
-            rows: [['客户A', 120000, '2026-01-15'], ['客户B', 85000, '2026-02-20'], ['客户C', 230000, '2026-03-10']],
-          }],
+          sheets: [
+            {
+              name: '销售台账',
+              columns: [
+                { header: '客户', type: 'text' },
+                { header: '金额', type: 'currency' },
+                { header: '签约日期', type: 'date' },
+              ],
+              rows: [
+                ['客户A', 120000, '2026-01-15'],
+                ['客户B', 85000, '2026-02-20'],
+                ['客户C', 230000, '2026-03-10'],
+              ],
+            },
+          ],
         },
       });
     }
@@ -104,17 +121,23 @@ function totalsTransport() {
       reply: '已为你添加金额合计行，120000+85000+230000=435000。',
       spec: {
         title: '销售台账',
-        sheets: [{
-          name: '销售台账',
-          columns: [
-            { header: '客户', type: 'text' },
-            { header: '金额', type: 'currency' },
-            { header: '签约日期', type: 'date' },
-          ],
-          rows: [['客户A', 120000, '2026-01-15'], ['客户B', 85000, '2026-02-20'], ['客户C', 230000, '2026-03-10']],
-          // BY INDEX, as the model actually emitted it. This is the whole point.
-          totals: { enabled: true, label: '合计', sumColumns: [1] },
-        }],
+        sheets: [
+          {
+            name: '销售台账',
+            columns: [
+              { header: '客户', type: 'text' },
+              { header: '金额', type: 'currency' },
+              { header: '签约日期', type: 'date' },
+            ],
+            rows: [
+              ['客户A', 120000, '2026-01-15'],
+              ['客户B', 85000, '2026-02-20'],
+              ['客户C', 230000, '2026-03-10'],
+            ],
+            // BY INDEX, as the model actually emitted it. This is the whole point.
+            totals: { enabled: true, label: '合计', sumColumns: [1] },
+          },
+        ],
       },
     });
   };
@@ -142,7 +165,11 @@ async function main() {
     });
     const text = await res.text();
     let json = null;
-    try { json = JSON.parse(text); } catch { /* non-JSON */ }
+    try {
+      json = JSON.parse(text);
+    } catch {
+      /* non-JSON */
+    }
     return { status: res.status, json, text, headers: res.headers };
   };
 
@@ -152,16 +179,32 @@ async function main() {
     const created = await req('POST', '/api/sessions', { title: '' });
     const id = created.json.session.id;
     const t1 = await req('POST', `/api/sessions/${id}/turn`, { message: '做一个销售台账，三个客户，金额和签约日期' });
-    check('the create turn is an applied action', t1.json.intent === 'action' && t1.json.applied === true, JSON.stringify(t1.json).slice(0, 160));
-    check('the create preview has 4 rows (header + 3)', t1.json.preview && t1.json.preview.rows.length === 4, JSON.stringify(t1.json.preview && t1.json.preview.rows.length));
+    check(
+      'the create turn is an applied action',
+      t1.json.intent === 'action' && t1.json.applied === true,
+      JSON.stringify(t1.json).slice(0, 160),
+    );
+    check(
+      'the create preview has 4 rows (header + 3)',
+      t1.json.preview && t1.json.preview.rows.length === 4,
+      JSON.stringify(t1.json.preview && t1.json.preview.rows.length),
+    );
 
     // ── 2. the turn that failed: add the totals row ────────────────────
     const t2 = await req('POST', `/api/sessions/${id}/turn`, { message: '我想添加一个所有客户的金额合计的显示' });
-    check('the totals turn is an applied action', t2.json.intent === 'action' && t2.json.applied === true, JSON.stringify(t2.json).slice(0, 160));
+    check(
+      'the totals turn is an applied action',
+      t2.json.intent === 'action' && t2.json.applied === true,
+      JSON.stringify(t2.json).slice(0, 160),
+    );
 
     // The server-side preview is the authoritative grid the client draws.
     const rows = (t2.json.preview && t2.json.preview.rows) || [];
-    check('the preview grew to 5 rows (header + 3 + 合计)', rows.length === 5, `got ${rows.length}: ${JSON.stringify(rows)}`);
+    check(
+      'the preview grew to 5 rows (header + 3 + 合计)',
+      rows.length === 5,
+      `got ${rows.length}: ${JSON.stringify(rows)}`,
+    );
     const totalRow = rows[rows.length - 1] || [];
     check('the last row is labelled 合计', totalRow[0] === '合计', JSON.stringify(totalRow));
     check('the last row carries the summed amount 435000', totalRow[1] === 435000, JSON.stringify(totalRow));
@@ -170,11 +213,19 @@ async function main() {
     const stored = await req('GET', `/api/sessions/${id}`);
     const storedTotals = stored.json.session.spec.sheets[0].totals;
     check('the stored spec has totals enabled', storedTotals.enabled === true, JSON.stringify(storedTotals));
-    check('the stored spec resolved the index to sumColumns [1]', JSON.stringify(storedTotals.sumColumns) === '[1]', JSON.stringify(storedTotals));
+    check(
+      'the stored spec resolved the index to sumColumns [1]',
+      JSON.stringify(storedTotals.sumColumns) === '[1]',
+      JSON.stringify(storedTotals),
+    );
 
     // ── 4. reload it: the same grid must come back ─────────────────────
     const reloaded = await req('GET', `/api/sessions/${id}`);
-    check('a reload serves the same 5-row preview', reloaded.json.preview.rows.length === 5, JSON.stringify(reloaded.json.preview.rows.length));
+    check(
+      'a reload serves the same 5-row preview',
+      reloaded.json.preview.rows.length === 5,
+      JSON.stringify(reloaded.json.preview.rows.length),
+    );
 
     // ── 5. the rendered DOM, not just the JSON ─────────────────────────
     // Boot may not land on this session (no deep link), so open it the way a
@@ -213,7 +264,11 @@ async function main() {
       return grid ? grid.innerText : '';
     })()`);
     check('the rendered grid cells include 合计', /合计/.test(gridText), JSON.stringify(gridText.slice(0, 240)));
-    check('the rendered grid cells include 435,000 (formatted)', /435[,，]?000/.test(gridText), JSON.stringify(gridText.slice(0, 240)));
+    check(
+      'the rendered grid cells include 435,000 (formatted)',
+      /435[,，]?000/.test(gridText),
+      JSON.stringify(gridText.slice(0, 240)),
+    );
 
     // The header meta line says how many data rows there are — and it counts the
     // totals row too, which is why it reads 4 here, not 3.
@@ -224,13 +279,22 @@ async function main() {
     const dl = await req('GET', `/api/sessions/${id}/workbook.xlsx`);
     check('the download is still a real xlsx', dl.status === 200 && dl.text.length > 0, `status ${dl.status}`);
   } finally {
-    if (page) { try { await closePage(page, { trashProfile: true }); } catch {} }
+    if (page) {
+      try {
+        await closePage(page, { trashProfile: true });
+      } catch {}
+    }
     await new Promise((r) => server.close(r));
-    try { fs.rmSync(dataDir, { recursive: true, force: true }); } catch {}
+    try {
+      fs.rmSync(dataDir, { recursive: true, force: true });
+    } catch {}
   }
 
   console.log('\n' + (failed === 0 ? 'TOTALS ROUND-TRIP PASSED' : `${failed} FAILED`));
   process.exit(failed === 0 ? 0 : 1);
 }
 
-main().catch((err) => { console.error(err); process.exit(1); });
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

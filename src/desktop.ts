@@ -46,9 +46,10 @@ import type { ChildProcess } from 'node:child_process';
 // `root` in server.ts, and
 // recognised the same way. Only meaningful unpackaged: a SEA build reads its
 // assets from the executable, and `__dirname` there points inside the blob.
-const DEV_STATIC_DIR = path.basename(__dirname) === 'js' && path.basename(path.dirname(__dirname)) === '.build'
-  ? path.join(__dirname, '..', '..', 'public')
-  : path.join(__dirname, '..', 'public');
+const DEV_STATIC_DIR =
+  path.basename(__dirname) === 'js' && path.basename(path.dirname(__dirname)) === '.build'
+    ? path.join(__dirname, '..', '..', 'public')
+    : path.join(__dirname, '..', 'public');
 
 /** The flags this entry understands, after parsing. */
 interface Args {
@@ -69,8 +70,12 @@ function parseArgs(argv: string[]): Args {
     // null means "not given on the command line", so the environment variable
     // gets its turn. 0 is meaningful (let the OS choose) and must not be
     // confused with "unset".
-    headless: false, port: null, dataDir: null, host: '127.0.0.1',
-    debugAssets: false, newInstance: false,
+    headless: false,
+    port: null,
+    dataDir: null,
+    host: '127.0.0.1',
+    debugAssets: false,
+    newInstance: false,
     extensions: process.env.TAB_AGENT_EXTENSIONS === '1',
   };
   for (let i = 0; i < argv.length; i++) {
@@ -99,8 +104,9 @@ function parseArgs(argv: string[]): Args {
 function resolveDataDir(args: Args): string {
   if (args.dataDir) return path.resolve(args.dataDir);
   if (process.env.TAB_AGENT_HOME) return path.resolve(process.env.TAB_AGENT_HOME);
-  const base = process.env.APPDATA
-    || (process.platform === 'darwin'
+  const base =
+    process.env.APPDATA ||
+    (process.platform === 'darwin'
       ? path.join(os.homedir(), 'Library', 'Application Support')
       : path.join(os.homedir(), '.local', 'share'));
   // Renamed from 'TabAgent' to match the etab package name. No migration: an
@@ -126,7 +132,13 @@ function findEdge(): string | null {
   const candidates: string[] = [];
   if (process.platform === 'win32') {
     candidates.push(
-      path.join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+      path.join(
+        process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)',
+        'Microsoft',
+        'Edge',
+        'Application',
+        'msedge.exe',
+      ),
       path.join(process.env.ProgramFiles || 'C:\\Program Files', 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
       path.join(process.env.LOCALAPPDATA || '', 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
     );
@@ -147,7 +159,9 @@ function findEdge(): string | null {
   for (const c of candidates) {
     try {
       if (fs.statSync(c).isFile()) return c;
-    } catch { /* keep looking */ }
+    } catch {
+      /* keep looking */
+    }
   }
   return null;
 }
@@ -225,7 +239,9 @@ function probeHealth(port: number, timeoutMs = 1200): Promise<{ port: number } |
   return new Promise((resolve) => {
     const req = http.get({ host: '127.0.0.1', port, path: '/api/health' }, (res) => {
       let s = '';
-      res.on('data', (d) => { s += d; });
+      res.on('data', (d) => {
+        s += d;
+      });
       res.on('end', () => {
         // Require our own identity, not just any 200: some unrelated dev server
         // on that port must not be mistaken for a running instance.
@@ -238,11 +254,16 @@ function probeHealth(port: number, timeoutMs = 1200): Promise<{ port: number } |
         try {
           const j = JSON.parse(s);
           resolve(j && j.ok === true && j.app === 'tab-agent' ? { port } : null);
-        } catch { resolve(null); }
+        } catch {
+          resolve(null);
+        }
       });
     });
     req.on('error', () => resolve(null));
-    req.setTimeout(timeoutMs, () => { req.destroy(); resolve(null); });
+    req.setTimeout(timeoutMs, () => {
+      req.destroy();
+      resolve(null);
+    });
   });
 }
 
@@ -259,7 +280,9 @@ async function findRunningInstance(dataDir: string): Promise<{ port: number; pid
   const alive = await probeHealth(rec.port);
   if (!alive) {
     // Stale record from a crash. Clear it so it cannot mislead a later launch.
-    try { fs.unlinkSync(file); } catch {}
+    try {
+      fs.unlinkSync(file);
+    } catch {}
     return null;
   }
   return { port: rec.port, pid: rec.pid };
@@ -268,14 +291,27 @@ async function findRunningInstance(dataDir: string): Promise<{ port: number; pid
 function publishInstance(dataDir: string, port: number): void {
   try {
     fs.mkdirSync(dataDir, { recursive: true });
-    fs.writeFileSync(instanceRecordPath(dataDir), JSON.stringify({
-      port, pid: process.pid, startedAt: new Date().toISOString(),
-    }, null, 2));
-  } catch { /* advisory only; never fatal */ }
+    fs.writeFileSync(
+      instanceRecordPath(dataDir),
+      JSON.stringify(
+        {
+          port,
+          pid: process.pid,
+          startedAt: new Date().toISOString(),
+        },
+        null,
+        2,
+      ),
+    );
+  } catch {
+    /* advisory only; never fatal */
+  }
 }
 
 function unpublishInstance(dataDir: string): void {
-  try { fs.unlinkSync(instanceRecordPath(dataDir)); } catch {}
+  try {
+    fs.unlinkSync(instanceRecordPath(dataDir));
+  } catch {}
 }
 
 // ------------------------------------------------------------------- window
@@ -318,12 +354,7 @@ const EARLY_EXIT_MS = 1500;
  */
 function openWindow(edge: string, url: string, profileDir: string, extensions: boolean, detach = true): ChildProcess {
   fs.mkdirSync(profileDir, { recursive: true });
-  const flags = [
-    `--app=${url}`,
-    `--user-data-dir=${profileDir}`,
-    '--no-first-run',
-    '--no-default-browser-check',
-  ];
+  const flags = [`--app=${url}`, `--user-data-dir=${profileDir}`, '--no-first-run', '--no-default-browser-check'];
   if (!extensions) flags.push('--disable-extensions');
   // Edge-only flag; see isEdge().
   if (isEdge(edge)) flags.push('--disable-features=msEdgeAutoLaunch');
@@ -368,7 +399,9 @@ async function main(): Promise<void> {
       // leaves the real one in place, but `getBuiltinModule` takes a specifier
       // and no path at all, so no bundler can break it again.
       sea = process.getBuiltinModule('node:sea');
-    } catch (e) { seaError = (e as Error).message; }
+    } catch (e) {
+      seaError = (e as Error).message;
+    }
     console.log('isPackaged()        = ' + isPackaged());
     console.log('node:sea load error = ' + (seaError || 'none'));
     // Prints the real `isSea()` even when false — `n/a` is reserved for "the

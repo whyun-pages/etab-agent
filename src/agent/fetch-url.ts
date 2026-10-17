@@ -92,16 +92,16 @@ function v4Octets(ip: string): number[] | null {
 
 function isPublicV4(o: number[]): boolean {
   const [a, b, c] = o;
-  if (a === 0 || a === 10 || a === 127) return false;            // this-network, private, loopback
-  if (a === 100 && b >= 64 && b <= 127) return false;            // CGNAT 100.64/10
-  if (a === 169 && b === 254) return false;                      // link-local, cloud metadata
-  if (a === 172 && b >= 16 && b <= 31) return false;             // private
-  if (a === 192 && b === 168) return false;                      // private
+  if (a === 0 || a === 10 || a === 127) return false; // this-network, private, loopback
+  if (a === 100 && b >= 64 && b <= 127) return false; // CGNAT 100.64/10
+  if (a === 169 && b === 254) return false; // link-local, cloud metadata
+  if (a === 172 && b >= 16 && b <= 31) return false; // private
+  if (a === 192 && b === 168) return false; // private
   if (a === 192 && b === 0 && (c === 0 || c === 2)) return false; // IETF, TEST-NET-1
-  if (a === 198 && (b === 18 || b === 19)) return false;         // benchmarking
-  if (a === 198 && b === 51 && c === 100) return false;          // TEST-NET-2
-  if (a === 203 && b === 0 && c === 113) return false;           // TEST-NET-3
-  if (a >= 224) return false;                                    // multicast, reserved, broadcast
+  if (a === 198 && (b === 18 || b === 19)) return false; // benchmarking
+  if (a === 198 && b === 51 && c === 100) return false; // TEST-NET-2
+  if (a === 203 && b === 0 && c === 113) return false; // TEST-NET-3
+  if (a >= 224) return false; // multicast, reserved, broadcast
   return true;
 }
 
@@ -142,16 +142,16 @@ export function isPublicAddress(ip: string): boolean {
   if (o) return isPublicV4(o);
   const g = v6Groups(ip);
   if (!g) return false;
-  if (g.every((x) => x === 0)) return false;                                   // ::
-  if (g.slice(0, 7).every((x) => x === 0) && g[7] === 1) return false;          // ::1
+  if (g.every((x) => x === 0)) return false; // ::
+  if (g.slice(0, 7).every((x) => x === 0) && g[7] === 1) return false; // ::1
   if (g.slice(0, 5).every((x) => x === 0) && g[5] === 0xffff) return isPublicV4(embeddedV4(g[6], g[7])); // ::ffff:a.b.c.d
-  if (g.slice(0, 6).every((x) => x === 0)) return false;                        // deprecated IPv4-compatible
+  if (g.slice(0, 6).every((x) => x === 0)) return false; // deprecated IPv4-compatible
   if (g[0] === 0x64 && g[1] === 0xff9b) return isPublicV4(embeddedV4(g[6], g[7])); // NAT64
-  if (g[0] === 0x2002) return isPublicV4(embeddedV4(g[1], g[2]));               // 6to4
-  if ((g[0] & 0xfe00) === 0xfc00) return false;                                 // unique local fc00::/7
-  if ((g[0] & 0xffc0) === 0xfe80 || (g[0] & 0xffc0) === 0xfec0) return false;   // link/site-local
-  if ((g[0] & 0xff00) === 0xff00) return false;                                 // multicast
-  if (g[0] === 0x2001 && g[1] === 0x0db8) return false;                         // documentation
+  if (g[0] === 0x2002) return isPublicV4(embeddedV4(g[1], g[2])); // 6to4
+  if ((g[0] & 0xfe00) === 0xfc00) return false; // unique local fc00::/7
+  if ((g[0] & 0xffc0) === 0xfe80 || (g[0] & 0xffc0) === 0xfec0) return false; // link/site-local
+  if ((g[0] & 0xff00) === 0xff00) return false; // multicast
+  if (g[0] === 0x2001 && g[1] === 0x0db8) return false; // documentation
   return true;
 }
 
@@ -163,7 +163,9 @@ export function isPublicAddress(ip: string): boolean {
  * become `example.com`, so the user can paste whatever they have.
  */
 export function normalizeHost(entry: unknown): string {
-  let s = String(entry ?? '').trim().toLowerCase();
+  let s = String(entry ?? '')
+    .trim()
+    .toLowerCase();
   s = s.replace(/^[a-z][a-z0-9+.-]*:\/\//, '');
   s = s.replace(/^[^@/]*@/, '');
   s = s.split(/[/?#]/)[0];
@@ -210,8 +212,25 @@ const TYPE_EXT: Array<[RegExp, string]> = [
   [/^text\//, '.txt'],
 ];
 
-const KNOWN_EXT = new Set([...TABLE_EXT, ...TEXT_EXT, '.json', '.jsonl', '.ndjson', '.html', '.htm', '.xml', '.docx', '.pdf', '.m3u', '.m3u8',
-  '.png', '.jpg', '.jpeg', '.gif', '.webp']);
+const KNOWN_EXT = new Set([
+  ...TABLE_EXT,
+  ...TEXT_EXT,
+  '.json',
+  '.jsonl',
+  '.ndjson',
+  '.html',
+  '.htm',
+  '.xml',
+  '.docx',
+  '.pdf',
+  '.m3u',
+  '.m3u8',
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.gif',
+  '.webp',
+]);
 
 /**
  * A file name for the body, so `readAttachment` picks the right reader.
@@ -222,7 +241,11 @@ const KNOWN_EXT = new Set([...TABLE_EXT, ...TEXT_EXT, '.json', '.jsonl', '.ndjso
  */
 export function filenameFor(url: URL, contentType: string): string {
   let base = '';
-  try { base = decodeURIComponent(path.posix.basename(url.pathname)); } catch { base = path.posix.basename(url.pathname); }
+  try {
+    base = decodeURIComponent(path.posix.basename(url.pathname));
+  } catch {
+    base = path.posix.basename(url.pathname);
+  }
   base = base.replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_');
   const ext = path.extname(base).toLowerCase();
   if (base && KNOWN_EXT.has(ext)) return base;
@@ -233,7 +256,11 @@ export function filenameFor(url: URL, contentType: string): string {
   return `${stem}${hit[1] === '.img' ? `.${/image\/(\w+)/.exec(ct)![1].replace('jpeg', 'jpg')}` : hit[1]}`;
 }
 
-type LookupCallback = (err: NodeJS.ErrnoException | null, address: string | dns.LookupAddress[], family?: number) => void;
+type LookupCallback = (
+  err: NodeJS.ErrnoException | null,
+  address: string | dns.LookupAddress[],
+  family?: number,
+) => void;
 
 function guardedLookup(allowPrivate: boolean) {
   return (hostname: string, options: dns.LookupOptions, cb: LookupCallback): void => {
@@ -241,7 +268,13 @@ function guardedLookup(allowPrivate: boolean) {
       if (err) return cb(err, '');
       const list = addresses as dns.LookupAddress[];
       const bad = allowPrivate ? undefined : list.find((a) => !isPublicAddress(a.address));
-      if (bad) return cb(new FetchError(`「${hostname}」解析到内网或保留地址（${bad.address}），不允许抓取。`) as NodeJS.ErrnoException, '');
+      if (bad)
+        return cb(
+          new FetchError(
+            `「${hostname}」解析到内网或保留地址（${bad.address}），不允许抓取。`,
+          ) as NodeJS.ErrnoException,
+          '',
+        );
       if (!list.length) return cb(new FetchError(`无法解析「${hostname}」`) as NodeJS.ErrnoException, '');
       // Newer Node asks for every address (happy eyeballs); older callers want one.
       if (options.all) return cb(null, list);
@@ -253,8 +286,13 @@ function guardedLookup(allowPrivate: boolean) {
 /** Check one URL before connecting to it. Throws a FetchError the model can read. */
 export function checkUrl(raw: string | URL, opts: FetchOptions = {}): URL {
   let url: URL;
-  try { url = raw instanceof URL ? raw : new URL(String(raw).trim()); } catch { throw new FetchError(`不是有效的网址：${String(raw).slice(0, 200)}`); }
-  if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new FetchError(`只支持 http 和 https 网址，不支持 ${url.protocol}`);
+  try {
+    url = raw instanceof URL ? raw : new URL(String(raw).trim());
+  } catch {
+    throw new FetchError(`不是有效的网址：${String(raw).slice(0, 200)}`);
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:')
+    throw new FetchError(`只支持 http 和 https 网址，不支持 ${url.protocol}`);
   if (url.username || url.password) throw new FetchError('网址里不能带用户名或密码。');
   const host = url.hostname.replace(/^\[|\]$/g, '');
   const rule = blockedBy(host, opts.blocklist);
@@ -274,27 +312,33 @@ interface Hop {
 function request(url: URL, opts: FetchOptions, signal: AbortSignal): Promise<Hop> {
   return new Promise((resolve, reject) => {
     const mod = url.protocol === 'https:' ? https : http;
-    const req = mod.request(url, {
-      method: 'GET',
-      signal,
-      lookup: guardedLookup(Boolean(opts.allowPrivate)) as unknown as typeof dns.lookup,
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; TabAgent)',
-        Accept: '*/*',
-        'Accept-Encoding': 'gzip, deflate, br',
+    const req = mod.request(
+      url,
+      {
+        method: 'GET',
+        signal,
+        lookup: guardedLookup(Boolean(opts.allowPrivate)) as unknown as typeof dns.lookup,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; TabAgent)',
+          Accept: '*/*',
+          'Accept-Encoding': 'gzip, deflate, br',
+        },
+        // A fresh connection per fetch: a pooled socket was connected (and its
+        // address checked) for some earlier request, possibly to another host
+        // name that resolved to the same place.
+        agent: false,
       },
-      // A fresh connection per fetch: a pooled socket was connected (and its
-      // address checked) for some earlier request, possibly to another host
-      // name that resolved to the same place.
-      agent: false,
-    }, (res) => resolve({ status: res.statusCode || 0, headers: res.headers, body: res }));
+      (res) => resolve({ status: res.statusCode || 0, headers: res.headers, body: res }),
+    );
     req.on('error', reject);
     req.end();
   });
 }
 
 function decoded(hop: Hop): Readable {
-  const enc = String(hop.headers['content-encoding'] || '').trim().toLowerCase();
+  const enc = String(hop.headers['content-encoding'] || '')
+    .trim()
+    .toLowerCase();
   if (enc === 'gzip' || enc === 'x-gzip') return hop.body.pipe(zlib.createGunzip());
   if (enc === 'deflate') return hop.body.pipe(zlib.createInflate());
   if (enc === 'br') return hop.body.pipe(zlib.createBrotliDecompress());
@@ -324,7 +368,10 @@ export async function fetchUrl(raw: string, opts: FetchOptions = {}): Promise<Fe
   const timeoutMs = opts.timeoutMs ?? FETCH_TIMEOUT_MS;
   const maxBytes = opts.maxBytes ?? MAX_FETCH_BYTES;
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(new FetchError(`${Math.round(timeoutMs / 1000)} 秒内没有完成，已放弃。`)), timeoutMs);
+  const timer = setTimeout(
+    () => ctrl.abort(new FetchError(`${Math.round(timeoutMs / 1000)} 秒内没有完成，已放弃。`)),
+    timeoutMs,
+  );
   const onAbort = () => ctrl.abort(opts.signal!.reason);
   if (opts.signal) {
     if (opts.signal.aborted) ctrl.abort(opts.signal.reason);
@@ -384,8 +431,14 @@ export function describeFetched(f: Fetched, att: Attachment): string {
   const t = att.table;
   if (att.kind === 'table' && t && t.header.length) {
     const shown = t.rows.slice(0, PREVIEW_ROWS);
-    const more = t.rows.length > shown.length ? `（共 ${t.rows.length} 行，只列出前 ${shown.length} 行；导入时会导入全部行）` : `（共 ${t.rows.length} 行）`;
-    const sheets = att.sheets && att.sheets.length > 1 ? `\n文件里有多个工作表：${att.sheets.map((s) => s.sheet).join('、')}；下面是「${t.sheet}」。` : '';
+    const more =
+      t.rows.length > shown.length
+        ? `（共 ${t.rows.length} 行，只列出前 ${shown.length} 行；导入时会导入全部行）`
+        : `（共 ${t.rows.length} 行）`;
+    const sheets =
+      att.sheets && att.sheets.length > 1
+        ? `\n文件里有多个工作表：${att.sheets.map((s) => s.sheet).join('、')}；下面是「${t.sheet}」。`
+        : '';
     const body = [t.header.join('\t'), ...shown.map((r) => r.map(cellText).join('\t'))].join('\n');
     return `${head}${sheets}\n表格${more}，推测列类型：${t.columns.map((c) => `${c.label}=${c.type}`).join('，')}\n${body.slice(0, PREVIEW_CHARS)}`;
   }
@@ -406,7 +459,9 @@ export function describeFetched(f: Fetched, att: Attachment): string {
  * reader's inference, mapped onto the spec's type names; anything unknown is
  * text, and normalisation then coerces the cells by those types.
  */
-export function tableForImport(att: Attachment): { columns: Array<{ header: string; type: string }>; rows: CellValue[][] } | null {
+export function tableForImport(
+  att: Attachment,
+): { columns: Array<{ header: string; type: string }>; rows: CellValue[][] } | null {
   const t = att.table;
   if (att.kind !== 'table' || !t || !t.header.length) return null;
   const known = TYPES as readonly string[];

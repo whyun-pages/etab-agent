@@ -15,7 +15,11 @@ import { el } from '../dom.js';
 import { icon } from '../icons.js';
 import { sheetView } from './sheet.js';
 
-const FORMATS = [['xlsx', 'xlsx'], ['csv', 'CSV'], ['json', 'JSON']];
+const FORMATS = [
+  ['xlsx', 'xlsx'],
+  ['csv', 'CSV'],
+  ['json', 'JSON'],
+];
 
 /** The picked format, kept across re-renders for the life of the page. */
 let downloadFormat = 'xlsx';
@@ -56,7 +60,9 @@ export function previewView(state, handlers) {
     fmt.append(opt);
   }
   fmt.disabled = empty;
-  fmt.addEventListener('change', () => { downloadFormat = fmt.value; });
+  fmt.addEventListener('change', () => {
+    downloadFormat = fmt.value;
+  });
   tools.append(fmt);
 
   const dl = el('button', { class: 'btn btn--sm', type: 'button', title: '下载' });
@@ -71,7 +77,10 @@ export function previewView(state, handlers) {
   // ── body ───────────────────────────────────────────────────────────
   const body = el('div', { class: 'preview__body' });
 
-  if (pager) { pager.disconnect(); pager = null; }
+  if (pager) {
+    pager.disconnect();
+    pager = null;
+  }
   if (!sheet || !sheet.rows.length) {
     body.append(emptyPreview(state));
   } else {
@@ -110,13 +119,23 @@ function moreRows(state, handlers, body) {
     line.append(el('span', { class: 'preview__moreerr', text: `加载失败：${state.previewError}` }));
     line.append(el('button', { class: 'btn btn--sm', type: 'button', text: '重试', onclick: handlers.onMorePreview }));
   } else {
-    line.append(el('button', { class: 'btn btn--ghost btn--sm', type: 'button', text: '加载更多', onclick: handlers.onMorePreview }));
+    line.append(
+      el('button', {
+        class: 'btn btn--ghost btn--sm',
+        type: 'button',
+        text: '加载更多',
+        onclick: handlers.onMorePreview,
+      }),
+    );
     if (typeof IntersectionObserver === 'function') {
       // A margin below the edge, so the next page is on its way before the
       // user reaches the end of this one.
-      pager = new IntersectionObserver((entries) => {
-        if (entries.some((e) => e.isIntersecting)) handlers.onMorePreview();
-      }, { root: body, rootMargin: '0px 0px 400px 0px' });
+      pager = new IntersectionObserver(
+        (entries) => {
+          if (entries.some((e) => e.isIntersecting)) handlers.onMorePreview();
+        },
+        { root: body, rootMargin: '0px 0px 400px 0px' },
+      );
       pager.observe(line);
     }
   }
@@ -127,7 +146,10 @@ function moreRows(state, handlers, body) {
 function columnsCut(sheet) {
   const shown = sheet.rows.reduce((m, r) => Math.max(m, r.length), 0);
   if (!sheet.totalCols || sheet.totalCols <= shown) return null;
-  return el('p', { class: 'hint preview__cut', text: `只显示前 ${shown} 列（共 ${sheet.totalCols} 列），下载可得到完整表格。` });
+  return el('p', {
+    class: 'hint preview__cut',
+    text: `只显示前 ${shown} 列（共 ${sheet.totalCols} 列），下载可得到完整表格。`,
+  });
 }
 
 /** Sheet rows to data rows: the first row is the header. */
@@ -159,11 +181,13 @@ function emptyPreview(state) {
     return box;
   }
 
-  box.append(el('p', {
-    class: 'preview__hint',
-    text: state.activeId
-      ? '说一句要做什么表，比如「做一个销售台账，三个客户…」，表格会出现在这里。'
-      : '左边新建一个会话，或者选一个过去的会话继续。',
-  }));
+  box.append(
+    el('p', {
+      class: 'preview__hint',
+      text: state.activeId
+        ? '说一句要做什么表，比如「做一个销售台账，三个客户…」，表格会出现在这里。'
+        : '左边新建一个会话，或者选一个过去的会话继续。',
+    }),
+  );
   return box;
 }

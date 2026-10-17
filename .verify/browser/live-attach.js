@@ -43,8 +43,14 @@ const { openPage, closePage, findEdge, sleep } = require('../support/cdp.js');
 let passed = 0;
 let failed = 0;
 function check(name, ok, detail) {
-  if (ok) { passed += 1; console.log(`  ok    ${name}`); }
-  else { failed += 1; console.log(`  FAIL  ${name}`); if (detail) console.log(`        ${detail}`); }
+  if (ok) {
+    passed += 1;
+    console.log(`  ok    ${name}`);
+  } else {
+    failed += 1;
+    console.log(`  FAIL  ${name}`);
+    if (detail) console.log(`        ${detail}`);
+  }
 }
 
 const tmpdir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'live-attach-'));
@@ -54,7 +60,7 @@ function fakeSettings() {
     baseUrl: 'http://127.0.0.1:1/v1',
     apiKey: 'sk-not-a-real-key',
     model: 'stub-model',
-    useForAttachments: false,   // rule-based reading only; no model round-trip
+    useForAttachments: false, // rule-based reading only; no model round-trip
     chatCanEdit: true,
     chatConfirmEdits: false,
   };
@@ -64,8 +70,13 @@ function fakeSettings() {
     secrets: () => ({ baseUrl: record.baseUrl, apiKey: record.apiKey, model: record.model }),
     isConfigured: () => true,
     publicSettings: () => ({
-      baseUrl: record.baseUrl, model: record.model, hasKey: true, keyHint: 'sk-…key',
-      useForAttachments: false, chatCanEdit: true, chatConfirmEdits: false,
+      baseUrl: record.baseUrl,
+      model: record.model,
+      hasKey: true,
+      keyHint: 'sk-…key',
+      useForAttachments: false,
+      chatCanEdit: true,
+      chatConfirmEdits: false,
     }),
   };
 }
@@ -74,7 +85,11 @@ function fakeSettings() {
 async function waitFor(page, expr, ms = 8000, step = 200) {
   const deadline = Date.now() + ms;
   while (Date.now() < deadline) {
-    try { if (await page.evaluate(expr, { awaitPromise: false })) return true; } catch { /* not ready */ }
+    try {
+      if (await page.evaluate(expr, { awaitPromise: false })) return true;
+    } catch {
+      /* not ready */
+    }
     await sleep(step);
   }
   return false;
@@ -117,9 +132,13 @@ async function main() {
     await sleep(600);
 
     // A session is required: attachments follow the open conversation.
-    const created = await (await fetch(`${base}/api/sessions`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}),
-    })).json();
+    const created = await (
+      await fetch(`${base}/api/sessions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      })
+    ).json();
     const attUrl = `${base}/api/sessions/${encodeURIComponent(created.session.id)}/attachments`;
     await page.evaluate('location.reload()');
     await sleep(1500);
@@ -133,13 +152,15 @@ async function main() {
     await sleep(800);
 
     // ── 1. the paperclip exists and is hit-testable ────────────────────
-    const clipBox = await page.evaluate(`(() => {
+    const clipBox = await page
+      .evaluate(`(() => {
       const b = document.querySelector('.composer__clip');
       if (!b) return null;
       const r = b.getBoundingClientRect();
       if (!r.width || !r.height) return null;
       return JSON.stringify({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
-    })()`).then((s) => (s ? JSON.parse(s) : null));
+    })()`)
+      .then((s) => (s ? JSON.parse(s) : null));
     check('the paperclip button is present and sized', !!clipBox, JSON.stringify(clipBox));
 
     const inputOk = await page.evaluate(`(() => {
@@ -153,7 +174,10 @@ async function main() {
     // checking no exception surfaced and the element stayed.
     await page.evaluate(`(() => { document.querySelector('.composer__clip').click(); return true; })()`);
     await sleep(200);
-    check('clicking the paperclip does not throw', await page.evaluate('Boolean(document.querySelector(".composer__clip"))'));
+    check(
+      'clicking the paperclip does not throw',
+      await page.evaluate('Boolean(document.querySelector(".composer__clip"))'),
+    );
 
     // ── 2. a picked file uploads and becomes a chip ────────────────────
     const csvPath = path.join(OUT, '附件探针.csv');
@@ -184,10 +208,16 @@ async function main() {
     check('the chip carries the file name', /附件探针/.test(chipName), JSON.stringify(chipName));
 
     const listed = await (await fetch(attUrl)).json();
-    check('the server holds one attachment after upload', listed.attachments && listed.attachments.length === 1,
-      JSON.stringify(listed.attachments && listed.attachments.length));
-    check('the parsed kind is a table', listed.attachments && listed.attachments[0] && listed.attachments[0].kind === 'table',
-      JSON.stringify(listed.attachments && listed.attachments[0] && listed.attachments[0].kind));
+    check(
+      'the server holds one attachment after upload',
+      listed.attachments && listed.attachments.length === 1,
+      JSON.stringify(listed.attachments && listed.attachments.length),
+    );
+    check(
+      'the parsed kind is a table',
+      listed.attachments && listed.attachments[0] && listed.attachments[0].kind === 'table',
+      JSON.stringify(listed.attachments && listed.attachments[0] && listed.attachments[0].kind),
+    );
 
     // ── 3. the content reaches the model ───────────────────────────────
     // Type a message and send; the outgoing model message must contain the CSV.
@@ -200,16 +230,30 @@ async function main() {
       return ta.value;
     })()`);
     await sleep(150);
-    const sendBox = await page.evaluate(`(() => {
+    const sendBox = await page
+      .evaluate(`(() => {
       const b = document.querySelector('.composer__send');
       if (!b) return null;
       const r = b.getBoundingClientRect();
       return JSON.stringify({ x: r.left + r.width / 2, y: r.top + r.height / 2, disabled: b.disabled });
-    })()`).then((s) => (s ? JSON.parse(s) : null));
+    })()`)
+      .then((s) => (s ? JSON.parse(s) : null));
     check('the send button is enabled', sendBox && sendBox.disabled === false, JSON.stringify(sendBox));
     if (sendBox) {
-      await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: sendBox.x, y: sendBox.y, button: 'left', clickCount: 1 });
-      await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: sendBox.x, y: sendBox.y, button: 'left', clickCount: 1 });
+      await page.send('Input.dispatchMouseEvent', {
+        type: 'mousePressed',
+        x: sendBox.x,
+        y: sendBox.y,
+        button: 'left',
+        clickCount: 1,
+      });
+      await page.send('Input.dispatchMouseEvent', {
+        type: 'mouseReleased',
+        x: sendBox.x,
+        y: sendBox.y,
+        button: 'left',
+        clickCount: 1,
+      });
       // Poll for the turn to actually leave, rather than a fixed sleep. A fixed
       // wait is a timing bet: it passes alone and loses when other probes have
       // just finished and the box is still warm. The bet has no upside — the
@@ -219,29 +263,59 @@ async function main() {
     }
 
     const reached = seen.some((m) => /北京甲公司/.test(m) && /附件探针/.test(m));
-    check('the attachment content reached the model message', reached,
-      seen.length ? `messages=${seen.length}, first=${JSON.stringify(seen[0].slice(0, 120))}` : 'transport never called');
-    check('the user text is still in the message', seen.some((m) => /照着这个做一个表/.test(m)));
+    check(
+      'the attachment content reached the model message',
+      reached,
+      seen.length
+        ? `messages=${seen.length}, first=${JSON.stringify(seen[0].slice(0, 120))}`
+        : 'transport never called',
+    );
+    check(
+      'the user text is still in the message',
+      seen.some((m) => /照着这个做一个表/.test(m)),
+    );
 
     // The content is context for the model, not something the user said: the
     // bubble shows what was typed plus the file's name, never the block.
     await sleep(800);
-    const bubbleText = await page.evaluate(`[...document.querySelectorAll('.chat__row--me .chat__text')].map((n) => n.textContent).join('|')`);
-    check('the chat bubble does not show the attachment block', !/附件资料/.test(bubbleText), JSON.stringify(bubbleText.slice(0, 120)));
-    const bubbleFiles = await page.evaluate(`[...document.querySelectorAll('.chat__row--me .chat__file')].map((n) => n.textContent).join('|')`);
+    const bubbleText = await page.evaluate(
+      `[...document.querySelectorAll('.chat__row--me .chat__text')].map((n) => n.textContent).join('|')`,
+    );
+    check(
+      'the chat bubble does not show the attachment block',
+      !/附件资料/.test(bubbleText),
+      JSON.stringify(bubbleText.slice(0, 120)),
+    );
+    const bubbleFiles = await page.evaluate(
+      `[...document.querySelectorAll('.chat__row--me .chat__file')].map((n) => n.textContent).join('|')`,
+    );
     check('the chat bubble names the attached file', /附件探针/.test(bubbleFiles), JSON.stringify(bubbleFiles));
 
     // ── 4. removing the chip clears it ─────────────────────────────────
-    const removeX = await page.evaluate(`(() => {
+    const removeX = await page
+      .evaluate(`(() => {
       const b = document.querySelector('.chip__x');
       if (!b) return null;
       const r = b.getBoundingClientRect();
       return JSON.stringify({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
-    })()`).then((s) => (s ? JSON.parse(s) : null));
+    })()`)
+      .then((s) => (s ? JSON.parse(s) : null));
     check('the chip has a remove button', !!removeX, JSON.stringify(removeX));
     if (removeX) {
-      await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: removeX.x, y: removeX.y, button: 'left', clickCount: 1 });
-      await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: removeX.x, y: removeX.y, button: 'left', clickCount: 1 });
+      await page.send('Input.dispatchMouseEvent', {
+        type: 'mousePressed',
+        x: removeX.x,
+        y: removeX.y,
+        button: 'left',
+        clickCount: 1,
+      });
+      await page.send('Input.dispatchMouseEvent', {
+        type: 'mouseReleased',
+        x: removeX.x,
+        y: removeX.y,
+        button: 'left',
+        clickCount: 1,
+      });
       await sleep(800);
     }
     const chipsGone = await page.evaluate('document.querySelectorAll(".chip").length');
@@ -252,7 +326,8 @@ async function main() {
     // ── 5. drag-and-drop ───────────────────────────────────────────────
     // Build a DataTransfer with a real File and dispatch dragenter -> dragover
     // -> drop, exactly the events a file drag produces.
-    const dragResult = await page.evaluate(`(() => {
+    const dragResult = await page
+      .evaluate(`(() => {
       const dt = new DataTransfer();
       dt.items.add(new File([${JSON.stringify(CSV)}], '拖入的表.csv', { type: 'text/csv' }));
       const fire = (type) => window.dispatchEvent(new DragEvent(type, { dataTransfer: dt, bubbles: true, cancelable: true }));
@@ -261,11 +336,16 @@ async function main() {
       fire('dragover');
       fire('drop');
       return JSON.stringify({ overlayOn: on });
-    })()`).then((s) => JSON.parse(s));
+    })()`)
+      .then((s) => JSON.parse(s));
     check('dragenter shows the drop overlay', dragResult.overlayOn === true, JSON.stringify(dragResult));
     await sleep(800);
     const afterDrop = await (await fetch(attUrl)).json();
-    check('dropping a file uploads it', afterDrop.attachments.length === 1, JSON.stringify(afterDrop.attachments.length));
+    check(
+      'dropping a file uploads it',
+      afterDrop.attachments.length === 1,
+      JSON.stringify(afterDrop.attachments.length),
+    );
     const droppedChip = await page.evaluate(`(() => {
       const n = document.querySelector('.chip .chip__name');
       return n ? n.textContent : '';
@@ -274,13 +354,22 @@ async function main() {
     const overlayOff = await page.evaluate(`document.querySelector('#drag-overlay').classList.contains('is-on')`);
     check('the overlay hides after drop', overlayOff === false);
   } finally {
-    if (page) { try { await closePage(page, { trashProfile: true }); } catch {} }
+    if (page) {
+      try {
+        await closePage(page, { trashProfile: true });
+      } catch {}
+    }
     await new Promise((r) => server.close(r));
-    try { fs.rmSync(dataDir, { recursive: true, force: true }); } catch {}
+    try {
+      fs.rmSync(dataDir, { recursive: true, force: true });
+    } catch {}
   }
 
   console.log('\n' + (failed === 0 ? 'ATTACHMENT UPLOAD CHECKS PASSED' : `${failed} FAILED`));
   process.exit(failed === 0 ? 0 : 1);
 }
 
-main().catch((err) => { console.error(err); process.exit(1); });
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

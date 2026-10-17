@@ -28,29 +28,37 @@ const PORT = 3247;
 const { normalizeSpec, writeSpec } = require(path.join(ROOT, 'src', 'workbook', 'workbook.ts'));
 const { sheetPreview } = require(path.join(ROOT, 'src', 'workbook', 'preview.ts'));
 
-let pass = 0, fail = 0;
+let pass = 0,
+  fail = 0;
 const check = (label, ok, detail) => {
-  if (ok) { pass++; console.log(`  ok   ${label}${detail ? '  — ' + detail : ''}`); }
-  else { fail++; console.log(`  FAIL ${label}${detail ? '  — ' + detail : ''}`); }
+  if (ok) {
+    pass++;
+    console.log(`  ok   ${label}${detail ? '  — ' + detail : ''}`);
+  } else {
+    fail++;
+    console.log(`  FAIL ${label}${detail ? '  — ' + detail : ''}`);
+  }
 };
 
 const { spec } = normalizeSpec({
   title: '销售汇总',
-  sheets: [{
-    name: '订单明细',
-    columns: [
-      { header: '订单号', type: 'text' },
-      { header: '签约日', type: 'date' },
-      { header: '合同金额', type: 'currency' },
-      { header: '税率', type: 'percent' },
-      { header: '数量', type: 'integer' },
-    ],
-    rows: [
-      ['SO-1', new Date(Date.UTC(2026, 2, 1)), 1250000, 0.06, 12],
-      ['SO-2', new Date(Date.UTC(2026, 1, 19)), 880000, 0.13, 4],
-    ],
-    totals: { enabled: true },
-  }],
+  sheets: [
+    {
+      name: '订单明细',
+      columns: [
+        { header: '订单号', type: 'text' },
+        { header: '签约日', type: 'date' },
+        { header: '合同金额', type: 'currency' },
+        { header: '税率', type: 'percent' },
+        { header: '数量', type: 'integer' },
+      ],
+      rows: [
+        ['SO-1', new Date(Date.UTC(2026, 2, 1)), 1250000, 0.06, 12],
+        ['SO-2', new Date(Date.UTC(2026, 1, 19)), 880000, 0.13, 4],
+      ],
+      totals: { enabled: true },
+    },
+  ],
 });
 
 async function main() {
@@ -119,7 +127,11 @@ async function main() {
   console.log('rendered rows ->');
   for (const row of rendered || []) console.log('  ', JSON.stringify(row));
 
-  check('the grid rendered the header and two data rows', (rendered || []).length >= 4, `${(rendered || []).length} rows`);
+  check(
+    'the grid rendered the header and two data rows',
+    (rendered || []).length >= 4,
+    `${(rendered || []).length} rows`,
+  );
   // Row 0 is the header — the first version of this test indexed it as data and
   // reported five failures that were all off-by-one.
   const header = (rendered || [])[0] || [];
@@ -127,16 +139,28 @@ async function main() {
   const altRow = (rendered || [])[2] || [];
   const totalRow = (rendered || [])[3] || [];
   check('the header shows the column names', header[1], '签约日');
-  check('the date cell renders as a date, not a serial number', /2026-03-01/.test(dataRow[1] || ''), JSON.stringify(dataRow[1]));
+  check(
+    'the date cell renders as a date, not a serial number',
+    /2026-03-01/.test(dataRow[1] || ''),
+    JSON.stringify(dataRow[1]),
+  );
   check('the second date renders too', /2026-02-19/.test(altRow[1] || ''), JSON.stringify(altRow[1]));
   check('money renders with a currency sign', /¥/.test(dataRow[2] || ''), JSON.stringify(dataRow[2]));
   check('percent renders as a percentage', /%/.test(dataRow[3] || ''), JSON.stringify(dataRow[3]));
-  check('the percent is scaled, not just suffixed', /^6(\.0+)?%$/.test((dataRow[3] || '').replace(/,/g, '')), JSON.stringify(dataRow[3]));
+  check(
+    'the percent is scaled, not just suffixed',
+    /^6(\.0+)?%$/.test((dataRow[3] || '').replace(/,/g, '')),
+    JSON.stringify(dataRow[3]),
+  );
   check('integer renders with grouping', /12/.test(dataRow[4] || ''), JSON.stringify(dataRow[4]));
   check('the totals row is labelled', totalRow[0], '合计');
   check('the totals money cell keeps its sign', /¥/.test(totalRow[2] || ''), JSON.stringify(totalRow[2]));
   check('the 税率 column has no total', totalRow[3] === '' || totalRow[3] === undefined, JSON.stringify(totalRow[3]));
-  check('no cell shows a raw five-digit serial', !(rendered || []).some((r) => r.some((c) => /^\d{5}$/.test(String(c)))), JSON.stringify(rendered));
+  check(
+    'no cell shows a raw five-digit serial',
+    !(rendered || []).some((r) => r.some((c) => /^\d{5}$/.test(String(c)))),
+    JSON.stringify(rendered),
+  );
 
   const shot = await page.send('Page.captureScreenshot', { format: 'png' });
   const file = path.join(OUT, '11-sheet-render.png');
@@ -144,11 +168,18 @@ async function main() {
   console.log('\nsaved 11-sheet-render.png (' + fs.statSync(file).size + ' bytes)');
 
   await closePage(page, { trashProfile: true });
-  try { srv.kill(); } catch { /* ignore */ }
+  try {
+    srv.kill();
+  } catch {
+    /* ignore */
+  }
   fs.rmSync(servedHarness, { force: true });
 
   console.log(`\nSHEET RENDER: ${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
 }
 
-main().catch((err) => { console.error('FAILED:', err && err.stack || err); process.exit(2); });
+main().catch((err) => {
+  console.error('FAILED:', (err && err.stack) || err);
+  process.exit(2);
+});

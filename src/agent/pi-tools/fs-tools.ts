@@ -44,8 +44,21 @@ import { fileURLToPath } from 'node:url';
 import type { AgentTool, AgentToolResult } from '@earendil-works/pi-agent-core';
 import type { ImageContent, TextContent } from '@earendil-works/pi-ai';
 import type { Pi } from '../pi.ts';
-import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, GREP_MAX_LINE_LENGTH, formatSize, truncateHead, truncateLine } from './truncate.ts';
-import { applyEditsToNormalizedContent, detectLineEnding, normalizeToLF, restoreLineEndings, splitBom } from './edit-diff.ts';
+import {
+  DEFAULT_MAX_BYTES,
+  DEFAULT_MAX_LINES,
+  GREP_MAX_LINE_LENGTH,
+  formatSize,
+  truncateHead,
+  truncateLine,
+} from './truncate.ts';
+import {
+  applyEditsToNormalizedContent,
+  detectLineEnding,
+  normalizeToLF,
+  restoreLineEndings,
+  splitBom,
+} from './edit-diff.ts';
 import type { Edit } from './edit-diff.ts';
 
 type TypeBuilder = Pi['ai']['Type'];
@@ -120,7 +133,8 @@ export function resolveToCwd(filePath: string, cwd: string, home: string = os.ho
   if (p.startsWith('@')) p = p.slice(1);
   if (process.platform === 'win32') p = normalizeWindowsShellPath(p);
   if (p === '~') p = home;
-  else if (p.startsWith('~/') || (process.platform === 'win32' && p.startsWith('~\\'))) p = nodePath.join(home, p.slice(2));
+  else if (p.startsWith('~/') || (process.platform === 'win32' && p.startsWith('~\\')))
+    p = nodePath.join(home, p.slice(2));
   else if (/^file:\/\//.test(p)) p = fileURLToPath(p);
   return nodePath.isAbsolute(p) ? nodePath.resolve(p) : nodePath.resolve(cwd, p);
 }
@@ -138,10 +152,16 @@ export const IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 
 /** The image type of a file's first bytes, for the formats pi's read accepts. */
 function imageMimeType(buf: Buffer): string | null {
-  if (buf.length >= 8 && buf.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return 'image/png';
+  if (buf.length >= 8 && buf.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])))
+    return 'image/png';
   if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'image/jpeg';
   if (buf.length >= 6 && /^GIF8[79]a$/.test(buf.subarray(0, 6).toString('latin1'))) return 'image/gif';
-  if (buf.length >= 12 && buf.subarray(0, 4).toString('latin1') === 'RIFF' && buf.subarray(8, 12).toString('latin1') === 'WEBP') return 'image/webp';
+  if (
+    buf.length >= 12 &&
+    buf.subarray(0, 4).toString('latin1') === 'RIFF' &&
+    buf.subarray(8, 12).toString('latin1') === 'WEBP'
+  )
+    return 'image/webp';
   if (buf.length >= 2 && buf[0] === 0x42 && buf[1] === 0x4d) return 'image/bmp';
   return null;
 }
@@ -168,7 +188,14 @@ export function createReadTool(Type: TypeBuilder, cwd: string, ops: ReadOperatio
       const mimeType = imageMimeType(buffer);
       if (mimeType) {
         if (buffer.length > IMAGE_MAX_BYTES) {
-          return { content: [text(`Read image file [${mimeType}]\nImage is ${formatSize(buffer.length)}, over the ${formatSize(IMAGE_MAX_BYTES)} limit; not sent.`)], details: undefined };
+          return {
+            content: [
+              text(
+                `Read image file [${mimeType}]\nImage is ${formatSize(buffer.length)}, over the ${formatSize(IMAGE_MAX_BYTES)} limit; not sent.`,
+              ),
+            ],
+            details: undefined,
+          };
         }
         const image: ImageContent = { type: 'image', data: buffer.toString('base64'), mimeType };
         return { content: [text(`Read image file [${mimeType}]`), image], details: undefined };
@@ -178,7 +205,8 @@ export function createReadTool(Type: TypeBuilder, cwd: string, ops: ReadOperatio
       const totalFileLines = allLines.length;
       const startLine = offset ? Math.max(0, offset - 1) : 0;
       const startLineDisplay = startLine + 1;
-      if (startLine >= allLines.length) throw new Error(`Offset ${offset} is beyond end of file (${allLines.length} lines total)`);
+      if (startLine >= allLines.length)
+        throw new Error(`Offset ${offset} is beyond end of file (${allLines.length} lines total)`);
 
       let selected: string;
       let userLimitedLines: number | undefined;
@@ -202,9 +230,11 @@ export function createReadTool(Type: TypeBuilder, cwd: string, ops: ReadOperatio
       } else if (truncation.truncated) {
         const endLineDisplay = startLineDisplay + truncation.outputLines - 1;
         const next = endLineDisplay + 1;
-        output = truncation.content + (truncation.truncatedBy === 'lines'
-          ? `\n\n[Showing lines ${startLineDisplay}-${endLineDisplay} of ${totalFileLines}. Use offset=${next} to continue.]`
-          : `\n\n[Showing lines ${startLineDisplay}-${endLineDisplay} of ${totalFileLines} (${formatSize(DEFAULT_MAX_BYTES)} limit). Use offset=${next} to continue.]`);
+        output =
+          truncation.content +
+          (truncation.truncatedBy === 'lines'
+            ? `\n\n[Showing lines ${startLineDisplay}-${endLineDisplay} of ${totalFileLines}. Use offset=${next} to continue.]`
+            : `\n\n[Showing lines ${startLineDisplay}-${endLineDisplay} of ${totalFileLines} (${formatSize(DEFAULT_MAX_BYTES)} limit). Use offset=${next} to continue.]`);
         details = { truncation };
       } else if (userLimitedLines !== undefined && startLine + userLimitedLines < allLines.length) {
         const remaining = allLines.length - (startLine + userLimitedLines);
@@ -223,7 +253,8 @@ export function createWriteTool(Type: TypeBuilder, cwd: string, ops: WriteOperat
   return {
     name: 'write',
     label: 'write',
-    description: "Write content to a file. Creates the file if it doesn't exist, overwrites if it does. Automatically creates parent directories.",
+    description:
+      "Write content to a file. Creates the file if it doesn't exist, overwrites if it does. Automatically creates parent directories.",
     parameters: Type.Object({
       path: Type.String({ description: 'Path to the file to write (relative or absolute)' }),
       content: Type.String({ description: 'Content to write to the file' }),
@@ -261,7 +292,9 @@ function prepareEditArguments(input: unknown): any {
       const parsed = JSON.parse(args.edits);
       if (Array.isArray(parsed)) args.edits = parsed;
       else if (isSingleEdit(parsed)) args.edits = [parsed];
-    } catch { /* left for validation to report */ }
+    } catch {
+      /* left for validation to report */
+    }
   } else if (isSingleEdit(args.edits)) {
     args.edits = [args.edits];
   }
@@ -276,18 +309,29 @@ export function createEditTool(Type: TypeBuilder, cwd: string, ops: EditOperatio
   return {
     name: 'edit',
     label: 'edit',
-    description: 'Edit a single file using exact text replacement. Every edits[].oldText must match a unique, non-overlapping region of the original file. If two changes affect the same block or nearby lines, merge them into one edit instead of emitting overlapping edits. Do not include large unchanged regions just to connect distant changes.',
+    description:
+      'Edit a single file using exact text replacement. Every edits[].oldText must match a unique, non-overlapping region of the original file. If two changes affect the same block or nearby lines, merge them into one edit instead of emitting overlapping edits. Do not include large unchanged regions just to connect distant changes.',
     parameters: Type.Object({
       path: Type.String({ description: 'Path to the file to edit (relative or absolute)' }),
-      edits: Type.Array(Type.Object({
-        oldText: Type.String({ description: 'Exact text for one targeted replacement. It must be unique in the original file and must not overlap with any other edits[].oldText in the same call.' }),
-        newText: Type.String({ description: 'Replacement text for this targeted edit.' }),
-      }), { description: 'One or more targeted replacements. Each edit is matched against the original file, not incrementally. Do not include overlapping or nested edits. If two changes touch the same block or nearby lines, merge them into one edit instead.' }),
+      edits: Type.Array(
+        Type.Object({
+          oldText: Type.String({
+            description:
+              'Exact text for one targeted replacement. It must be unique in the original file and must not overlap with any other edits[].oldText in the same call.',
+          }),
+          newText: Type.String({ description: 'Replacement text for this targeted edit.' }),
+        }),
+        {
+          description:
+            'One or more targeted replacements. Each edit is matched against the original file, not incrementally. Do not include overlapping or nested edits. If two changes touch the same block or nearby lines, merge them into one edit instead.',
+        },
+      ),
     }),
     prepareArguments: prepareEditArguments,
     async execute(_id, params, signal): Promise<Result> {
       const { path, edits } = params as { path: string; edits: Edit[] };
-      if (!Array.isArray(edits) || edits.length === 0) throw new Error('Edit tool input is invalid. edits must contain at least one replacement.');
+      if (!Array.isArray(edits) || edits.length === 0)
+        throw new Error('Edit tool input is invalid. edits must contain at least one replacement.');
       const absolutePath = resolveToCwd(path, cwd, home);
       throwIfAborted(signal);
       try {
@@ -296,7 +340,12 @@ export function createEditTool(Type: TypeBuilder, cwd: string, ops: EditOperatio
         throwIfAborted(signal);
         // pi reports only an errno here; a refusal from the checks carries its
         // reason in the message, so that goes through as well.
-        const why = error instanceof Error ? ('code' in error ? `Error code: ${(error as NodeJS.ErrnoException).code}` : error.message) : String(error);
+        const why =
+          error instanceof Error
+            ? 'code' in error
+              ? `Error code: ${(error as NodeJS.ErrnoException).code}`
+              : error.message
+            : String(error);
         throw new Error(`Could not edit file: ${path}. ${why}`);
       }
       throwIfAborted(signal);
@@ -309,7 +358,10 @@ export function createEditTool(Type: TypeBuilder, cwd: string, ops: EditOperatio
       throwIfAborted(signal);
       const note = await ops.writeFile(absolutePath, bom + restoreLineEndings(newContent, ending));
       throwIfAborted(signal);
-      return { content: [text(`Successfully replaced ${edits.length} block(s) in ${path}.${note ? `\n${note}` : ''}`)], details: undefined };
+      return {
+        content: [text(`Successfully replaced ${edits.length} block(s) in ${path}.${note ? `\n${note}` : ''}`)],
+        details: undefined,
+      };
     },
   };
 }
@@ -325,7 +377,9 @@ export function createLsTool(Type: TypeBuilder, cwd: string, ops: LsOperations, 
     description: `List directory contents. Returns entries sorted alphabetically, with '/' suffix for directories. Includes dotfiles. Output is truncated to ${LS_DEFAULT_LIMIT} entries or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first).`,
     parameters: Type.Object({
       path: Type.Optional(Type.String({ description: 'Directory to list (default: current directory)' })),
-      limit: Type.Optional(Type.Number({ description: `Maximum number of entries to return (default: ${LS_DEFAULT_LIMIT})` })),
+      limit: Type.Optional(
+        Type.Number({ description: `Maximum number of entries to return (default: ${LS_DEFAULT_LIMIT})` }),
+      ),
     }),
     async execute(_id, params, signal): Promise<Result> {
       const { path, limit } = params as { path?: string; limit?: number };
@@ -398,7 +452,9 @@ export function createFindTool(Type: TypeBuilder, cwd: string, ops: FindOperatio
     label: 'find',
     description: `Search for files by glob pattern. Returns matching file paths relative to the search directory. Output is truncated to ${FIND_DEFAULT_LIMIT} results or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first).`,
     parameters: Type.Object({
-      pattern: Type.String({ description: "Glob pattern to match files, e.g. '*.ts', '**/*.json', or 'src/**/*.spec.ts'" }),
+      pattern: Type.String({
+        description: "Glob pattern to match files, e.g. '*.ts', '**/*.json', or 'src/**/*.spec.ts'",
+      }),
       path: Type.Optional(Type.String({ description: 'Directory to search in (default: current directory)' })),
       limit: Type.Optional(Type.Number({ description: `Maximum number of results (default: ${FIND_DEFAULT_LIMIT})` })),
     }),
@@ -418,7 +474,9 @@ export function createFindTool(Type: TypeBuilder, cwd: string, ops: FindOperatio
       const notices: string[] = [];
       const details: Record<string, unknown> = {};
       if (relativized.length >= effectiveLimit) {
-        notices.push(`${effectiveLimit} results limit reached. Use limit=${effectiveLimit * 2} for more, or refine pattern`);
+        notices.push(
+          `${effectiveLimit} results limit reached. Use limit=${effectiveLimit * 2} for more, or refine pattern`,
+        );
         details.resultLimitReached = effectiveLimit;
       }
       if (truncation.truncated) {
@@ -456,12 +514,26 @@ export function createGrepTool(Type: TypeBuilder, cwd: string, ops: GrepOperatio
       path: Type.Optional(Type.String({ description: 'Directory or file to search (default: current directory)' })),
       glob: Type.Optional(Type.String({ description: "Filter files by glob pattern, e.g. '*.ts' or '**/*.spec.ts'" })),
       ignoreCase: Type.Optional(Type.Boolean({ description: 'Case-insensitive search (default: false)' })),
-      literal: Type.Optional(Type.Boolean({ description: 'Treat pattern as literal string instead of regex (default: false)' })),
-      context: Type.Optional(Type.Number({ description: 'Number of lines to show before and after each match (default: 0)' })),
-      limit: Type.Optional(Type.Number({ description: `Maximum number of matches to return (default: ${GREP_DEFAULT_LIMIT})` })),
+      literal: Type.Optional(
+        Type.Boolean({ description: 'Treat pattern as literal string instead of regex (default: false)' }),
+      ),
+      context: Type.Optional(
+        Type.Number({ description: 'Number of lines to show before and after each match (default: 0)' }),
+      ),
+      limit: Type.Optional(
+        Type.Number({ description: `Maximum number of matches to return (default: ${GREP_DEFAULT_LIMIT})` }),
+      ),
     }),
     async execute(_id, params, signal): Promise<Result> {
-      const p = params as { pattern: string; path?: string; glob?: string; ignoreCase?: boolean; literal?: boolean; context?: number; limit?: number };
+      const p = params as {
+        pattern: string;
+        path?: string;
+        glob?: string;
+        ignoreCase?: boolean;
+        literal?: boolean;
+        context?: number;
+        limit?: number;
+      };
       throwIfAborted(signal);
       const searchPath = resolveToCwd(p.path || '.', cwd, home);
       let isDirectory: boolean;
@@ -529,7 +601,8 @@ export function createGrepTool(Type: TypeBuilder, cwd: string, ops: GrepOperatio
         for await (const filePath of ops.files(searchPath, { ignore: IGNORED })) {
           throwIfAborted(signal);
           if (matchCount >= effectiveLimit) break;
-          if (p.glob && !globAccepts(p.glob, nodePath.relative(searchPath, filePath).split(nodePath.sep).join('/'))) continue;
+          if (p.glob && !globAccepts(p.glob, nodePath.relative(searchPath, filePath).split(nodePath.sep).join('/')))
+            continue;
           await searchFile(filePath);
         }
       } else {
@@ -543,7 +616,9 @@ export function createGrepTool(Type: TypeBuilder, cwd: string, ops: GrepOperatio
       const notices: string[] = [];
       const details: Record<string, unknown> = {};
       if (matchCount >= effectiveLimit) {
-        notices.push(`${effectiveLimit} matches limit reached. Use limit=${effectiveLimit * 2} for more, or refine pattern`);
+        notices.push(
+          `${effectiveLimit} matches limit reached. Use limit=${effectiveLimit * 2} for more, or refine pattern`,
+        );
         details.matchLimitReached = effectiveLimit;
       }
       if (truncation.truncated) {

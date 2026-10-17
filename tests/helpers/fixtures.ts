@@ -69,13 +69,13 @@ function buildStreamingZip(files) {
     const local = Buffer.alloc(30);
     local.writeUInt32LE(SIG_LOC, 0);
     local.writeUInt16LE(45, 4);
-    local.writeUInt16LE(0x808, 6);   // UTF-8 + data descriptor
+    local.writeUInt16LE(0x808, 6); // UTF-8 + data descriptor
     local.writeUInt16LE(method, 8);
     local.writeUInt16LE(0x5000, 10);
     local.writeUInt16LE(0x5a21, 12);
-    local.writeUInt32LE(0, 14);      // crc = 0 (streaming)
-    local.writeUInt32LE(0, 18);      // comp size = 0
-    local.writeUInt32LE(0, 22);      // uncomp size = 0
+    local.writeUInt32LE(0, 14); // crc = 0 (streaming)
+    local.writeUInt32LE(0, 18); // comp size = 0
+    local.writeUInt32LE(0, 22); // uncomp size = 0
     local.writeUInt16LE(nameBuf.length, 26);
     local.writeUInt16LE(extra.length, 28);
 
@@ -98,7 +98,7 @@ function buildStreamingZip(files) {
     cen.writeUInt16LE(0x5000, 12);
     cen.writeUInt16LE(0x5a21, 14);
     cen.writeUInt32LE(crc, 16);
-    cen.writeUInt32LE(body.length, 20);   // authoritative sizes
+    cen.writeUInt32LE(body.length, 20); // authoritative sizes
     cen.writeUInt32LE(raw.length, 24);
     cen.writeUInt16LE(nameBuf.length, 28);
     cen.writeUInt32LE(0, 38);
@@ -116,7 +116,7 @@ function buildStreamingZip(files) {
   eocd.writeUInt16LE(files.length, 10);
   eocd.writeUInt32LE(cdSize, 12);
   eocd.writeUInt32LE(cdStart, 16);
-  eocd.writeUInt16LE(0, 20);   // no comment
+  eocd.writeUInt16LE(0, 20); // no comment
 
   return Buffer.concat([...chunks, ...central, eocd]);
 }

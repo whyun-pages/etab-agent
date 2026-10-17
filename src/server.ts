@@ -75,9 +75,10 @@ const args = parseArgs(process.argv.slice(2));
 // build run — no `public/` there, so every page was a 404 while `/api/health`
 // still answered. Hard-coding one depth broke the other, and worse, put `data/`
 // OUTSIDE the repository. So recognise the build tree by name instead.
-const root = path.basename(__dirname) === 'js' && path.basename(path.dirname(__dirname)) === '.build'
-  ? path.join(__dirname, '..', '..')
-  : path.join(__dirname, '..');
+const root =
+  path.basename(__dirname) === 'js' && path.basename(path.dirname(__dirname)) === '.build'
+    ? path.join(__dirname, '..', '..')
+    : path.join(__dirname, '..');
 
 /**
  * Resolve the listening port.
@@ -92,8 +93,8 @@ const root = path.basename(__dirname) === 'js' && path.basename(path.dirname(__d
  */
 function resolvePort(): number {
   const fromEnv = process.env.TAB_AGENT_PORT;
-  const raw = args.port !== null ? args.port : (fromEnv === undefined || fromEnv === '' ? 3179 : Number(fromEnv));
-  const source = args.port !== null ? '--port' : (fromEnv ? 'TAB_AGENT_PORT' : '默认值');
+  const raw = args.port !== null ? args.port : fromEnv === undefined || fromEnv === '' ? 3179 : Number(fromEnv);
+  const source = args.port !== null ? '--port' : fromEnv ? 'TAB_AGENT_PORT' : '默认值';
   if (!Number.isInteger(raw) || raw < 0 || raw > 65535) {
     console.error(`${source} 不是可用端口：${args.port !== null ? args.port : fromEnv}（需要 0–65535 的整数）`);
     process.exit(1);
@@ -107,7 +108,9 @@ const port = resolvePort();
 // then the in-repo default.
 const dataDir = args.dataDir
   ? path.resolve(args.dataDir)
-  : (process.env.TAB_AGENT_HOME ? path.resolve(process.env.TAB_AGENT_HOME) : path.join(root, 'data'));
+  : process.env.TAB_AGENT_HOME
+    ? path.resolve(process.env.TAB_AGENT_HOME)
+    : path.join(root, 'data');
 
 const server = createServer({
   dataDir,

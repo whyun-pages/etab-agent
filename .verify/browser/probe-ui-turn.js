@@ -31,19 +31,21 @@ const { openPage, closePage, findEdge } = require('../support/cdp.js');
 
 const SPEC = {
   title: '销售台账',
-  sheets: [{
-    name: '销售台账',
-    columns: [
-      { header: '客户名称', type: 'text' },
-      { header: '合同金额', type: 'currency' },
-      { header: '签约日期', type: 'date' },
-    ],
-    rows: [
-      ['杭州云图科技有限公司', 1250000, '2026-01-08'],
-      ['上海临港数据服务', 860000, '2026-01-22'],
-    ],
-    totals: { enabled: true, sumColumns: [1] },
-  }],
+  sheets: [
+    {
+      name: '销售台账',
+      columns: [
+        { header: '客户名称', type: 'text' },
+        { header: '合同金额', type: 'currency' },
+        { header: '签约日期', type: 'date' },
+      ],
+      rows: [
+        ['杭州云图科技有限公司', 1250000, '2026-01-08'],
+        ['上海临港数据服务', 860000, '2026-01-22'],
+      ],
+      totals: { enabled: true, sumColumns: [1] },
+    },
+  ],
 };
 
 /**
@@ -55,11 +57,12 @@ const SPEC = {
  * "模型返回了空内容", which looks like a model problem and is a harness problem.
  */
 function fakeTransport() {
-  return async () => JSON.stringify({
-    intent: 'action',
-    reply: '已创建销售台账，3 列 2 行，金额带货币格式，签约日期是日期格式。',
-    spec: SPEC,
-  });
+  return async () =>
+    JSON.stringify({
+      intent: 'action',
+      reply: '已创建销售台账，3 列 2 行，金额带货币格式，签约日期是日期格式。',
+      spec: SPEC,
+    });
 }
 
 const checks = [];
@@ -100,9 +103,11 @@ async function main() {
     waitForSelector: '.composer',
   });
 
-  const wait = (ms) => page.send('Runtime.evaluate', {
-    expression: `new Promise(r => setTimeout(r, ${ms}))`, awaitPromise: true,
-  });
+  const wait = (ms) =>
+    page.send('Runtime.evaluate', {
+      expression: `new Promise(r => setTimeout(r, ${ms}))`,
+      awaitPromise: true,
+    });
 
   await wait(1200);
 
@@ -164,11 +169,19 @@ async function main() {
 
   check('the card is gone once answered', !s2.card);
   check('the table is still on screen', s2.gridCells >= 9, `${s2.gridCells} cells`);
-  check('the session list learned the row count', s2.railRows.some((t) => /行/.test(t)), s2.railRows.join(' | '));
+  check(
+    'the session list learned the row count',
+    s2.railRows.some((t) => /行/.test(t)),
+    s2.railRows.join(' | '),
+  );
 
   // The stored spec is the real proof: the click had to reach disk.
   const saved = await store.load(session.id);
-  check('the change reached the stored spec', Boolean(saved && saved.spec), saved && saved.spec ? saved.spec.title : 'no spec');
+  check(
+    'the change reached the stored spec',
+    Boolean(saved && saved.spec),
+    saved && saved.spec ? saved.spec.title : 'no spec',
+  );
   check('the transcript has both turns', saved.messages.length === 2, `${saved.messages.length} messages`);
 
   const shot2 = await page.send('Page.captureScreenshot', { format: 'png' });
@@ -182,4 +195,7 @@ async function main() {
   process.exit(failed ? 1 : 0);
 }
 
-main().catch((err) => { console.error('FAILED:', err && err.stack || err); process.exit(2); });
+main().catch((err) => {
+  console.error('FAILED:', (err && err.stack) || err);
+  process.exit(2);
+});

@@ -35,7 +35,22 @@ interface XlsxModule {
 
 const { readZip, readWorkbook }: XlsxModule = xlsx;
 
-export const TEXT_EXT = new Set(['.txt', '.md', '.markdown', '.log', '.ini', '.conf', '.yml', '.yaml', '.sql', '.sh', '.ps1', '.js', '.ts', '.py']);
+export const TEXT_EXT = new Set([
+  '.txt',
+  '.md',
+  '.markdown',
+  '.log',
+  '.ini',
+  '.conf',
+  '.yml',
+  '.yaml',
+  '.sql',
+  '.sh',
+  '.ps1',
+  '.js',
+  '.ts',
+  '.py',
+]);
 export const TABLE_EXT = new Set(['.xlsx', '.xlsm', '.xls', '.csv', '.tsv']);
 export const IMAGE_EXT = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.tif', '.tiff']);
 /**
@@ -45,8 +60,19 @@ export const IMAGE_EXT = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bm
  * in the model's context.
  */
 export const READABLE_EXT = new Set([
-  ...TEXT_EXT, ...TABLE_EXT, ...IMAGE_EXT,
-  '.json', '.jsonl', '.ndjson', '.docx', '.html', '.htm', '.xml', '.m3u', '.m3u8', '.pdf',
+  ...TEXT_EXT,
+  ...TABLE_EXT,
+  ...IMAGE_EXT,
+  '.json',
+  '.jsonl',
+  '.ndjson',
+  '.docx',
+  '.html',
+  '.htm',
+  '.xml',
+  '.m3u',
+  '.m3u8',
+  '.pdf',
 ]);
 
 /** Archive limits: generous for real work, small next to the process's memory. */
@@ -63,7 +89,9 @@ export interface ArchiveMember {
 
 /** Whether a path is hidden or archiver litter: `.git/…`, `__MACOSX/…`, `Thumbs.db`. */
 export function isHiddenPath(p: string): boolean {
-  return p.split(/[\\/]/).some((seg) => seg.startsWith('.') || seg === '__MACOSX' || /^(thumbs\.db|desktop\.ini)$/i.test(seg));
+  return p
+    .split(/[\\/]/)
+    .some((seg) => seg.startsWith('.') || seg === '__MACOSX' || /^(thumbs\.db|desktop\.ini)$/i.test(seg));
 }
 
 /**
@@ -81,7 +109,10 @@ export function expandZip(buffer: Buffer): { members: ArchiveMember[]; skipped: 
   for (const [p, entry] of zip) {
     if (isHiddenPath(p)) continue;
     const ext = path.extname(p).toLowerCase();
-    if (!READABLE_EXT.has(ext) || members.length >= ARCHIVE_MAX_READ) { skipped.push(p); continue; }
+    if (!READABLE_EXT.has(ext) || members.length >= ARCHIVE_MAX_READ) {
+      skipped.push(p);
+      continue;
+    }
     members.push({ path: p, data: entry.data });
   }
   return { members, skipped };
@@ -159,7 +190,13 @@ interface Table {
 }
 
 /** The hook signature for a model-backed extractor. */
-type Extractor = (buffer: Buffer, mime: string, filename: string, kind: string, text: string | null) => Promise<ExtractResult | null> | ExtractResult | null;
+type Extractor = (
+  buffer: Buffer,
+  mime: string,
+  filename: string,
+  kind: string,
+  text: string | null,
+) => Promise<ExtractResult | null> | ExtractResult | null;
 
 interface ReadAttachmentOptions {
   /**
@@ -216,17 +253,21 @@ export function sniffKind(buffer: Buffer, filename = ''): string {
     try {
       const streams = readCfb(buffer);
       if (streams.has('Workbook') || streams.has('WORKBOOK') || streams.has('Book')) return 'xls';
-    } catch { /* fall through to extension */ }
+    } catch {
+      /* fall through to extension */
+    }
   }
   if (buffer.length >= 5 && buffer.subarray(0, 5).toString('latin1') === '%PDF-') return 'pdf';
   for (const { ext: magicExt, sig } of IMAGE_MAGIC) {
-    if (buffer.length >= sig.length && sig.every((b, i) => buffer[i] === b)) return magicExt === 'jpg' ? 'jpeg' : magicExt;
+    if (buffer.length >= sig.length && sig.every((b, i) => buffer[i] === b))
+      return magicExt === 'jpg' ? 'jpeg' : magicExt;
   }
   if (ext) return ext.slice(1);
   return 'unknown';
 }
 
-export const isImage = (kind: string): boolean => ['png', 'jpeg', 'jpg', 'gif', 'webp', 'bmp', 'tiff', 'tif'].includes(kind);
+export const isImage = (kind: string): boolean =>
+  ['png', 'jpeg', 'jpg', 'gif', 'webp', 'bmp', 'tiff', 'tif'].includes(kind);
 
 // --------------------------------------------------------------------- CSV
 
@@ -250,30 +291,67 @@ export function parseCsv(text: string, delimiter?: string): string[][] {
 
     if (inQuotes) {
       if (ch === '"') {
-        if (src[i + 1] === '"') { field += '"'; i += 2; continue; }
-        inQuotes = false; i++; continue;
+        if (src[i + 1] === '"') {
+          field += '"';
+          i += 2;
+          continue;
+        }
+        inQuotes = false;
+        i++;
+        continue;
       }
-      field += ch; i++; continue;
+      field += ch;
+      i++;
+      continue;
     }
 
-    if (ch === '"' && field === '') { inQuotes = true; i++; continue; }
-    if (ch === delim) { row.push(field); field = ''; i++; continue; }
+    if (ch === '"' && field === '') {
+      inQuotes = true;
+      i++;
+      continue;
+    }
+    if (ch === delim) {
+      row.push(field);
+      field = '';
+      i++;
+      continue;
+    }
     if (ch === '\r') {
       // CRLF and lone CR both terminate a record.
       if (src[i + 1] === '\n') i++;
-      row.push(field); rows.push(row); row = []; field = ''; i++; continue;
+      row.push(field);
+      rows.push(row);
+      row = [];
+      field = '';
+      i++;
+      continue;
     }
-    if (ch === '\n') { row.push(field); rows.push(row); row = []; field = ''; i++; continue; }
-    field += ch; i++;
+    if (ch === '\n') {
+      row.push(field);
+      rows.push(row);
+      row = [];
+      field = '';
+      i++;
+      continue;
+    }
+    field += ch;
+    i++;
   }
   // Trailing record without a final newline.
-  if (field !== '' || row.length) { row.push(field); rows.push(row); }
+  if (field !== '' || row.length) {
+    row.push(field);
+    rows.push(row);
+  }
   return rows;
 }
 
 /** Pick the delimiter that yields the most consistent column count. */
 export function guessDelimiter(text: string): string {
-  const sample = text.slice(0, 8192).split(/\r?\n/).filter((l) => l.trim()).slice(0, 20);
+  const sample = text
+    .slice(0, 8192)
+    .split(/\r?\n/)
+    .filter((l) => l.trim())
+    .slice(0, 20);
   const candidates = [',', '\t', ';', '|'];
   let best = ',';
   let bestScore = -1;
@@ -284,16 +362,25 @@ export function guessDelimiter(text: string): string {
     if (avg < 1) continue;
     const variance = counts.reduce((a, c) => a + (c - avg) ** 2, 0) / counts.length;
     const score = avg - variance;
-    if (score > bestScore) { bestScore = score; best = d; }
+    if (score > bestScore) {
+      bestScore = score;
+      best = d;
+    }
   }
   return best;
 }
 
 function countOutsideQuotes(line: string, delim: string): number {
-  let n = 0, inQ = false;
+  let n = 0,
+    inQ = false;
   for (let i = 0; i < line.length; i++) {
-    if (line[i] === '"') { if (inQ && line[i + 1] === '"') { i++; continue; } inQ = !inQ; }
-    else if (line[i] === delim && !inQ) n++;
+    if (line[i] === '"') {
+      if (inQ && line[i + 1] === '"') {
+        i++;
+        continue;
+      }
+      inQ = !inQ;
+    } else if (line[i] === delim && !inQ) n++;
   }
   return n;
 }
@@ -378,7 +465,10 @@ export function detectHeaderRow(rows: unknown[][]): number {
     }
     // Prefer earlier rows when scores tie, and reward filling the row.
     score -= r * 0.1;
-    if (score > bestScore) { bestScore = score; bestIdx = r; }
+    if (score > bestScore) {
+      bestScore = score;
+      bestIdx = r;
+    }
   }
   return bestIdx;
 }
@@ -400,8 +490,9 @@ export function coerce(v: unknown): CellValue {
 export function columnType(values: CellValue[], label: string): string {
   if (!values.length) return 'text';
   const numeric = values.filter((v) => typeof v === 'number').length;
-  const dates = values.filter((v) => v instanceof Date
-    || (typeof v === 'string' && /^\d{4}[-/年]\d{1,2}([-/月]\d{1,2})?/.test(v))).length;
+  const dates = values.filter(
+    (v) => v instanceof Date || (typeof v === 'string' && /^\d{4}[-/年]\d{1,2}([-/月]\d{1,2})?/.test(v)),
+  ).length;
   const bools = values.filter((v) => typeof v === 'boolean').length;
   const total = values.length;
   if (bools / total > 0.8) return 'boolean';
@@ -424,7 +515,11 @@ interface DocxText {
 /** Extract visible text from a WordprocessingML document part. */
 export function docxText(buffer: Buffer): DocxText | null {
   let zip: ReturnType<typeof readZip>;
-  try { zip = readZip(buffer); } catch { return null; }
+  try {
+    zip = readZip(buffer);
+  } catch {
+    return null;
+  }
   const doc = zip.get('word/document.xml');
   if (!doc) return null;
   const xml = doc.data.toString('utf8');
@@ -505,7 +600,11 @@ export function markupToText(xml: string): string {
 /**
  * Read one attachment.
  */
-export async function readAttachment(buffer: Buffer, filename: string, opts: ReadAttachmentOptions = {}): Promise<Attachment> {
+export async function readAttachment(
+  buffer: Buffer,
+  filename: string,
+  opts: ReadAttachmentOptions = {},
+): Promise<Attachment> {
   const ext = path.extname(filename).toLowerCase();
   const kind = sniffKind(buffer, filename);
   const meta: AttachmentMeta = { size: buffer.length, ext, kind, filename };
@@ -534,12 +633,15 @@ export async function readAttachment(buffer: Buffer, filename: string, opts: Rea
         text: extracted.text || base.text,
       };
     } catch (err) {
-      return { ...base, extractError: String(err && (err as Error).message || err) };
+      return { ...base, extractError: String((err && (err as Error).message) || err) };
     }
   };
 
   if (kind === 'oversize') {
-    return { ...unknownAttachment(buffer, filename, meta), note: `${filename} 解压后超过 ${ARCHIVE_MAX_BYTES / 1024 / 1024}MB 或文件数超过 ${ARCHIVE_MAX_ENTRIES} 个，没有读取。` };
+    return {
+      ...unknownAttachment(buffer, filename, meta),
+      note: `${filename} 解压后超过 ${ARCHIVE_MAX_BYTES / 1024 / 1024}MB 或文件数超过 ${ARCHIVE_MAX_ENTRIES} 个，没有读取。`,
+    };
   }
 
   // ---- spreadsheets
@@ -566,15 +668,21 @@ export async function readAttachment(buffer: Buffer, filename: string, opts: Rea
     const delimiter = ext === '.tsv' ? '\t' : undefined;
     const rows = parseCsv(text, delimiter);
     const table = matrixToTable(rows);
-    return withTextModel({
-      kind: 'table',
-      name: filename,
-      meta: { ...meta, encoding, rowCount: table.rows.length, delimiter: delimiter || guessDelimiter(text) },
-      table,
-      rows: table.rows,
-      header: table.header,
-      text,
-    }, table.rows.map((r) => r.join('\t')).join('\n').slice(0, 60_000));
+    return withTextModel(
+      {
+        kind: 'table',
+        name: filename,
+        meta: { ...meta, encoding, rowCount: table.rows.length, delimiter: delimiter || guessDelimiter(text) },
+        table,
+        rows: table.rows,
+        header: table.header,
+        text,
+      },
+      table.rows
+        .map((r) => r.join('\t'))
+        .join('\n')
+        .slice(0, 60_000),
+    );
   }
 
   // ---- docx
@@ -582,14 +690,17 @@ export async function readAttachment(buffer: Buffer, filename: string, opts: Rea
     const parsed = docxText(buffer);
     if (!parsed) return unknownAttachment(buffer, filename, meta);
     const table = parsed.tables.length ? matrixToTable(parsed.tables[0]) : null;
-    return withTextModel({
-      kind: 'text',
-      name: filename,
-      meta: { ...meta, embeddedTables: parsed.tables.length },
-      text: parsed.text,
-      table,
-      tables: parsed.tables.map((t) => matrixToTable(t)),
-    }, parsed.text);
+    return withTextModel(
+      {
+        kind: 'text',
+        name: filename,
+        meta: { ...meta, embeddedTables: parsed.tables.length },
+        text: parsed.text,
+        table,
+        tables: parsed.tables.map((t) => matrixToTable(t)),
+      },
+      parsed.text,
+    );
   }
 
   // ---- json / jsonl
@@ -617,12 +728,24 @@ export async function readAttachment(buffer: Buffer, filename: string, opts: Rea
   // attributes and a URL — and the user asking for one almost always wants
   // that table. Read as plain text, the model would have to transcribe every
   // entry by hand; read as a table, it can be imported whole.
-  if (ext === '.m3u' || ext === '.m3u8' || (looksLikeText(buffer) && /^\uFEFF?#EXTM3U/i.test(buffer.subarray(0, 16).toString('utf8')))) {
+  if (
+    ext === '.m3u' ||
+    ext === '.m3u8' ||
+    (looksLikeText(buffer) && /^\uFEFF?#EXTM3U/i.test(buffer.subarray(0, 16).toString('utf8')))
+  ) {
     const { text, encoding } = decodeText(buffer);
     const matrix = m3uToMatrix(text);
     if (matrix) {
       const table = matrixToTable(matrix);
-      return { kind: 'table', name: filename, meta: { ...meta, encoding, rowCount: table.rows.length }, table, rows: table.rows, header: table.header, text };
+      return {
+        kind: 'table',
+        name: filename,
+        meta: { ...meta, encoding, rowCount: table.rows.length },
+        table,
+        rows: table.rows,
+        header: table.header,
+        text,
+      };
     }
     return { kind: 'text', name: filename, meta: { ...meta, encoding }, text };
   }
@@ -631,10 +754,7 @@ export async function readAttachment(buffer: Buffer, filename: string, opts: Rea
   if (ext === '.html' || ext === '.htm' || ext === '.xml' || ext === '.svg' || kind === 'html') {
     const { text, encoding } = decodeText(buffer);
     const flat = markupToText(text);
-    return withTextModel(
-      { kind: 'text', name: filename, meta: { ...meta, encoding }, text: flat, raw: text },
-      flat,
-    );
+    return withTextModel({ kind: 'text', name: filename, meta: { ...meta, encoding }, text: flat, raw: text }, flat);
   }
 
   // ---- images
@@ -655,7 +775,7 @@ export async function readAttachment(buffer: Buffer, filename: string, opts: Rea
           return { ...base, extracted, text: extracted.text || null, table: extracted.table || null };
         }
       } catch (err) {
-        base.extractError = String(err && (err as Error).message || err);
+        base.extractError = String((err && (err as Error).message) || err);
       }
     }
     return base;
@@ -702,7 +822,11 @@ export interface Ingested {
  * for one upload is not something to do unasked. The deterministic reading is
  * what every member gets.
  */
-export async function ingestFile(data: Buffer, name: string, opts: ReadAttachmentOptions = {}): Promise<{ items: Ingested[]; skipped: string[] }> {
+export async function ingestFile(
+  data: Buffer,
+  name: string,
+  opts: ReadAttachmentOptions = {},
+): Promise<{ items: Ingested[]; skipped: string[] }> {
   const base = path.basename(name.replace(/\\/g, '/'));
   if (sniffKind(data, name) !== 'zip') {
     try {
@@ -728,13 +852,23 @@ export async function ingestFile(data: Buffer, name: string, opts: ReadAttachmen
     }
   }
   if (!items.length) {
-    items.push({ name, filename: base, data, error: `压缩包里没有能读的文件${expanded.skipped.length ? `（跳过了 ${expanded.skipped.length} 个不支持的文件）` : ''}` });
+    items.push({
+      name,
+      filename: base,
+      data,
+      error: `压缩包里没有能读的文件${expanded.skipped.length ? `（跳过了 ${expanded.skipped.length} 个不支持的文件）` : ''}`,
+    });
   }
   return { items, skipped: expanded.skipped };
 }
 
 /** A workbook is a set of tables, one per sheet; .xlsx and .xls share this. */
-function workbookAttachment(parsedSheets: xlsx.ParsedSheet[], filename: string, meta: AttachmentMeta, sheet?: string): Attachment {
+function workbookAttachment(
+  parsedSheets: xlsx.ParsedSheet[],
+  filename: string,
+  meta: AttachmentMeta,
+  sheet?: string,
+): Attachment {
   const sheets = parsedSheets.map((s) => matrixToTable(sheetToMatrix(s), { sheetName: s.name }));
   const primary = sheet ? sheets.find((t) => t.sheet === sheet) : null;
   const chosen = primary || sheets.find((t) => t.rows.length) || sheets[0] || null;
@@ -773,10 +907,17 @@ function looksLikeText(buffer: Buffer): boolean {
 }
 
 function mimeFor(kind: string): string {
-  return {
-    png: 'image/png', jpeg: 'image/jpeg', jpg: 'image/jpeg', gif: 'image/gif',
-    webp: 'image/webp', bmp: 'image/bmp', tiff: 'image/tiff',
-  }[kind] || 'application/octet-stream';
+  return (
+    {
+      png: 'image/png',
+      jpeg: 'image/jpeg',
+      jpg: 'image/jpeg',
+      gif: 'image/gif',
+      webp: 'image/webp',
+      bmp: 'image/bmp',
+      tiff: 'image/tiff',
+    }[kind] || 'application/octet-stream'
+  );
 }
 
 /** Pixel dimensions, when the header could be read. */
@@ -794,7 +935,10 @@ export function imageDimensions(buffer: Buffer, kind: string): ImageDimensions {
     if ((kind === 'jpeg' || kind === 'jpg') && buffer.length > 4) {
       let i = 2;
       while (i + 9 < buffer.length) {
-        if (buffer[i] !== 0xff) { i++; continue; }
+        if (buffer[i] !== 0xff) {
+          i++;
+          continue;
+        }
         const marker = buffer[i + 1];
         const len = buffer.readUInt16BE(i + 2);
         // SOF0..SOF3, SOF5..SOF7, SOF9..SOF11, SOF13..SOF15 carry dimensions.
@@ -810,7 +954,9 @@ export function imageDimensions(buffer: Buffer, kind: string): ImageDimensions {
     if (kind === 'bmp' && buffer.length > 26) {
       return { width: buffer.readInt32LE(18), height: Math.abs(buffer.readInt32LE(22)) };
     }
-  } catch { /* dimensions are best-effort */ }
+  } catch {
+    /* dimensions are best-effort */
+  }
   return {};
 }
 
@@ -832,7 +978,10 @@ const M3U_LABELS: Record<string, string> = {
  * commas. The URL is the next line that is not a comment.
  */
 export function m3uToMatrix(text: string): string[][] | null {
-  const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/).map((l) => l.trim());
+  const lines = text
+    .replace(/^\uFEFF/, '')
+    .split(/\r?\n/)
+    .map((l) => l.trim());
   if (!lines.length || !/^#EXTM3U/i.test(lines[0])) return null;
   const entries: Array<{ title: string; attrs: Map<string, string>; url: string }> = [];
   let cur: { title: string; attrs: Map<string, string> } | null = null;
@@ -843,7 +992,10 @@ export function m3uToMatrix(text: string): string[][] | null {
       let quoted = false;
       for (let i = 0; i < body.length; i++) {
         if (body[i] === '"') quoted = !quoted;
-        else if (body[i] === ',' && !quoted) { comma = i; break; }
+        else if (body[i] === ',' && !quoted) {
+          comma = i;
+          break;
+        }
       }
       const head = comma < 0 ? body : body.slice(0, comma);
       const attrs = new Map<string, string>();
@@ -858,16 +1010,27 @@ export function m3uToMatrix(text: string): string[][] | null {
   const keys: string[] = [];
   for (const e of entries) for (const k of e.attrs.keys()) if (!keys.includes(k)) keys.push(k);
   const header = ['频道名', ...keys.map((k) => M3U_LABELS[k] || k), '播放地址'];
-  return [header, ...entries.map((e) => [e.title || e.attrs.get('tvg-name') || '', ...keys.map((k) => e.attrs.get(k) || ''), e.url])];
+  return [
+    header,
+    ...entries.map((e) => [e.title || e.attrs.get('tvg-name') || '', ...keys.map((k) => e.attrs.get(k) || ''), e.url]),
+  ];
 }
 
 function tryParseJson(text: string): unknown {
-  try { return JSON.parse(text); } catch { /* try jsonl */ }
+  try {
+    return JSON.parse(text);
+  } catch {
+    /* try jsonl */
+  }
   const lines = text.split(/\r?\n/).filter((l) => l.trim());
   if (lines.length > 1 || (lines.length === 1 && lines[0].trim().startsWith('{'))) {
     const objs: unknown[] = [];
     for (const line of lines) {
-      try { objs.push(JSON.parse(line)); } catch { return null; }
+      try {
+        objs.push(JSON.parse(line));
+      } catch {
+        return null;
+      }
     }
     if (objs.length && objs.every((o) => o && typeof o === 'object')) return objs;
   }
@@ -900,7 +1063,7 @@ export function findObjectArray(data: unknown, depth: number): Array<Record<stri
   if (depth > 4) return null;
   if (Array.isArray(data)) {
     return data.length && data.every((x) => x && typeof x === 'object' && !Array.isArray(x))
-      ? data as Array<Record<string, unknown>>
+      ? (data as Array<Record<string, unknown>>)
       : null;
   }
   if (data && typeof data === 'object') {

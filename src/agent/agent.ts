@@ -83,9 +83,26 @@ import type { readAttachment, Ingested } from '../formats/attachments.ts';
 import os from 'node:os';
 import { readPath, checkPath, fileOperations } from './file-access.ts';
 import type { FileAccessMode, FileAccessOptions, FileWrite } from './file-access.ts';
-import { createReadTool, createWriteTool, createEditTool, createLsTool, createFindTool, createGrepTool, resolveToCwd } from './pi-tools/fs-tools.ts';
+import {
+  createReadTool,
+  createWriteTool,
+  createEditTool,
+  createLsTool,
+  createFindTool,
+  createGrepTool,
+  resolveToCwd,
+} from './pi-tools/fs-tools.ts';
 import { createBashTool, createPowerShellTool } from './pi-tools/shell.ts';
-import { aggregate, selectRows, formatAggregate, cellText, CONDITION_OPS, METRIC_FNS, EXPRESSION_HELP, QueryError } from '../workbook/table-query.ts';
+import {
+  aggregate,
+  selectRows,
+  formatAggregate,
+  cellText,
+  CONDITION_OPS,
+  METRIC_FNS,
+  EXPRESSION_HELP,
+  QueryError,
+} from '../workbook/table-query.ts';
 import type { QueryTable } from '../workbook/table-query.ts';
 import { loadPi } from './pi.ts';
 import type { Pi } from './pi.ts';
@@ -356,7 +373,8 @@ export const SYSTEM = [
 ].join('\n');
 
 /** Appended to the system prompt when the edit tools are not offered. */
-const READ_ONLY_NOTE = '（当前为只读模式：用户关闭了「允许修改」，你没有编辑工具。需要改表时，告诉用户先在设置里打开「允许修改」。）';
+const READ_ONLY_NOTE =
+  '（当前为只读模式：用户关闭了「允许修改」，你没有编辑工具。需要改表时，告诉用户先在设置里打开「允许修改」。）';
 
 /** Appended when `save_file` is offered. */
 const SAVE_NOTE = [
@@ -378,8 +396,10 @@ const SAVE_NOTE_WITH_DIR = SAVE_NOTE.replace(
  * asks the user to copy and paste — true of the turn, false of the app, and
  * the user is never told there is a switch.
  */
-const SAVE_OFF_NOTE = '（「允许对话保存文件」已关闭，你现在不能保存文件。用户要求保存或导出时，告诉用户可以在设置 →「保存与联网」里打开它，或者用预览栏的「下载」按钮。）';
-const FETCH_OFF_NOTE = '（「允许对话联网抓取」已关闭，你现在不能访问网址。用户给出网址或要求下载网上的内容时，告诉用户可以在设置 →「保存与联网」里打开「允许对话联网抓取」后再发一次；不想开启的话，也可以把内容粘贴过来，或把文件拖进对话框上传。不要说你天生没有联网能力。）';
+const SAVE_OFF_NOTE =
+  '（「允许对话保存文件」已关闭，你现在不能保存文件。用户要求保存或导出时，告诉用户可以在设置 →「保存与联网」里打开它，或者用预览栏的「下载」按钮。）';
+const FETCH_OFF_NOTE =
+  '（「允许对话联网抓取」已关闭，你现在不能访问网址。用户给出网址或要求下载网上的内容时，告诉用户可以在设置 →「保存与联网」里打开「允许对话联网抓取」后再发一次；不想开启的话，也可以把内容粘贴过来，或把文件拖进对话框上传。不要说你天生没有联网能力。）';
 
 /** Appended when `fetch_url` is offered. */
 const FETCH_NOTE = [
@@ -412,10 +432,7 @@ const FILE_READ_NOTE = [
  */
 const FILE_NOTES: Record<FileAccessMode, string> = {
   off: '（「允许读写本机文件」已关闭，你现在不能按路径读取本机文件。用户给出本地路径（如 D:\\数据\\订单.xlsx）时，告诉用户可以把文件拖进对话框上传，或在设置 →「保存与联网」里打开「允许读写本机文件」。不要让用户把文件传到网上。）',
-  read: [
-    FILE_READ_NOTE,
-    '- 你只能读，不能写本机文件；保存表格用 save_file（存到导出目录）。',
-  ].join('\n'),
+  read: [FILE_READ_NOTE, '- 你只能读，不能写本机文件；保存表格用 save_file（存到导出目录）。'].join('\n'),
   readwrite: [
     FILE_READ_NOTE,
     '- 写文本文件（报告、清单、csv 文本）用 write（整份写入）或 edit（按原文片段替换），只能写文本类文件；写入在本轮结束、修改落定之后才真正发生。保存表格用 save_file，用户指定了文件夹时传 dir。',
@@ -467,7 +484,10 @@ const QUERY_MAX_ROWS = 100;
  * (see src/workbook/spec-ops.ts), so the model refers to a row by the label it was
  * shown, and never has to count.
  */
-export function specSummary(spec: import('../workbook/workbook.ts').WorkbookSpec | null | undefined, budget = DEFAULT_ROW_BUDGET): string {
+export function specSummary(
+  spec: import('../workbook/workbook.ts').WorkbookSpec | null | undefined,
+  budget = DEFAULT_ROW_BUDGET,
+): string {
   if (!spec || !Array.isArray(spec.sheets) || !spec.sheets.length) return '';
   const stats = specStats(spec);
   const lines = [`当前工作簿：${spec.title || '(未命名)'}（${stats.sheets} 个工作表，共 ${stats.rows} 行）`];
@@ -568,9 +588,8 @@ function sheetChanges(before: Sheet, after: Sheet, label: string): string[] {
   } else {
     // Compare only the columns both versions have: adding a column changes
     // every row's shape, and that is already said above.
-    const project = (rows: unknown[][], headers: string[]): string => JSON.stringify(
-      rows.map((r) => common.map((h) => r[headers.indexOf(h)] ?? null)),
-    );
+    const project = (rows: unknown[][], headers: string[]): string =>
+      JSON.stringify(rows.map((r) => common.map((h) => r[headers.indexOf(h)] ?? null)));
     if (project(bRows, bHeaders) !== project(aRows, aHeaders)) out.push(`${label}修改了数据`);
   }
 
@@ -592,9 +611,10 @@ export function changesSummary(changes: ChangeLine[] | null | undefined, limit =
   const list = (changes || []).filter((c) => c && c.summary);
   if (!list.length) return '';
   const shown = list.slice(-limit);
-  const head = list.length > shown.length
-    ? `最近的修改（共 ${list.length} 次，列出最近 ${shown.length} 次，从早到晚）：`
-    : `已做过的修改（共 ${list.length} 次，从早到晚）：`;
+  const head =
+    list.length > shown.length
+      ? `最近的修改（共 ${list.length} 次，列出最近 ${shown.length} 次，从早到晚）：`
+      : `已做过的修改（共 ${list.length} 次，从早到晚）：`;
   const lines = shown.map((c, i) => {
     const req = String(c.request || '');
     const asked = req.length > CHANGE_REQUEST_CAP ? `${req.slice(0, CHANGE_REQUEST_CAP)}…` : req;
@@ -659,9 +679,11 @@ export function agentMessages({
     userParts.push('【之前的对话（仅供参考，不是本轮指令）】');
     const asked = turns.filter((m) => m.role === 'user').length;
     const changed = turns.filter((m) => m.intent === INTENT.ACTION).length;
-    userParts.push(changed
-      ? `早先有 ${asked} 条用户消息，其中 ${changed} 次成功修改了表格。`
-      : `早先有 ${asked} 条用户消息，还没有修改过表格。`);
+    userParts.push(
+      changed
+        ? `早先有 ${asked} 条用户消息，其中 ${changed} 次成功修改了表格。`
+        : `早先有 ${asked} 条用户消息，还没有修改过表格。`,
+    );
     const lines = historyLines(turns, historyBudget);
     if (lines.length < turns.length) {
       userParts.push(`（更早的 ${turns.length - lines.length} 条消息未列出）`);
@@ -681,13 +703,16 @@ export function agentMessages({
 // --------------------------------------------------------- the cheap filter
 
 /** Words that only appear when someone is asking for a document. */
-const WORK_RE = new RegExp([
-  '做|建|弄|生成|创建|来一?[个张份]|出一?[个张份]|帮我写',
-  '表|表格|工作簿|台账|清单|报表|明细',
-  '加一?列|加一?行|删掉|删除|去掉|新增',
-  '改|换|写成|改为|改成|设为|设成|调整|更新',
-  '\\b(create|make|build|generate|add|remove|delete|change|set|update)\\b',
-].join('|'), 'i');
+const WORK_RE = new RegExp(
+  [
+    '做|建|弄|生成|创建|来一?[个张份]|出一?[个张份]|帮我写',
+    '表|表格|工作簿|台账|清单|报表|明细',
+    '加一?列|加一?行|删掉|删除|去掉|新增',
+    '改|换|写成|改为|改成|设为|设成|调整|更新',
+    '\\b(create|make|build|generate|add|remove|delete|change|set|update)\\b',
+  ].join('|'),
+  'i',
+);
 
 /** Words that mark a question, which no amount of "表" should override. */
 const ASK_RE = /[?？]|是不是|能不能|可不可以|可以吗|行不行|怎么|为什么|为何|哪一?[个些]|什么|多少|如何|是不是|吗\b|吗$/;
@@ -771,7 +796,6 @@ export function guardChange({ current, next, message }: GuardChangeArgs): GuardV
   return { ok: true, reason: '', lostRows: Math.max(0, lost) };
 }
 
-
 // ---------------------------------------------------------------- tools
 
 /** What the tools of one turn share: the draft and what was done to it. */
@@ -808,16 +832,39 @@ interface Capabilities {
 
 /** Tool descriptions, by name. The model reads these to choose a tool. */
 const EDIT_TOOLS: Record<string, { label: string; description: string }> = {
-  create_workbook: { label: '新建工作簿', description: '新建整个工作簿，或在用户明确要求时推倒重做。会替换现有的全部内容。' },
-  add_columns: { label: '新增列', description: '在工作表中新增一列或多列。before 指定插在哪一列之前，省略则加在最后；values 按行顺序给出已有各行的值，可省略。' },
+  create_workbook: {
+    label: '新建工作簿',
+    description: '新建整个工作簿，或在用户明确要求时推倒重做。会替换现有的全部内容。',
+  },
+  add_columns: {
+    label: '新增列',
+    description:
+      '在工作表中新增一列或多列。before 指定插在哪一列之前，省略则加在最后；values 按行顺序给出已有各行的值，可省略。',
+  },
   remove_columns: { label: '删除列', description: '按列名删除一列或多列。' },
   update_columns: { label: '修改列', description: '修改列名或列类型（changes），或用 order 给出全部列的新顺序。' },
-  add_rows: { label: '新增行', description: '新增一行或多行，每行按列顺序给出值。before 是行号，插在该行之前；省略则加在末尾。' },
+  add_rows: {
+    label: '新增行',
+    description: '新增一行或多行，每行按列顺序给出值。before 是行号，插在该行之前；省略则加在末尾。',
+  },
   update_cells: { label: '修改单元格', description: '按行号和列名修改单元格的值。行号从 1 开始，不含表头。' },
-  delete_rows: { label: '删除行', description: '删除行：rows 按行号（都指删除之前的编号），或 where 按条件删除所有符合的行（二选一）。只有用户明确要求删除时才使用。' },
-  update_rows: { label: '批量修改', description: '把符合 where 条件的所有行（省略 where 则是全部行）的若干列改为固定值，set 以列名为键。' },
-  compute_column: { label: '计算列', description: `用表达式逐行计算一列：列已存在则覆盖（可用 where 只算部分行），不存在则新增。${EXPRESSION_HELP}` },
-  lookup_columns: { label: '跨表引用', description: '按关键列匹配，把另一个工作表（fromSheet）的若干列带到本表，类似 VLOOKUP；匹配不到的行留空。' },
+  delete_rows: {
+    label: '删除行',
+    description:
+      '删除行：rows 按行号（都指删除之前的编号），或 where 按条件删除所有符合的行（二选一）。只有用户明确要求删除时才使用。',
+  },
+  update_rows: {
+    label: '批量修改',
+    description: '把符合 where 条件的所有行（省略 where 则是全部行）的若干列改为固定值，set 以列名为键。',
+  },
+  compute_column: {
+    label: '计算列',
+    description: `用表达式逐行计算一列：列已存在则覆盖（可用 where 只算部分行），不存在则新增。${EXPRESSION_HELP}`,
+  },
+  lookup_columns: {
+    label: '跨表引用',
+    description: '按关键列匹配，把另一个工作表（fromSheet）的若干列带到本表，类似 VLOOKUP；匹配不到的行留空。',
+  },
   sort_rows: { label: '排序', description: '按某一列排序，空值总在最后。' },
   set_totals: { label: '合计行', description: '加上或去掉合计行。sumColumns 是要合计的列名，只放可加的数值列。' },
   add_sheet: { label: '新增工作表', description: '新增一个工作表。' },
@@ -841,40 +888,55 @@ function buildTools(ai: Pi['ai'], state: TurnState, caps: Capabilities): AgentTo
   const Sheet = Type.Optional(Type.String({ description: '工作表名；只有一个工作表时可省略' }));
   const ColType = StringEnum(TYPES);
   const ColumnDef = Type.Object({ header: Type.String({ description: '列名' }), type: ColType });
-  const Where = Type.Array(Type.Object({
-    column: Type.String({ description: '列名' }),
-    op: StringEnum([...CONDITION_OPS]),
-    value: Type.Optional(Type.Union([Cell, Type.Array(Cell)], { description: 'in/not_in 时是数组；empty/not_empty 不需要' })),
-  }), { description: '筛选条件' });
-  const Match = Type.Optional(StringEnum(['all', 'any'], { description: '多个条件：all 全部满足（默认），any 满足任一' }));
+  const Where = Type.Array(
+    Type.Object({
+      column: Type.String({ description: '列名' }),
+      op: StringEnum([...CONDITION_OPS]),
+      value: Type.Optional(
+        Type.Union([Cell, Type.Array(Cell)], { description: 'in/not_in 时是数组；empty/not_empty 不需要' }),
+      ),
+    }),
+    { description: '筛选条件' },
+  );
+  const Match = Type.Optional(
+    StringEnum(['all', 'any'], { description: '多个条件：all 全部满足（默认），any 满足任一' }),
+  );
 
   const params: Record<string, import('@earendil-works/pi-ai').TSchema> = {
     create_workbook: Type.Object({
       title: Type.String({ description: '工作簿标题' }),
-      sheets: Type.Array(Type.Object({
-        name: Type.String(),
-        columns: Type.Array(ColumnDef),
-        rows: Type.Array(Row),
-        totals: Type.Optional(Type.Object({ sumColumns: Type.Array(Type.String({ description: '要合计的列名' })) })),
-      })),
+      sheets: Type.Array(
+        Type.Object({
+          name: Type.String(),
+          columns: Type.Array(ColumnDef),
+          rows: Type.Array(Row),
+          totals: Type.Optional(Type.Object({ sumColumns: Type.Array(Type.String({ description: '要合计的列名' })) })),
+        }),
+      ),
     }),
     add_columns: Type.Object({
       sheet: Sheet,
-      columns: Type.Array(Type.Object({
-        header: Type.String(),
-        type: ColType,
-        before: Type.Optional(Type.String({ description: '插在这一列之前' })),
-        values: Type.Optional(Type.Array(Cell, { description: '已有各行在新列的值，按行顺序' })),
-      })),
+      columns: Type.Array(
+        Type.Object({
+          header: Type.String(),
+          type: ColType,
+          before: Type.Optional(Type.String({ description: '插在这一列之前' })),
+          values: Type.Optional(Type.Array(Cell, { description: '已有各行在新列的值，按行顺序' })),
+        }),
+      ),
     }),
     remove_columns: Type.Object({ sheet: Sheet, headers: Type.Array(Type.String()) }),
     update_columns: Type.Object({
       sheet: Sheet,
-      changes: Type.Optional(Type.Array(Type.Object({
-        header: Type.String({ description: '现在的列名' }),
-        newHeader: Type.Optional(Type.String()),
-        type: Type.Optional(ColType),
-      }))),
+      changes: Type.Optional(
+        Type.Array(
+          Type.Object({
+            header: Type.String({ description: '现在的列名' }),
+            newHeader: Type.Optional(Type.String()),
+            type: Type.Optional(ColType),
+          }),
+        ),
+      ),
       order: Type.Optional(Type.Array(Type.String(), { description: '全部列名的新顺序' })),
     }),
     add_rows: Type.Object({
@@ -915,14 +977,22 @@ function buildTools(ai: Pi['ai'], state: TurnState, caps: Capabilities): AgentTo
       columns: Type.Array(Type.String(), { description: '要带过来的列' }),
       names: Type.Optional(Type.Array(Type.String(), { description: '带过来后的列名，按 columns 顺序；省略则同名' })),
     }),
-    sort_rows: Type.Object({ sheet: Sheet, by: Type.String({ description: '按哪一列' }), order: Type.Optional(StringEnum(['asc', 'desc'])) }),
+    sort_rows: Type.Object({
+      sheet: Sheet,
+      by: Type.String({ description: '按哪一列' }),
+      order: Type.Optional(StringEnum(['asc', 'desc'])),
+    }),
     set_totals: Type.Object({
       sheet: Sheet,
       enabled: Type.Boolean(),
       sumColumns: Type.Optional(Type.Array(Type.String())),
       label: Type.Optional(Type.String()),
     }),
-    add_sheet: Type.Object({ name: Type.String(), columns: Type.Array(ColumnDef), rows: Type.Optional(Type.Array(Row)) }),
+    add_sheet: Type.Object({
+      name: Type.String(),
+      columns: Type.Array(ColumnDef),
+      rows: Type.Optional(Type.Array(Row)),
+    }),
     remove_sheet: Type.Object({ sheet: Type.String() }),
     rename: Type.Object({
       title: Type.Optional(Type.String()),
@@ -931,13 +1001,22 @@ function buildTools(ai: Pi['ai'], state: TurnState, caps: Capabilities): AgentTo
     }),
   };
 
-  const tools: AgentTool<any>[] = [{
-    name: 'read_rows',
-    label: '读取行',
-    description: '读取某个工作表的一段行（带行号）。当前状态没有列出全部行时使用。一次最多 200 行。',
-    parameters: Type.Object({ sheet: Sheet, from: Type.Integer({ description: '起始行号，从 1 开始' }), to: Type.Optional(Type.Integer()) }),
-    execute: async (_id, args) => ({ content: [{ type: 'text', text: readRows(state.draft, args as Record<string, unknown>) }], details: {} }),
-  }];
+  const tools: AgentTool<any>[] = [
+    {
+      name: 'read_rows',
+      label: '读取行',
+      description: '读取某个工作表的一段行（带行号）。当前状态没有列出全部行时使用。一次最多 200 行。',
+      parameters: Type.Object({
+        sheet: Sheet,
+        from: Type.Integer({ description: '起始行号，从 1 开始' }),
+        to: Type.Optional(Type.Integer()),
+      }),
+      execute: async (_id, args) => ({
+        content: [{ type: 'text', text: readRows(state.draft, args as Record<string, unknown>) }],
+        details: {},
+      }),
+    },
+  ];
 
   /** Record a successful edit; shared by the edit tools and an import. */
   const record = (op: SpecOp): string => {
@@ -955,7 +1034,8 @@ function buildTools(ai: Pi['ai'], state: TurnState, caps: Capabilities): AgentTo
     tools.push({
       name: 'save_file',
       label: '保存文件',
-      description: '把当前表格保存到用户的导出目录。本轮结束、修改落定之后才真正写入；同名文件不会被覆盖，会自动加编号。',
+      description:
+        '把当前表格保存到用户的导出目录。本轮结束、修改落定之后才真正写入；同名文件不会被覆盖，会自动加编号。',
       parameters: Type.Object({
         format: StringEnum(EXPORT_FORMATS),
         sheet: Type.Optional(Type.String({ description: '只保存这一个工作表；省略则保存全部（CSV 每表一个文件）' })),
@@ -985,7 +1065,15 @@ function buildTools(ai: Pi['ai'], state: TurnState, caps: Capabilities): AgentTo
         // Worded for the model's reply: the server writes the file after the turn
         // and appends the real path (or the failure) itself, so the model
         // should neither promise a path nor claim success it cannot see.
-        return { content: [{ type: 'text', text: `好的，会保存为 ${name}（${sheet ? `工作表「${sheet}」` : '全部工作表'}）。文件在本轮结束时写入，保存位置会自动附在你的回复后面，回复里不必再写路径。` }], details: {} };
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `好的，会保存为 ${name}（${sheet ? `工作表「${sheet}」` : '全部工作表'}）。文件在本轮结束时写入，保存位置会自动附在你的回复后面，回复里不必再写路径。`,
+            },
+          ],
+          details: {},
+        };
       },
     });
   }
@@ -994,7 +1082,8 @@ function buildTools(ai: Pi['ai'], state: TurnState, caps: Capabilities): AgentTo
     tools.push({
       name: 'fetch_url',
       label: '抓取网址',
-      description: '下载一个 http/https 网址并读取内容（网页正文、CSV、JSON、xlsx 等）。给出 importAs 时，把抓到的表格整张导入为新工作表。',
+      description:
+        '下载一个 http/https 网址并读取内容（网页正文、CSV、JSON、xlsx 等）。给出 importAs 时，把抓到的表格整张导入为新工作表。',
       parameters: Type.Object({
         url: Type.String({ description: '完整网址，以 http:// 或 https:// 开头' }),
         importAs: Type.Optional(Type.String({ description: '导入为新工作表时的表名；只读内容时省略' })),
@@ -1016,10 +1105,11 @@ function buildTools(ai: Pi['ai'], state: TurnState, caps: Capabilities): AgentTo
           // once was not enough. Read-only turns cannot import, so they are not
           // told to.
           const n = att.kind === 'table' ? att.table?.rows.length || 0 : 0;
-          const hint = canEdit && n && tableForImport(att)
-            ? `（提示：这是一张 ${n} 行的表格。要把它做成表格，请用同一网址再调用一次 fetch_url 并传 importAs，会直接导入全部 ${n} 行；不要把这些行抄进 create_workbook 或 add_rows。只回答问题时不必导入。）
+          const hint =
+            canEdit && n && tableForImport(att)
+              ? `（提示：这是一张 ${n} 行的表格。要把它做成表格，请用同一网址再调用一次 fetch_url 并传 importAs，会直接导入全部 ${n} 行；不要把这些行抄进 create_workbook 或 add_rows。只回答问题时不必导入。）
 `
-            : '';
+              : '';
           return { content: [{ type: 'text', text: hint + described }], details: {} };
         }
 
@@ -1068,12 +1158,21 @@ function buildTools(ai: Pi['ai'], state: TurnState, caps: Capabilities): AgentTo
       where: Type.Optional(Where),
       match: Match,
       groupBy: Type.Optional(Type.Array(Type.String(), { description: '分组的列名或表达式' })),
-      metrics: Type.Optional(Type.Array(Type.Object({
-        fn: StringEnum([...METRIC_FNS]),
-        column: Type.Optional(Type.String({ description: '列名或表达式；count 可省略（数行数）' })),
-        as: Type.Optional(Type.String({ description: '结果列名' })),
-      }))),
-      sort: Type.Optional(Type.Object({ by: Type.String({ description: '按结果里的哪一列排序' }), order: Type.Optional(StringEnum(['asc', 'desc'])) })),
+      metrics: Type.Optional(
+        Type.Array(
+          Type.Object({
+            fn: StringEnum([...METRIC_FNS]),
+            column: Type.Optional(Type.String({ description: '列名或表达式；count 可省略（数行数）' })),
+            as: Type.Optional(Type.String({ description: '结果列名' })),
+          }),
+        ),
+      ),
+      sort: Type.Optional(
+        Type.Object({
+          by: Type.String({ description: '按结果里的哪一列排序' }),
+          order: Type.Optional(StringEnum(['asc', 'desc'])),
+        }),
+      ),
       saveAs: Type.Optional(Type.String({ description: '把结果做成新工作表时的表名' })),
     }),
     execute: async (_id, args) => {
@@ -1089,19 +1188,43 @@ function buildTools(ai: Pi['ai'], state: TurnState, caps: Capabilities): AgentTo
           const body = formatAggregate(r, QUERY_MAX_GROUPS);
           if (!saveAs) return { content: [{ type: 'text', text: `${source.frame}${head}\n${body}` }], details: {} };
           const columns = r.header.map((h, i) => ({ header: h, type: columnTypeOf(r.rows.map((row) => row[i])) }));
-          return { content: [{ type: 'text', text: `${addTable(saveAs, columns, r.rows)}\n${head}\n${body}` }], details: {} };
+          return {
+            content: [{ type: 'text', text: `${addTable(saveAs, columns, r.rows)}\n${head}\n${body}` }],
+            details: {},
+          };
         }
         const hits = selectRows(source.table, a as Parameters<typeof selectRows>[1]);
         if (saveAs) {
           const t = source.table;
-          const columns = t.header.map((h, i) => ({ header: h, type: source.types[i] || columnTypeOf(hits.map((n) => t.rows[n][i])) }));
-          return { content: [{ type: 'text', text: `${addTable(saveAs, columns, hits.map((n) => t.rows[n].map(plainCell)))}（${hits.length} 行）` }], details: {} };
+          const columns = t.header.map((h, i) => ({
+            header: h,
+            type: source.types[i] || columnTypeOf(hits.map((n) => t.rows[n][i])),
+          }));
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `${addTable(
+                  saveAs,
+                  columns,
+                  hits.map((n) => t.rows[n].map(plainCell)),
+                )}（${hits.length} 行）`,
+              },
+            ],
+            details: {},
+          };
         }
         const shown = hits.slice(0, QUERY_MAX_ROWS);
-        const more = hits.length > shown.length ? `，只列出前 ${shown.length} 行（要全部处理时用 where 条件，不要逐行操作）` : '';
+        const more =
+          hits.length > shown.length ? `，只列出前 ${shown.length} 行（要全部处理时用 where 条件，不要逐行操作）` : '';
         const lines = shown.map((n) => `${n + 1}\t${source.table.rows[n].map(cellText).join('\t')}`);
         return {
-          content: [{ type: 'text', text: `${source.frame}${source.label}：共 ${source.table.rows.length} 行，符合条件的 ${hits.length} 行${more}。第一列是行号。\n行号\t${source.table.header.join('\t')}\n${lines.join('\n')}` }],
+          content: [
+            {
+              type: 'text',
+              text: `${source.frame}${source.label}：共 ${source.table.rows.length} 行，符合条件的 ${hits.length} 行${more}。第一列是行号。\n行号\t${source.table.header.join('\t')}\n${lines.join('\n')}`,
+            },
+          ],
           details: {},
         };
       } catch (err) {
@@ -1118,7 +1241,8 @@ function buildTools(ai: Pi['ai'], state: TurnState, caps: Capabilities): AgentTo
     tools.push({
       name: 'read_attachment',
       label: '读取附件',
-      description: '读取用户上传的附件的完整内容（消息里只有预览）。表格：from/to 读取一段行，importAs 整张导入为新工作表；统计请用 query_table。文本：from 是起始字符位置。',
+      description:
+        '读取用户上传的附件的完整内容（消息里只有预览）。表格：from/to 读取一段行，importAs 整张导入为新工作表；统计请用 query_table。文本：from 是起始字符位置。',
       parameters: Type.Object({
         name: Type.String({ description: '附件名，与【附件：…】中的一致' }),
         sheet: Type.Optional(Type.String({ description: '附件里的工作表名；省略则用默认的那张' })),
@@ -1135,7 +1259,15 @@ function buildTools(ai: Pi['ai'], state: TurnState, caps: Capabilities): AgentTo
         if (!canEdit) throw new Error('当前为只读模式，不能导入。可以不带 importAs 只读取内容。');
         const table = tableForImport({ ...att, table: attachmentTable(att, a.sheet) });
         if (!table) throw new Error(`附件「${att.name}」不是表格，不能导入。`);
-        return { content: [{ type: 'text', text: `${addTable(importAs, table.columns, table.rows)}（导入了 ${table.rows.length} 行）` }], details: {} };
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `${addTable(importAs, table.columns, table.rows)}（导入了 ${table.rows.length} 行）`,
+            },
+          ],
+          details: {},
+        };
       },
     });
   }
@@ -1165,7 +1297,8 @@ function buildTools(ai: Pi['ai'], state: TurnState, caps: Capabilities): AgentTo
     tools.push({
       name: 'import_file',
       label: '导入本地文件',
-      description: '把本机的文件、文件夹或 zip 读成附件。读到的每个文件都成为附件：表格用 query_table（attachment 传附件名）统计，read_attachment 读取或导入。只看文本或图片的内容请用 read。',
+      description:
+        '把本机的文件、文件夹或 zip 读成附件。读到的每个文件都成为附件：表格用 query_table（attachment 传附件名）统计，read_attachment 读取或导入。只看文本或图片的内容请用 read。',
       parameters: Type.Object({ path: Type.String({ description: '文件、文件夹或 zip 的路径，最好是完整路径' }) }),
       execute: async (_id, args) => {
         const raw = String((args as { path?: unknown }).path ?? '').trim();
@@ -1181,7 +1314,9 @@ function buildTools(ai: Pi['ai'], state: TurnState, caps: Capabilities): AgentTo
           if (prev >= 0) state.loaded.splice(prev, 1, it);
           else state.loaded.push(it);
         }
-        const lines = r.items.map((it) => (it.att ? `- ${describeLoaded(it.att)}` : `- ${it.name}：读取失败（${it.error}）`));
+        const lines = r.items.map((it) =>
+          it.att ? `- ${describeLoaded(it.att)}` : `- ${it.name}：读取失败（${it.error}）`,
+        );
         const skipped = r.skipped.length
           ? `\n跳过 ${r.skipped.length} 个（不支持的类型、太大或禁止访问）：${r.skipped.slice(0, 10).join('、')}${r.skipped.length > 10 ? ' 等' : ''}`
           : '';
@@ -1234,7 +1369,11 @@ function buildTools(ai: Pi['ai'], state: TurnState, caps: Capabilities): AgentTo
 function findAttachment(list: Attachment[], name: string): Attachment {
   const want = name.trim();
   const lower = want.toLowerCase();
-  const stem = (n: string) => n.toLowerCase().replace(/^.*[\\/]/, '').replace(/\.[^.]+$/, '');
+  const stem = (n: string) =>
+    n
+      .toLowerCase()
+      .replace(/^.*[\\/]/, '')
+      .replace(/\.[^.]+$/, '');
   for (const match of [
     (a: Attachment) => a.name === want,
     (a: Attachment) => a.name.toLowerCase() === lower,
@@ -1242,7 +1381,8 @@ function findAttachment(list: Attachment[], name: string): Attachment {
   ]) {
     const hits = list.filter(match);
     if (hits.length === 1) return hits[0];
-    if (hits.length > 1) throw new Error(`有 ${hits.length} 个附件都叫「${want}」，请用完整的名字：${hits.map((a) => a.name).join('、')}`);
+    if (hits.length > 1)
+      throw new Error(`有 ${hits.length} 个附件都叫「${want}」，请用完整的名字：${hits.map((a) => a.name).join('、')}`);
   }
   throw new Error(`没有名为「${want}」的附件。现有：${list.map((a) => a.name).join('、')}`);
 }
@@ -1254,7 +1394,11 @@ function attachmentTable(att: Attachment, sheet: unknown): AttachmentTable | nul
     const hit = (att.sheets || []).find((t) => String(t.sheet || '').toLowerCase() === want.toLowerCase());
     if (!hit) {
       const names = (att.sheets || []).map((t) => t.sheet).filter(Boolean);
-      throw new Error(names.length ? `附件「${att.name}」里没有工作表「${want}」。现有：${names.join('、')}` : `附件「${att.name}」只有一张表，不用指定 sheet。`);
+      throw new Error(
+        names.length
+          ? `附件「${att.name}」里没有工作表「${want}」。现有：${names.join('、')}`
+          : `附件「${att.name}」只有一张表，不用指定 sheet。`,
+      );
     }
     return hit;
   }
@@ -1278,11 +1422,17 @@ function readAttachmentPart(att: Attachment, a: Record<string, unknown>): string
     const from = Math.max(0, Math.trunc(Number(a.from) || 0));
     const part = text.slice(from, from + ATTACH_PAGE_CHARS);
     const end = from + part.length;
-    const more = end < text.length ? `（共 ${text.length} 字，这是第 ${from}–${end} 字；继续读请传 from=${end}）` : `（共 ${text.length} 字，已读到结尾）`;
+    const more =
+      end < text.length
+        ? `（共 ${text.length} 字，这是第 ${from}–${end} 字；继续读请传 from=${end}）`
+        : `（共 ${text.length} 字，已读到结尾）`;
     return `${head}${more}\n${part}`;
   }
 
-  const sheets = att.sheets && att.sheets.length > 1 ? `\n文件里有多个工作表：${att.sheets.map((s) => s.sheet).join('、')}；下面是「${t.sheet}」。` : '';
+  const sheets =
+    att.sheets && att.sheets.length > 1
+      ? `\n文件里有多个工作表：${att.sheets.map((s) => s.sheet).join('、')}；下面是「${t.sheet}」。`
+      : '';
   const total = t.rows.length;
   const from = Math.max(1, Math.trunc(Number(a.from) || 1));
   const to = Math.min(total, Math.trunc(Number(a.to) || from + ATTACH_PAGE_ROWS - 1), from + ATTACH_PAGE_ROWS - 1);
@@ -1306,7 +1456,10 @@ function describeLoaded(att: Attachment): string {
   const t = att.table;
   if (att.kind === 'table' && t) {
     const sheets = att.sheets && att.sheets.length > 1 ? `，工作表：${att.sheets.map((s) => s.sheet).join('、')}` : '';
-    const sample = t.rows.slice(0, 3).map((r) => r.map(cellText).join('\t')).join(' / ');
+    const sample = t.rows
+      .slice(0, 3)
+      .map((r) => r.map(cellText).join('\t'))
+      .join(' / ');
     return `${att.name}：表格 ${t.rows.length} 行${sheets}；列：${t.header.join('、')}${sample ? `；前几行：${sample.slice(0, 300)}` : ''}`;
   }
   const text = String(att.text || '');
@@ -1329,7 +1482,11 @@ interface QuerySource {
   frame: string;
 }
 
-function querySource(draft: import('../workbook/workbook.ts').WorkbookSpec | null, attachments: Attachment[], a: Record<string, unknown>): QuerySource {
+function querySource(
+  draft: import('../workbook/workbook.ts').WorkbookSpec | null,
+  attachments: Attachment[],
+  a: Record<string, unknown>,
+): QuerySource {
   const attName = String(a.attachment ?? '').trim();
   if (attName) {
     const att = findAttachment(attachments, attName);
@@ -1339,16 +1496,24 @@ function querySource(draft: import('../workbook/workbook.ts').WorkbookSpec | nul
     return { table: { header: t.header, rows: t.rows }, types: [], label, frame: `${attachmentFrame(att)}\n` };
   }
   if (!draft || !draft.sheets.length) {
-    throw new Error(attachments.length ? '还没有表格。要查询附件请传 attachment（附件名）。' : '还没有表格，也没有附件，没有可查询的内容。');
+    throw new Error(
+      attachments.length
+        ? '还没有表格。要查询附件请传 attachment（附件名）。'
+        : '还没有表格，也没有附件，没有可查询的内容。',
+    );
   }
   const want = String(a.sheet ?? '').trim();
   let sheet = draft.sheets[0];
   if (want) {
-    const hit = draft.sheets.find((s) => s.name === want) || draft.sheets.find((s) => s.name.toLowerCase() === want.toLowerCase());
+    const hit =
+      draft.sheets.find((s) => s.name === want) ||
+      draft.sheets.find((s) => s.name.toLowerCase() === want.toLowerCase());
     if (!hit) throw new Error(`没有名为「${want}」的工作表。现有：${draft.sheets.map((s) => s.name).join('、')}`);
     sheet = hit;
   } else if (draft.sheets.length > 1) {
-    throw new Error(`工作簿有 ${draft.sheets.length} 个工作表，请指明 sheet：${draft.sheets.map((s) => `「${s.name}」`).join('、')}`);
+    throw new Error(
+      `工作簿有 ${draft.sheets.length} 个工作表，请指明 sheet：${draft.sheets.map((s) => `「${s.name}」`).join('、')}`,
+    );
   }
   return {
     table: { header: sheet.columns.map((c) => c.header), rows: sheet.rows },
@@ -1363,13 +1528,14 @@ function columnTypeOf(values: unknown[]): string {
   const present = values.filter((v) => v !== null && v !== undefined && v !== '');
   if (!present.length) return 'text';
   if (present.every((v) => v instanceof Date)) return 'date';
-  if (present.every((v) => typeof v === 'number')) return present.every((v) => Number.isInteger(v)) ? 'integer' : 'number';
+  if (present.every((v) => typeof v === 'number'))
+    return present.every((v) => Number.isInteger(v)) ? 'integer' : 'number';
   return 'text';
 }
 
 /** A cell for an op's arguments: dates as text, which is how the op log stores them. */
 function plainCell(v: unknown): unknown {
-  return v instanceof Date ? v.toISOString().slice(0, 10) : v ?? null;
+  return v instanceof Date ? v.toISOString().slice(0, 10) : (v ?? null);
 }
 
 // ---------------------------------------------------------------- turn
@@ -1405,7 +1571,8 @@ function transcript(messages: PiAgentMessage[]): string {
         if (c.type === 'text' && c.text.trim()) lines.push(`assistant: ${c.text.trim()}`);
         if (c.type === 'toolCall') lines.push(`call ${c.name} ${JSON.stringify(c.arguments)}`);
       }
-      if (m.stopReason === 'error' || m.stopReason === 'aborted') lines.push(`${m.stopReason}: ${m.errorMessage || ''}`);
+      if (m.stopReason === 'error' || m.stopReason === 'aborted')
+        lines.push(`${m.stopReason}: ${m.errorMessage || ''}`);
     } else if (m.role === 'toolResult') {
       const text = m.content.map((c) => (c.type === 'text' ? c.text : '')).join('');
       lines.push(`${m.isError ? 'error' : 'result'} ${m.toolName}: ${text}`);
@@ -1485,7 +1652,16 @@ export async function runTurn({
   const { ai, agent } = pi;
   const model = modelOverride || modelFromSecrets({ ...secrets, api: secrets.api || 'openai-completions' });
 
-  const state: TurnState = { draft: spec, ops: [], notes: [], summaries: [], question: null, exports: [], writes: [], loaded: [] };
+  const state: TurnState = {
+    draft: spec,
+    ops: [],
+    notes: [],
+    summaries: [],
+    question: null,
+    exports: [],
+    writes: [],
+    loaded: [],
+  };
   const [system, user] = agentMessages({ history, message, spec, rowBudget, changes });
 
   // Streamed, and judged by silence rather than by total time — every event
@@ -1504,15 +1680,32 @@ export async function runTurn({
           role: 'system',
           // Each note appears only with its tool: describing a tool the model
           // does not have invites it to call one that does not exist.
-          content: [system.content, canEdit ? '' : READ_ONLY_NOTE, canSave ? (fileAccess === 'readwrite' ? SAVE_NOTE_WITH_DIR : SAVE_NOTE) : SAVE_OFF_NOTE, canFetch ? FETCH_NOTE : FETCH_OFF_NOTE, attachments.length || fileAccess !== 'off' ? ATTACH_NOTE : '', FILE_NOTES[fileAccess]]
-            .filter(Boolean).join('\n\n'),
+          content: [
+            system.content,
+            canEdit ? '' : READ_ONLY_NOTE,
+            canSave ? (fileAccess === 'readwrite' ? SAVE_NOTE_WITH_DIR : SAVE_NOTE) : SAVE_OFF_NOTE,
+            canFetch ? FETCH_NOTE : FETCH_OFF_NOTE,
+            attachments.length || fileAccess !== 'off' ? ATTACH_NOTE : '',
+            FILE_NOTES[fileAccess],
+          ]
+            .filter(Boolean)
+            .join('\n\n'),
           timestamp: 0,
         },
         { role: 'user', content: user.content, timestamp: 0 },
       ],
       {
         messages: [],
-        tools: buildTools(ai, state, { canEdit, canSave, canFetch, fetchOptions, signal: clocks.signal, attachments: [...attachments], fileAccess, fileOptions }),
+        tools: buildTools(ai, state, {
+          canEdit,
+          canSave,
+          canFetch,
+          fetchOptions,
+          signal: clocks.signal,
+          attachments: [...attachments],
+          fileAccess,
+          fileOptions,
+        }),
       },
       {
         model,
@@ -1528,7 +1721,9 @@ export async function runTurn({
         convertToLlm: toLlm,
         finishTurn: () => (++steps >= MAX_STEPS ? { action: 'end' } : undefined),
       },
-      (event) => { clocks.touch(streamingReply(event) ? streamIdleTimeoutMs : idleTimeoutMs); },
+      (event) => {
+        clocks.touch(streamingReply(event) ? streamIdleTimeoutMs : idleTimeoutMs);
+      },
       clocks.signal,
       pi.streamSimple,
     );
@@ -1555,8 +1750,20 @@ export async function runTurn({
 
   if (!state.ops.length) {
     if (state.question) {
-      const reply = said && !said.includes(state.question) ? `${said}\n\n${state.question}` : (said || state.question);
-      return { intent: INTENT.QUESTION, reply, reason, spec: null, ops: [], exports: state.exports, notes: [], prefiltered, raw, writes: state.writes, loaded: state.loaded };
+      const reply = said && !said.includes(state.question) ? `${said}\n\n${state.question}` : said || state.question;
+      return {
+        intent: INTENT.QUESTION,
+        reply,
+        reason,
+        spec: null,
+        ops: [],
+        exports: state.exports,
+        notes: [],
+        prefiltered,
+        raw,
+        writes: state.writes,
+        loaded: state.loaded,
+      };
     }
     // An answer. If it reads as though something was changed, it is wrong —
     // no tool ran — and the user has no reason to distrust it. Say so, in the
@@ -1622,7 +1829,6 @@ export async function runTurn({
   };
 }
 
-
 /** What `proseReply` reports back. */
 export interface ProseReply {
   reply: string;
@@ -1647,9 +1853,7 @@ export function proseReply(raw: string): ProseReply {
   // 「已有一个表，你可以改」 does not read as a claim.
   const DONE = '改|修改|更新|设|设置|创建|生成|建|做|添加|加|清空|删';
   const claimed = new RegExp(
-    `已[^。！？!?\\n]{0,8}(?:${DONE})` +
-    `|(?:${DONE})好(?:了)?` +
-    '|完成修改|已为你|已经好了',
+    `已[^。！？!?\\n]{0,8}(?:${DONE})` + `|(?:${DONE})好(?:了)?` + '|完成修改|已为你|已经好了',
   ).test(text);
   return { reply: text, claimed };
 }

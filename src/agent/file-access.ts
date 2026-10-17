@@ -63,7 +63,14 @@ import crypto from 'node:crypto';
 import { ingestFile, isHiddenPath, READABLE_EXT } from '../formats/attachments.ts';
 import type { Ingested } from '../formats/attachments.ts';
 import { GREP_MAX_FILE_BYTES } from './pi-tools/fs-tools.ts';
-import type { EditOperations, FindOperations, GrepOperations, LsOperations, ReadOperations, WriteOperations } from './pi-tools/fs-tools.ts';
+import type {
+  EditOperations,
+  FindOperations,
+  GrepOperations,
+  LsOperations,
+  ReadOperations,
+  WriteOperations,
+} from './pi-tools/fs-tools.ts';
 
 export const FILE_ACCESS_MODES = ['off', 'read', 'readwrite'] as const;
 export type FileAccessMode = (typeof FILE_ACCESS_MODES)[number];
@@ -91,25 +98,66 @@ export interface FileAccessOptions {
 
 /** Home-relative locations that hold credentials or another program's secrets. */
 const BLOCKED_IN_HOME = [
-  '.ssh', '.gnupg', '.aws', '.azure', '.kube', '.docker', '.config/gcloud', '.config/gh',
-  '.netrc', '.npmrc', '.pypirc', '.git-credentials', '.pgpass', '.m2/settings.xml',
-  '.mozilla', '.config/google-chrome', '.config/chromium', '.local/share/keyrings',
-  'AppData/Roaming/Microsoft/Credentials', 'AppData/Local/Microsoft/Credentials',
-  'AppData/Roaming/Microsoft/Protect', 'AppData/Roaming/Microsoft/Crypto', 'AppData/Roaming/Microsoft/SystemCertificates',
-  'AppData/Local/Google/Chrome/User Data', 'AppData/Local/Microsoft/Edge/User Data',
-  'AppData/Local/BraveSoftware', 'AppData/Roaming/Mozilla', 'AppData/Roaming/Opera Software',
+  '.ssh',
+  '.gnupg',
+  '.aws',
+  '.azure',
+  '.kube',
+  '.docker',
+  '.config/gcloud',
+  '.config/gh',
+  '.netrc',
+  '.npmrc',
+  '.pypirc',
+  '.git-credentials',
+  '.pgpass',
+  '.m2/settings.xml',
+  '.mozilla',
+  '.config/google-chrome',
+  '.config/chromium',
+  '.local/share/keyrings',
+  'AppData/Roaming/Microsoft/Credentials',
+  'AppData/Local/Microsoft/Credentials',
+  'AppData/Roaming/Microsoft/Protect',
+  'AppData/Roaming/Microsoft/Crypto',
+  'AppData/Roaming/Microsoft/SystemCertificates',
+  'AppData/Local/Google/Chrome/User Data',
+  'AppData/Local/Microsoft/Edge/User Data',
+  'AppData/Local/BraveSoftware',
+  'AppData/Roaming/Mozilla',
+  'AppData/Roaming/Opera Software',
   'AppData/Roaming/Microsoft/Windows/Start Menu/Programs/Startup',
-  'Library/Keychains', 'Library/Cookies', 'Library/Application Support/Google/Chrome',
-  'Library/Application Support/Firefox', 'Library/LaunchAgents',
+  'Library/Keychains',
+  'Library/Cookies',
+  'Library/Application Support/Google/Chrome',
+  'Library/Application Support/Firefox',
+  'Library/LaunchAgents',
 ];
 
 /** Absolute locations: the OS and its secrets. */
 function blockedSystemPaths(): string[] {
   if (process.platform === 'win32') {
     const root = process.env.SystemRoot || 'C:\\Windows';
-    return [root, 'C:\\ProgramData\\Microsoft\\Crypto', 'C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\StartUp', 'C:\\$Recycle.Bin', 'C:\\System Volume Information'];
+    return [
+      root,
+      'C:\\ProgramData\\Microsoft\\Crypto',
+      'C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\StartUp',
+      'C:\\$Recycle.Bin',
+      'C:\\System Volume Information',
+    ];
   }
-  return ['/etc/shadow', '/etc/gshadow', '/etc/sudoers', '/etc/ssl/private', '/proc', '/sys', '/dev', '/root', '/private/etc/master.passwd', '/Library/Keychains'];
+  return [
+    '/etc/shadow',
+    '/etc/gshadow',
+    '/etc/sudoers',
+    '/etc/ssl/private',
+    '/proc',
+    '/sys',
+    '/dev',
+    '/root',
+    '/private/etc/master.passwd',
+    '/Library/Keychains',
+  ];
 }
 
 /**
@@ -121,12 +169,45 @@ function blockedSystemPaths(): string[] {
  * already covered by the location rules above.
  */
 const BLOCKED_NAMES = [
-  'id_rsa*', 'id_dsa*', 'id_ecdsa*', 'id_ed25519*', '*.pem', '*.key', '*.pfx', '*.p12', '*.jks', '*.keystore',
-  '*.kdbx', '*.ovpn', '.env', '.env.*', 'credentials.json', 'secrets.json', 'NTUSER.DAT*',
+  'id_rsa*',
+  'id_dsa*',
+  'id_ecdsa*',
+  'id_ed25519*',
+  '*.pem',
+  '*.key',
+  '*.pfx',
+  '*.p12',
+  '*.jks',
+  '*.keystore',
+  '*.kdbx',
+  '*.ovpn',
+  '.env',
+  '.env.*',
+  'credentials.json',
+  'secrets.json',
+  'NTUSER.DAT*',
 ];
 
 /** What pi's `write` and `edit` may create: text formats only. */
-export const WRITABLE_EXT = new Set(['.txt', '.md', '.markdown', '.csv', '.tsv', '.json', '.jsonl', '.xml', '.html', '.htm', '.log', '.yml', '.yaml', '.ini', '.sql', '.m3u', '.m3u8']);
+export const WRITABLE_EXT = new Set([
+  '.txt',
+  '.md',
+  '.markdown',
+  '.csv',
+  '.tsv',
+  '.json',
+  '.jsonl',
+  '.xml',
+  '.html',
+  '.htm',
+  '.log',
+  '.yml',
+  '.yaml',
+  '.ini',
+  '.sql',
+  '.m3u',
+  '.m3u8',
+]);
 
 /** Per-file and per-call read limits. The file cap matches an upload's. */
 export const READ_MAX_FILE = 32 * 1024 * 1024;
@@ -149,7 +230,13 @@ function expandHome(p: string, home: string): string {
 
 /** `*` and `?` over a single name, case-insensitively. */
 function globMatch(pattern: string, name: string): boolean {
-  const re = new RegExp(`^${pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.')}$`, 'i');
+  const re = new RegExp(
+    `^${pattern
+      .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+      .replace(/\*/g, '.*')
+      .replace(/\?/g, '.')}$`,
+    'i',
+  );
   return re.test(name);
 }
 
@@ -175,7 +262,8 @@ export function blockRules(opts: FileAccessOptions): { prefixes: string[]; names
     if (!entry) continue;
     // An entry with a separator (or ~, or a drive) is a location; without one,
     // a name pattern matched against every path segment.
-    if (/[\\/]/.test(entry) || entry.startsWith('~') || /^[A-Za-z]:/.test(entry)) prefixes.push(path.resolve(expandHome(entry, home)));
+    if (/[\\/]/.test(entry) || entry.startsWith('~') || /^[A-Za-z]:/.test(entry))
+      prefixes.push(path.resolve(expandHome(entry, home)));
     else names.push(entry);
   }
   return { prefixes, names };
@@ -206,17 +294,25 @@ function blockedBy(p: string, rules: { prefixes: string[]; names: string[] }): s
  * Checked twice — as written, and after resolving symlinks — so a link cannot
  * walk past the list.
  */
-export async function checkPath(input: unknown, opts: FileAccessOptions, { forWrite = false, folder = false } = {}): Promise<string> {
-  const raw = String(input ?? '').trim().replace(/^["']|["']$/g, '');
+export async function checkPath(
+  input: unknown,
+  opts: FileAccessOptions,
+  { forWrite = false, folder = false } = {},
+): Promise<string> {
+  const raw = String(input ?? '')
+    .trim()
+    .replace(/^["']|["']$/g, '');
   if (!raw) throw new FileAccessError('没有给出路径。');
   if (raw.includes('\0')) throw new FileAccessError('路径里有非法字符。');
   if (/^(\\\\|\/\/)/.test(raw)) throw new FileAccessError('不能访问网络共享或设备路径（\\\\ 开头的路径）。');
   const home = opts.home || os.homedir();
   const expanded = expandHome(raw, home);
-  if (!path.isAbsolute(expanded)) throw new FileAccessError(`「${raw}」不是完整路径。请给出从盘符或根目录开始的路径，例如 D:\\数据\\订单.xlsx。`);
+  if (!path.isAbsolute(expanded))
+    throw new FileAccessError(`「${raw}」不是完整路径。请给出从盘符或根目录开始的路径，例如 D:\\数据\\订单.xlsx。`);
   const resolved = path.resolve(expanded);
   // A colon after the drive letter is an NTFS alternate data stream (`a.txt:secret`).
-  if (process.platform === 'win32' && resolved.slice(2).includes(':')) throw new FileAccessError('路径里不能有冒号（除了盘符）。');
+  if (process.platform === 'win32' && resolved.slice(2).includes(':'))
+    throw new FileAccessError('路径里不能有冒号（除了盘符）。');
 
   const rules = blockRules(opts);
   const hit = blockedBy(resolved, rules);
@@ -231,9 +327,17 @@ export async function checkPath(input: unknown, opts: FileAccessOptions, { forWr
     if (!forWrite) throw new FileAccessError(`「${resolved}」不存在。`);
     let parent = path.dirname(resolved);
     for (;;) {
-      try { real = path.join(await fs.promises.realpath(parent), path.relative(parent, resolved)); break; } catch { /* go up */ }
+      try {
+        real = path.join(await fs.promises.realpath(parent), path.relative(parent, resolved));
+        break;
+      } catch {
+        /* go up */
+      }
       const up = path.dirname(parent);
-      if (up === parent) { real = resolved; break; }
+      if (up === parent) {
+        real = resolved;
+        break;
+      }
       parent = up;
     }
   }
@@ -244,7 +348,10 @@ export async function checkPath(input: unknown, opts: FileAccessOptions, { forWr
   // lands in it is an export, whose format the server chose.
   if (forWrite && !folder) {
     const ext = path.extname(real).toLowerCase();
-    if (!WRITABLE_EXT.has(ext)) throw new FileAccessError(`只能写文本类文件（${[...WRITABLE_EXT].join(' ')}），不能写「${ext || '无扩展名'}」。表格请用 save_file。`);
+    if (!WRITABLE_EXT.has(ext))
+      throw new FileAccessError(
+        `只能写文本类文件（${[...WRITABLE_EXT].join(' ')}），不能写「${ext || '无扩展名'}」。表格请用 save_file。`,
+      );
   }
   return real;
 }
@@ -263,7 +370,10 @@ const COLLATOR = new Intl.Collator('zh-CN', { numeric: true });
  * is opened the same way an uploaded one is. Names are full paths, so two
  * `订单.xlsx` in different folders stay apart.
  */
-export async function readPath(input: unknown, opts: FileAccessOptions): Promise<{ root: string; items: Ingested[]; skipped: string[] }> {
+export async function readPath(
+  input: unknown,
+  opts: FileAccessOptions,
+): Promise<{ root: string; items: Ingested[]; skipped: string[] }> {
   const root = await checkPath(input, opts);
   const stat = await fs.promises.stat(root);
   const rules = blockRules(opts);
@@ -300,10 +410,21 @@ export async function readPath(input: unknown, opts: FileAccessOptions): Promise
   for (const file of files) {
     // Re-checked per file: a symlink inside the folder resolves elsewhere.
     let real: string;
-    try { real = await checkPath(file, opts); } catch { skipped.push(`${file}（禁止访问）`); continue; }
+    try {
+      real = await checkPath(file, opts);
+    } catch {
+      skipped.push(`${file}（禁止访问）`);
+      continue;
+    }
     const size = (await fs.promises.stat(real)).size;
-    if (size > READ_MAX_FILE) { skipped.push(`${file}（超过 ${READ_MAX_FILE / 1024 / 1024}MB）`); continue; }
-    if (total + size > READ_MAX_TOTAL) { skipped.push(`${file}（总量超过 ${READ_MAX_TOTAL / 1024 / 1024}MB）`); continue; }
+    if (size > READ_MAX_FILE) {
+      skipped.push(`${file}（超过 ${READ_MAX_FILE / 1024 / 1024}MB）`);
+      continue;
+    }
+    if (total + size > READ_MAX_TOTAL) {
+      skipped.push(`${file}（总量超过 ${READ_MAX_TOTAL / 1024 / 1024}MB）`);
+      continue;
+    }
     total += size;
     const data = await fs.promises.readFile(real);
     const got = await ingestFile(data, file);
@@ -401,7 +522,8 @@ export function fileOperations(opts: FileAccessOptions, writes: FileWrite[]): Fi
 
   const record = async (p: string, content: string): Promise<string> => {
     const real = await checkPath(p, opts, { forWrite: true });
-    if (Buffer.byteLength(content, 'utf8') > WRITE_MAX_BYTES) throw new FileAccessError(`内容超过 ${WRITE_MAX_BYTES / 1024 / 1024}MB。`);
+    if (Buffer.byteLength(content, 'utf8') > WRITE_MAX_BYTES)
+      throw new FileAccessError(`内容超过 ${WRITE_MAX_BYTES / 1024 / 1024}MB。`);
     const at = writes.findIndex((w) => w.path === real);
     if (at >= 0) writes.splice(at, 1, { path: real, content });
     else writes.push({ path: real, content });
@@ -419,12 +541,20 @@ export function fileOperations(opts: FileAccessOptions, writes: FileWrite[]): Fi
    * at any depth), blocked and ignored entries pruned, at most
    * WALK_MAX_ENTRIES visited. Sorted, so the same tree lists the same way.
    */
-  const walk = async (root: string, pattern: string, ignoreNames: Set<string>): Promise<{ path: string; dir: boolean }[]> => {
+  const walk = async (
+    root: string,
+    pattern: string,
+    ignoreNames: Set<string>,
+  ): Promise<{ path: string; dir: boolean }[]> => {
     const real = await checkPath(root, opts);
     const skip = (full: string, name: string) => ignoreNames.has(name) || isBlocked(full, opts);
     const found: { path: string; dir: boolean }[] = [];
     const glob = pattern.includes('/') ? pattern : `**/${pattern}`;
-    for await (const d of fs.promises.glob(glob, { cwd: real, withFileTypes: true, exclude: (e) => skip(path.join(e.parentPath, e.name), e.name) })) {
+    for await (const d of fs.promises.glob(glob, {
+      cwd: real,
+      withFileTypes: true,
+      exclude: (e) => skip(path.join(e.parentPath, e.name), e.name),
+    })) {
       const full = path.join(d.parentPath, d.name);
       // `exclude` stops the walk going INTO an entry but can still yield the
       // entry itself, so it is filtered again here.
@@ -440,7 +570,9 @@ export function fileOperations(opts: FileAccessOptions, writes: FileWrite[]): Fi
 
   return {
     read: {
-      access: async (p) => { await vetRead(p); },
+      access: async (p) => {
+        await vetRead(p);
+      },
       readFile: (p) => readBytes(p, READ_MAX_FILE),
     },
     write: {

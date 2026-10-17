@@ -31,8 +31,14 @@ const { openPage, closePage, findEdge, sleep } = require('../support/cdp.js');
 let passed = 0;
 let failed = 0;
 function check(name, ok, detail) {
-  if (ok) { passed += 1; console.log(`  ok    ${name}`); }
-  else { failed += 1; console.log(`  FAIL  ${name}`); if (detail) console.log(`        ${detail}`); }
+  if (ok) {
+    passed += 1;
+    console.log(`  ok    ${name}`);
+  } else {
+    failed += 1;
+    console.log(`  FAIL  ${name}`);
+    if (detail) console.log(`        ${detail}`);
+  }
 }
 
 const EXE = path.join(ROOT, 'dist', 'TabAgent.exe');
@@ -55,8 +61,11 @@ async function main() {
 
   check('the exe exists', fs.existsSync(EXE), EXE);
   const bin = embeddedAppJs();
-  check('the embedded app.js has the paperclip wiring', bin.includes('composer__clip'),
-    'looked for composer__clip in ' + EXE);
+  check(
+    'the embedded app.js has the paperclip wiring',
+    bin.includes('composer__clip'),
+    'looked for composer__clip in ' + EXE,
+  );
   check('the embedded chat view shows attachment names on the message', bin.includes('chat__files'));
   check('the embedded HTML has the drag overlay', bin.includes('drag-overlay'));
 
@@ -71,7 +80,12 @@ async function main() {
     let up = false;
     for (let i = 0; i < 60 && !up; i++) {
       await sleep(400);
-      try { const r = await fetch(`${base}/api/health`); if (r.ok) up = true; } catch { /* not yet */ }
+      try {
+        const r = await fetch(`${base}/api/health`);
+        if (r.ok) up = true;
+      } catch {
+        /* not yet */
+      }
     }
     check('the exe server came up', up === true, base);
     if (!up) throw new Error('exe never answered');
@@ -87,9 +101,13 @@ async function main() {
     await sleep(700);
 
     // Create a session through the API, then open it in the UI.
-    const created = await (await fetch(`${base}/api/sessions`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}),
-    })).json();
+    const created = await (
+      await fetch(`${base}/api/sessions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      })
+    ).json();
     await page.evaluate('location.reload()');
     await sleep(1600);
     await page.evaluate(`(() => { const r = document.querySelector('.rail__item'); if (r) r.click(); })()`);
@@ -115,9 +133,14 @@ async function main() {
     }
     check('uploading in the exe renders a chip', chip === true);
 
-    const listed = await (await fetch(`${base}/api/sessions/${encodeURIComponent(created.session.id)}/attachments`)).json();
-    check('the exe server holds the attachment', listed.attachments.length === 1,
-      JSON.stringify(listed.attachments.length));
+    const listed = await (
+      await fetch(`${base}/api/sessions/${encodeURIComponent(created.session.id)}/attachments`)
+    ).json();
+    check(
+      'the exe server holds the attachment',
+      listed.attachments.length === 1,
+      JSON.stringify(listed.attachments.length),
+    );
 
     // The exe has no stub transport, so a real turn needs a key the exe does
     // not have. We stop at "the attachment is uploaded and merged into a
@@ -128,18 +151,34 @@ async function main() {
       const b = document.querySelector('.composer__send');
       return b ? b.disabled : null;
     })()`);
-    check('the send button reflects the unconfigured exe (disabled)', sendDisabled === true,
-      `disabled=${sendDisabled}`);
+    check(
+      'the send button reflects the unconfigured exe (disabled)',
+      sendDisabled === true,
+      `disabled=${sendDisabled}`,
+    );
     void created;
   } finally {
-    if (page) { try { await closePage(page, { trashProfile: true }); } catch {} }
-    try { proc.kill(); } catch { /* already gone */ }
+    if (page) {
+      try {
+        await closePage(page, { trashProfile: true });
+      } catch {}
+    }
+    try {
+      proc.kill();
+    } catch {
+      /* already gone */
+    }
     await sleep(600);
-    try { fs.rmSync(dataDir, { recursive: true, force: true }); } catch {}
+    try {
+      fs.rmSync(dataDir, { recursive: true, force: true });
+    } catch {}
   }
 
   console.log('\n' + (failed === 0 ? 'PACKAGED ATTACHMENT CHECKS PASSED' : `${failed} FAILED`));
   process.exit(failed === 0 ? 0 : 1);
 }
 
-main().catch((err) => { console.error(err); process.exit(1); });
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});
