@@ -157,7 +157,10 @@ protocol and file-access definitions in `agent/`. Nothing in `workbook/` or
 Tests mirror `src/`: the test for `src/<layer>/<module>.ts` is
 `tests/<layer>/<module>.test.ts`. A test that drives several modules goes where
 its entry point lives — everything that goes in over HTTP is under `tests/http/`.
-Shared fixtures live in `tests/helpers/`.
+When one module's tests outgrow a file, split them by topic as
+`<module>.<topic>.test.ts` (`agent.guard.test.ts`, `session-api.turn.test.ts`),
+so the name still leads back to the module. Shared fixtures and harnesses —
+the scripted-model turn, the scripted-model server — live in `tests/helpers/`.
 
 Tests are `.ts` and import the source directly (`../../src/formats/xlsx.ts`); they
 run through tsx, so they never see `.build/js/`. `pnpm bundle` is what

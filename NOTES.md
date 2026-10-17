@@ -743,7 +743,7 @@ operation 只能来自**解析成功的对象**，没解析成功的回复没有
     链路不落盘：模型只产 **spec**（纯 JSON）→ spec 存进 `sessions/<id>.json`
     → 点下载时路由现场 `writeSpec(spec)` 在**内存里**拼 Buffer →
     `res.end(buffer)` 推给浏览器 → **浏览器**写进下载目录。
-    实测（原 `.verify/` 探针，现为 `tests/http/session-api.test.ts` 的一条）：下载前后、乃至连下三次，
+    实测（原 `.verify/` 探针，现为 `tests/http/session-api.sessions.test.ts` 的一条）：下载前后、乃至连下三次，
     data 目录里 `.xlsx` 数量恒为 **0**；唯一持久的是含 spec 的会话 JSON。
     三个后果值得记住：同 spec 反复下载字节一致（纯函数、无缓存）；
     删会话即删表（本来就没单独存过文件）；「下载」这个动作里，

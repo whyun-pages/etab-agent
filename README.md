@@ -36,7 +36,8 @@ src/
   platform/   SEA 资源读取、用系统默认程序打开文件
   http/       Koa 应用（server）、进程内状态（app-state）、routes/
 public/       前端，原样作为静态资源（打包时嵌进 exe）
-tests/        node:test 测试（.ts，经 tsx 直接跑源码），子目录与 src/ 一一对应，helpers/ 放共用夹具
+tests/        node:test 测试（.ts，经 tsx 直接跑源码），子目录与 src/ 一一对应；
+              大模块按主题拆成 <模块>.<主题>.test.ts，helpers/ 放共用夹具
 .verify/      本机才能跑的端到端检查，按用途分目录（见「验证」）
 tools/        构建、打包与静态检查脚本
 ```
