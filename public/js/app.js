@@ -9,20 +9,46 @@
    it produced, side by side. There is no template to pick and no plan to
    approve — the spec IS the document, and it changes only when the user says
    it should.
+
+   This file is the boot, the conversation, the render pass and the handlers
+   the views call. The rest is one module per area, none importing this one:
+   controllers/sessions.js, attachments.js, preview.js and settings.js, with
+   feedback.js for the failure toast they all use.
    ════════════════════════════════════════════════════════════════════ */
 
 import { api, ApiError, saveBlob } from './api.js';
 import { hydrateIcons, icon } from './icons.js';
 import { $, el, mount, beginRender, endRender } from './dom.js';
 import { state, set, setBusy, subscribe, ready } from './state.js';
-import { toast, openModal, closeModal, initModal, initDragDrop } from './ui.js';
-import { resetComposer, fillComposer } from './composer.js';
+import { toast, initModal, initDragDrop } from './ui.js';
+import { fillComposer } from './composer.js';
 import { initSplitters } from './splitters.js';
 import { chatView } from './views/chat.js';
 import { captureChatScroll, restoreChatScroll, stickChat } from './chat-scroll.js';
 import { previewView } from './views/preview.js';
 import { sessionsView } from './views/sessions.js';
 import { settingsView } from './views/settings.js';
+import { fail } from './feedback.js';
+import { refreshSessions, openSession, createSession, confirmRemoveSession } from './controllers/sessions.js';
+import {
+  bindFileInput,
+  pasteFiles,
+  pickFiles,
+  pickFolder,
+  handleFiles,
+  removeAttachment,
+  openAttachment,
+} from './controllers/attachments.js';
+import { loadMorePreview, setColumnWidth } from './controllers/preview.js';
+import {
+  toggleSettings,
+  openSettings,
+  closeSettings,
+  refreshSettings,
+  saveSettings,
+  clearSettingsKey,
+  testSettings,
+} from './controllers/settings.js';
 
 // ── boot ────────────────────────────────────────────────────────────
 
@@ -88,358 +114,6 @@ function bindKeyboard() {
       toggleRail();
     }
   });
-}
-
-// ── sessions ────────────────────────────────────────────────────────
-
-async function refreshSessions() {
-  try {
-    const res = await api.listSessions();
-    set({ sessions: res.sessions || [] });
-  } catch (err) {
-    console.warn('session list failed', err);
-  }
-}
-
-/** Open a session: its transcript, its workbook, and clear any held proposal. */
-async function openSession(id) {
-  if (!id || state.busy.sessions) return;
-  setBusy('sessions', true);
-  try {
-    // Attachments are per session, so they come with it. A failed list read is
-    // an empty list, not a failed open: the transcript is what was asked for.
-    const [res, att] = await Promise.all([
-      api.getSession(id),
-      api.listAttachments(id).catch((err) => {
-        console.warn('attachments read failed', err);
-        return null;
-      }),
-    ]);
-    // A different conversation means a different message box. The cached node
-    // is keyed by session id, so this also clears the half-typed text.
-    if (state.activeId !== id) resetComposer();
-    set({
-      activeId: id,
-      title: res.session.title || '',
-      messages: res.session.messages || [],
-      attachments: (att && att.attachments) || [],
-      preview: res.preview || null,
-      previewError: null,
-      pending: null,
-      draft: '',
-      view: 'chat',
-      error: null,
-      status: res.preview ? '已载入会话' : '新会话',
-    });
-  } catch (err) {
-    fail('打开会话失败', err);
-  } finally {
-    setBusy('sessions', false);
-  }
-}
-
-/**
- * Create a session and open it.
- *
- * Created eagerly rather than held until the first message: the user asked for
- * a new conversation, and a session that exists on the server is one they can
- * come back to even if they never type anything.
- */
-async function createSession() {
-  if (state.busy.create) return;
-  setBusy('create', true);
-  try {
-    const res = await api.createSession('');
-    await refreshSessions();
-    resetComposer();
-    set({
-      activeId: res.session.id,
-      title: '',
-      messages: [],
-      attachments: [],
-      preview: null,
-      pending: null,
-      draft: '',
-      view: 'chat',
-      error: null,
-      status: '新会话',
-    });
-    setBusy('sessions', false);
-  } catch (err) {
-    fail('新建会话失败', err);
-  } finally {
-    setBusy('create', false);
-  }
-}
-
-function confirmRemoveSession(session) {
-  const cancel = el('button', { class: 'btn', type: 'button', text: '取消' });
-  const del = el('button', { class: 'btn btn--danger', type: 'button', text: '删除' });
-  const close = openModal({
-    title: '删除会话',
-    body: el('p', {
-      class: 'hint',
-      text: `删除「${session.title || '未命名会话'}」？对话和表格一起删掉，不可撤销。`,
-    }),
-    footer: [cancel, del],
-  });
-  cancel.addEventListener('click', closeModal);
-  del.addEventListener('click', async () => {
-    close();
-    try {
-      await api.removeSession(session.id);
-      const wasActive = state.activeId === session.id;
-      await refreshSessions();
-      if (wasActive) {
-        resetComposer();
-        set({ activeId: null, title: '', messages: [], attachments: [], preview: null, pending: null, draft: '' });
-        const next = state.sessions[0];
-        if (next) await openSession(next.id);
-      }
-      toast('已删除会话', 'ok');
-    } catch (err) {
-      fail('删除失败', err);
-    }
-  });
-}
-
-// ── attachments ─────────────────────────────────────────────────────
-
-/** The hidden file input the paperclip clicks; created once, reused. */
-let fileInput = null;
-/** The hidden directory input the folder button clicks; created once, reused. */
-let folderInput = null;
-
-/** What the file picker offers, and what a picked folder is filtered down to. */
-const ATTACH_EXT = [
-  '.csv',
-  '.tsv',
-  '.txt',
-  '.json',
-  '.md',
-  '.xlsx',
-  '.xls',
-  '.png',
-  '.jpg',
-  '.jpeg',
-  '.webp',
-  '.gif',
-  '.docx',
-  '.pdf',
-  '.zip',
-];
-
-/**
- * The server takes at most this many files per request (`MAX_FILES` in
- * src/http/server.ts). A folder easily holds more, so uploads go in batches of it.
- */
-const ATTACH_BATCH = 20;
-
-/**
- * Wire the paperclip to a file picker, and the folder button to a directory
- * picker.
- *
- * The inputs are created lazily on the document rather than living in the chat
- * view: the view is rebuilt on every repaint, and a picker whose `<input>` is
- * swapped mid-flow loses the selection the user just made.
- */
-function bindFileInput() {
-  fileInput = el('input', {
-    type: 'file',
-    id: 'file-input',
-    multiple: true,
-    accept: ATTACH_EXT.join(','),
-  });
-  fileInput.style.display = 'none';
-  fileInput.addEventListener('change', () => {
-    if (fileInput.files && fileInput.files.length) handleFiles(fileInput.files);
-    // Reset so picking the SAME file twice still fires `change`.
-    fileInput.value = '';
-  });
-  document.body.append(fileInput);
-
-  // `webkitdirectory` is a property, not an attribute `el` knows about; every
-  // browser this app runs in (Edge/Chromium) supports it. `accept` is ignored
-  // for directories, which is why folderFiles filters by extension itself.
-  folderInput = el('input', { type: 'file', id: 'folder-input', multiple: true });
-  folderInput.webkitdirectory = true;
-  folderInput.style.display = 'none';
-  folderInput.addEventListener('change', () => {
-    if (folderInput.files && folderInput.files.length) handleFolder(folderInput.files);
-    folderInput.value = '';
-  });
-  document.body.append(folderInput);
-}
-
-/**
- * The files of a picked folder worth uploading: the readable types, minus
- * anything hidden (`.git/`, `.DS_Store`) — the picker hands back the whole tree,
- * and uploading a repository's object store as attachments helps nobody.
- */
-function folderFiles(files) {
-  return [...files].filter((f) => {
-    const rel = f.webkitRelativePath || f.name;
-    if (rel.split('/').some((seg) => seg.startsWith('.'))) return false;
-    const dot = f.name.lastIndexOf('.');
-    return dot > 0 && ATTACH_EXT.includes(f.name.slice(dot).toLowerCase());
-  });
-}
-
-function handleFolder(files) {
-  const all = [...files];
-  const list = folderFiles(all);
-  const root = (all[0]?.webkitRelativePath || '').split('/')[0] || '文件夹';
-  if (!list.length) {
-    toast({ tone: 'warn', title: `${root} 里没有能读的文件`, body: `支持：${ATTACH_EXT.join(' ')}`, ms: 6000 });
-    return;
-  }
-  handleFiles(list);
-}
-
-/**
- * Files pasted into the composer.
- *
- * A pasted screenshot is always called `image.png` by the browser, so two of
- * them would be two chips with one name and no way to tell which is which.
- * They get the time of the paste instead; a file copied from disk keeps its
- * own name.
- */
-function pasteFiles(files) {
-  const stamp = new Date().toTimeString().slice(0, 8).replace(/:/g, '');
-  const named = files.map((f, i) => {
-    const m = /^image\.(\w+)$/i.exec(f.name || '');
-    if (!m) return f;
-    const n = files.length > 1 ? `-${i + 1}` : '';
-    return new File([f], `截图-${stamp}${n}.${m[1].toLowerCase()}`, { type: f.type, lastModified: f.lastModified });
-  });
-  handleFiles(named);
-}
-
-function pickFiles() {
-  if (!state.activeId) {
-    toast({ tone: 'warn', title: '先新建一个会话', body: '附件会跟着这次对话走。', ms: 4000 });
-    return;
-  }
-  if (fileInput) fileInput.click();
-}
-
-function pickFolder() {
-  if (!state.activeId) {
-    toast({ tone: 'warn', title: '先新建一个会话', body: '附件会跟着这次对话走。', ms: 4000 });
-    return;
-  }
-  if (folderInput) folderInput.click();
-}
-
-/**
- * Upload dropped or picked files and mirror the server's view of them.
- *
- * The server is the source of truth for what an attachment IS (kind, parsed
- * columns, preview). We refetch the list after uploading rather than trusting
- * the POST response's shape alone, so a partial failure (one file of several)
- * is reflected exactly.
- */
-async function handleFiles(files) {
-  if (!state.activeId) {
-    toast({ tone: 'warn', title: '先新建一个会话', body: '附件会跟着这次对话走。', ms: 4000 });
-    return;
-  }
-  const list = [...files];
-  if (!list.length) return;
-  // Captured now: the user can switch sessions while the upload is in flight,
-  // and the files belong to the session they were dropped on.
-  const id = state.activeId;
-  setBusy('attach', true);
-  set({ attaching: true, status: `正在读取 ${list.length} 个文件…` });
-  try {
-    // In batches, in order: one request per batch keeps each under the server's
-    // per-request cap, and sequential keeps the chips in the order picked.
-    const modelNotes = [];
-    const archiveNotes = [];
-    const results = [];
-    for (let i = 0; i < list.length; i += ATTACH_BATCH) {
-      const res = await api.attach(id, list.slice(i, i + ATTACH_BATCH));
-      modelNotes.push(...(res.modelNotes || []));
-      archiveNotes.push(...(res.archiveNotes || []));
-      results.push(...(res.attachments || []));
-    }
-    if (modelNotes.length) {
-      toast({ tone: 'warn', title: '模型读取失败', body: modelNotes.map((n) => n.error).join('；'), ms: 8000 });
-    }
-    // A zip expands into its readable members; say what was left out, so a
-    // missing file is not a mystery.
-    if (archiveNotes.length) {
-      toast({
-        tone: 'info',
-        title: '压缩包已展开',
-        body: archiveNotes.map((n) => `${n.name}：跳过 ${n.skipped} 个不支持的文件`).join('\n'),
-        ms: 6000,
-      });
-    }
-    await refreshAttachments(id);
-    const bad = results.filter((a) => a.kind === 'error');
-    set({ status: bad.length ? `${bad.length} 个文件读不了` : `已添加 ${list.length} 个文件` });
-    if (bad.length)
-      toast({
-        tone: 'err',
-        title: '有一部文件读不了',
-        body: bad.map((a) => `${a.name}：${a.error || '不支持'}`).join('\n'),
-        ms: 8000,
-      });
-  } catch (err) {
-    fail('上传失败', err);
-  } finally {
-    setBusy('attach', false);
-    set({ attaching: false });
-  }
-}
-
-/**
- * Pull a session's attachment list into state — only if it is still the open
- * one, so a slow read for a session the user left does not overwrite the chips
- * of the one they are looking at.
- */
-async function refreshAttachments(id = state.activeId) {
-  if (!id) return;
-  try {
-    const res = await api.listAttachments(id);
-    if (state.activeId === id) set({ attachments: res.attachments || [] });
-  } catch (err) {
-    console.warn('attachments read failed', err);
-  }
-}
-
-/**
- * Remove one file.
- *
- * The server offers only clear-all (per session), and the bytes live only in
- * this process, so dropping one file means clearing and re-sending the survivors. We no
- * longer hold the File objects for those survivors, so the honest move is to
- * clear and say so — silently keeping a file the user removed would be worse.
- */
-async function removeAttachment(index) {
-  if (!state.activeId) return;
-  setBusy('attach', true);
-  try {
-    await api.clearAttachments(state.activeId);
-    set({ attachments: [], status: '已清空附件' });
-    void index;
-  } catch (err) {
-    fail('移除失败', err);
-  } finally {
-    setBusy('attach', false);
-  }
-}
-
-/** Open one attachment on this computer; the server hands a copy to the OS. */
-async function openAttachment(a) {
-  if (!state.activeId || !a.id) return;
-  try {
-    await api.openAttachment(state.activeId, a.id);
-    set({ status: `已在电脑上打开 ${a.name}` });
-  } catch (err) {
-    fail('打开失败', err);
-  }
 }
 
 // ── conversation ────────────────────────────────────────────────────
@@ -610,94 +284,6 @@ async function applyPending() {
   }
 }
 
-// ── preview paging ───────────────────────────────────────────────────
-
-/**
- * Fetch the next page of preview rows and append it.
- *
- * Driven by the grid's bottom edge coming into view. One page at a time; a
- * preview replaced while the request was out (a turn landed, another session
- * opened) drops the answer, and a table that changed under the key reloads
- * the preview from the top instead of appending rows of a different table.
- */
-async function loadMorePreview() {
-  const p = state.preview;
-  const id = state.activeId;
-  if (!p || !id || !p.key || state.previewLoading) return;
-  const loaded = (p.startRow || 1) - 1 + p.rows.length;
-  if (loaded >= (p.totalRows || 0)) return;
-
-  set({ previewLoading: true, previewError: null });
-  try {
-    const res = await api.previewRows(id, { key: p.key, from: loaded + 1, count: PREVIEW_PAGE, proposed: p.proposed });
-    if (state.activeId !== id || state.preview !== p) return;
-    if (res.stale) {
-      const fresh = await api.getSession(id);
-      if (state.activeId === id) set({ preview: fresh.preview || null });
-      return;
-    }
-    set({
-      preview: {
-        ...p,
-        rows: p.rows.concat(res.rows || []),
-        formats: (p.formats || []).concat(res.formats || []),
-        totalRows: res.totalRows,
-      },
-    });
-  } catch (err) {
-    if (state.activeId === id)
-      set({ previewError: err instanceof ApiError ? err.message : String(err?.message || err) });
-  } finally {
-    set({ previewLoading: false });
-  }
-}
-
-/** Rows per page request; the server caps it too. */
-const PREVIEW_PAGE = 200;
-
-/**
- * Save a column width dragged in the preview.
- *
- * Shown at the new width at once; the server's answer brings the table's new
- * `key` (the file's bytes changed) and its `cols`. `view` keeps the table's
- * identity across that key change, so the rows already loaded and the scroll
- * position stay — not a single row changed. A refusal (the table changed
- * under the drag) puts the old width back and says why.
- */
-async function setColumnWidth(index, width) {
-  const p = state.preview;
-  const id = state.activeId;
-  // The first window always starts at row 1, which is the header row.
-  const header = p && (p.startRow || 1) === 1 && p.rows[0] ? p.rows[0][index] : null;
-  if (!p || !id || p.proposed || header === null || header === undefined) return;
-
-  const view = p.view || p.key;
-  const same = () => state.activeId === id && state.preview && (state.preview.view || state.preview.key) === view;
-  set({ preview: { ...p, view, cols: withWidth(p.cols, index + 1, width) } });
-  try {
-    const res = await api.columnWidth(id, { sheet: p.name, index, header: String(header), width });
-    if (same()) set({ preview: { ...state.preview, key: res.key, cols: res.cols || [] } });
-  } catch (err) {
-    if (same()) set({ preview: { ...state.preview, cols: p.cols } });
-    fail('列宽没有保存', err);
-  }
-}
-
-/** `cols` ranges with column `c` (1-based) set to `width`, splitting a range it sits in. */
-function withWidth(cols, c, width) {
-  const out = [];
-  for (const r of cols || []) {
-    if (c < r.min || c > r.max) {
-      out.push(r);
-      continue;
-    }
-    if (r.min < c) out.push({ ...r, max: c - 1 });
-    if (r.max > c) out.push({ ...r, min: c + 1 });
-  }
-  out.push({ min: c, max: c, width });
-  return out;
-}
-
 /** Discard a held change. The stored spec never moved, so this is local. */
 async function dismissPending() {
   if (!state.pending || state.busy.apply) return;
@@ -725,128 +311,6 @@ async function downloadWorkbook(format = 'xlsx', sheet = null) {
   }
 }
 
-// ── model settings ───────────────────────────────────────────────────
-
-function toggleSettings() {
-  if (state.view === 'settings') closeSettings();
-  else openSettings();
-}
-
-/**
- * Show the settings page.
- *
- * The outcome line and the test result belong to the visit that produced
- * them; opening the page again starts clean. The draft is kept: leaving with
- * unsaved edits and coming back should not have thrown them away.
- */
-function openSettings(tab) {
-  set({ view: 'settings', settingsTab: tab || state.settingsTab, settingsTest: null, settingsNotice: null });
-}
-
-function closeSettings() {
-  set({ view: 'chat', settingsTest: null, settingsNotice: null });
-}
-
-async function refreshSettings() {
-  try {
-    const res = await api.getSettings();
-    set({ settings: res.settings || null });
-  } catch (err) {
-    console.warn('settings read failed', err);
-  }
-}
-
-/**
- * Save the settings form.
- *
- * An empty key field means "leave it alone" — the server can never send the
- * existing key back to pre-fill a box, so treating blank as "clear" would wipe
- * the key every time the user changed an unrelated field.
- */
-async function saveSettings(draft) {
-  setBusy('settings', true);
-  try {
-    const patch = {};
-    for (const k of [
-      'api',
-      'baseUrl',
-      'model',
-      'useForAttachments',
-      'chatCanEdit',
-      'chatConfirmEdits',
-      'chatCanSave',
-      'exportDir',
-      'chatCanFetch',
-      'fetchBlocklist',
-      'chatFileAccess',
-      'fileBlocklist',
-    ]) {
-      if (k in draft) patch[k] = draft[k];
-    }
-    if (draft.apiKey) patch.apiKey = draft.apiKey;
-
-    const res = await api.saveSettings(patch);
-    // The page stays open: leaving is the 返回会话 button's job. Jumping away
-    // on save took the user off the page before they could read that it
-    // worked, or press 测试连接 on what they had just saved.
-    set({
-      settings: res.settings,
-      settingsDraft: {},
-      settingsTest: null,
-      settingsNotice: { tone: 'ok', text: `已保存（${clock()}）` },
-      status: '设置已保存',
-    });
-    toast('设置已保存', 'ok');
-    // The first save is what makes the app usable; go find the work.
-    if (!state.sessions.length) await refreshSessions();
-  } catch (err) {
-    const msg = err instanceof ApiError ? err.message : String(err?.message || err);
-    set({ settingsNotice: { tone: 'err', text: `保存失败：${msg}` }, status: msg });
-    toast({ tone: 'err', title: '保存失败', body: msg, ms: 7000 });
-  } finally {
-    setBusy('settings', false);
-  }
-}
-
-async function clearSettingsKey() {
-  setBusy('settings', true);
-  try {
-    const res = await api.saveSettings({ apiKey: '' });
-    set({
-      settings: res.settings,
-      settingsDraft: {},
-      settingsTest: null,
-      settingsNotice: { tone: 'ok', text: `已清除 API key（${clock()}）` },
-      status: '已清除 API key',
-    });
-    toast('已清除 API key', 'ok');
-  } catch (err) {
-    fail('清除失败', err);
-  } finally {
-    setBusy('settings', false);
-  }
-}
-
-/**
- * Test the connection.
- *
- * The provider's own error text is shown verbatim: a wrong key, a wrong model
- * name and an unreachable host are three different fixes, and a generic "测试
- * 失败" would hide which one applies.
- */
-async function testSettings() {
-  setBusy('settings', true);
-  set({ settingsTest: null });
-  try {
-    const res = await api.testSettings();
-    set({ settingsTest: res.ok ? { ok: true, reply: res.reply } : { ok: false, error: res.error } });
-  } catch (err) {
-    set({ settingsTest: { ok: false, error: err.message } });
-  } finally {
-    setBusy('settings', false);
-  }
-}
-
 // ── misc ────────────────────────────────────────────────────────────
 
 async function checkHealth() {
@@ -859,17 +323,6 @@ async function checkHealth() {
     node.className = 'status__item status__item--err';
     node.innerHTML = '<span class="dot dot--err"></span>服务端离线';
   }
-}
-
-/** Wall-clock HH:MM:SS, so a second save visibly changes the outcome line. */
-function clock() {
-  return new Date().toLocaleTimeString('zh-CN', { hour12: false });
-}
-
-function fail(title, err) {
-  const msg = err instanceof ApiError ? err.message : String(err?.message || err);
-  set({ error: msg, status: msg });
-  toast({ tone: 'err', title, body: msg, ms: 7000 });
 }
 
 function focusComposer() {
