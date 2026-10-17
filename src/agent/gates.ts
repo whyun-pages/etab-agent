@@ -68,6 +68,14 @@ export interface GuardChangeArgs {
 }
 
 /**
+ * When a drop in rows counts as losing data: three rows, or more than a fifth
+ * of the table. A row or two is ordinary editing; a fifth of the table, or
+ * most of a small one, is the failure the guard exists for.
+ */
+const LOSS_ROWS = 3;
+const LOSS_SHARE = 0.2;
+
+/**
  * Decide whether a proposed spec may replace the current one.
  *
  * This is the gate that does not care what the model said about itself. It
@@ -98,9 +106,7 @@ export function guardChange({ current, next, message }: GuardChangeArgs): GuardV
   if (!before.rows) return { ok: true, reason: '', lostRows: 0 };
 
   const lost = before.rows - after.rows;
-  // A row or two is ordinary editing. Losing a fifth of the table, or most of a
-  // small table, is the failure this exists for.
-  const material = lost > 0 && (lost >= 3 || lost > before.rows * 0.2);
+  const material = lost > 0 && (lost >= LOSS_ROWS || lost > before.rows * LOSS_SHARE);
   if (material && !SHRINK_RE.test(String(message || ''))) {
     return {
       ok: false,

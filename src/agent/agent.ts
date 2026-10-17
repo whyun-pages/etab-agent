@@ -278,42 +278,35 @@ export async function runTurn({
   const capped = steps >= MAX_STEPS && last.stopReason === 'toolUse';
   const capNote = capped ? '\n\n（操作步数达到上限，可能没有全部完成。）' : '';
   const reason = state.summaries.join('；');
+  // What every outcome carries unless it says otherwise; each return below
+  // spells out only how it differs.
+  const result = (r: Pick<TurnResult, 'intent' | 'reply' | 'reason'> & Partial<TurnResult>): TurnResult => ({
+    spec: null,
+    ops: [],
+    exports: state.exports,
+    notes: [],
+    prefiltered,
+    raw,
+    writes: state.writes,
+    loaded: state.loaded,
+    ...r,
+  });
 
   if (!state.ops.length) {
     if (state.question) {
       const reply = said && !said.includes(state.question) ? `${said}\n\n${state.question}` : said || state.question;
-      return {
-        intent: INTENT.QUESTION,
-        reply,
-        reason,
-        spec: null,
-        ops: [],
-        exports: state.exports,
-        notes: [],
-        prefiltered,
-        raw,
-        writes: state.writes,
-        loaded: state.loaded,
-      };
+      return result({ intent: INTENT.QUESTION, reply, reason });
     }
     // An answer. If it reads as though something was changed, it is wrong —
     // no tool ran — and the user has no reason to distrust it. Say so, in the
     // reply, where it will be seen.
     const prose = proseReply(said);
     const claimNote = prose.claimed ? '\n\n（本次回复没有形成可执行的修改，预览未发生变化。）' : '';
-    return {
+    return result({
       intent: INTENT.ANSWER,
       reply: (prose.reply || '抱歉，我没有理解这句。可以换个说法吗？') + claimNote + capNote,
       reason: prose.reply ? '' : '模型返回了空内容',
-      spec: null,
-      ops: [],
-      exports: state.exports,
-      notes: [],
-      prefiltered,
-      raw,
-      writes: state.writes,
-      loaded: state.loaded,
-    };
+    });
   }
 
   // ── at least one edit landed on the draft ──────────────────────────────
@@ -326,36 +319,26 @@ export async function runTurn({
     // Text writes are dropped with the edit: one may well be a report OF the
     // refused change. What was read stays — reading changed nothing.
     const unsaved = state.exports.length || state.writes.length ? '（没有保存文件。）' : '';
-    return {
+    return result({
       intent: INTENT.QUESTION,
       reply: `${reply}\n\n（${verdict.reason}）${unsaved}`,
       reason,
-      spec: null,
-      ops: [],
       exports: [],
+      writes: [],
       notes: state.notes,
       guarded: true,
       lostRows: verdict.lostRows,
-      prefiltered,
-      raw,
-      writes: [],
-      loaded: state.loaded,
-    };
+    });
   }
 
-  return {
+  return result({
     intent: INTENT.ACTION,
     reply: reply + capNote,
     reason,
     spec: next,
     ops: state.ops,
-    exports: state.exports,
     notes: state.notes,
     guarded: false,
     lostRows: verdict.lostRows,
-    prefiltered,
-    raw,
-    writes: state.writes,
-    loaded: state.loaded,
-  };
+  });
 }

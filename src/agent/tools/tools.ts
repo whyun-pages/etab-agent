@@ -373,12 +373,9 @@ export function buildTools(ai: Pi['ai'], state: TurnState, caps: Capabilities): 
 
         const table = tableForImport(att);
         if (!table) throw new Error(`抓到的内容不是表格，不能导入。内容摘要：\n${described.slice(0, 2000)}`);
-        const sheet = { name: importAs, columns: table.columns, rows: table.rows };
-        const hasTable = Boolean(state.draft && state.draft.sheets.length);
-        const op: SpecOp = hasTable
-          ? { op: 'add_sheet', args: sheet }
-          : { op: 'create_workbook', args: { title: importAs, sheets: [sheet] } };
-        const done = record(op);
+        // addTable is declared below; execute runs only after buildTools has
+        // returned, so it is in scope by then.
+        const done = addTable(importAs, table.columns, table.rows);
         // The model already has the rows in the table; only a taste is
         // repeated, to keep a big import from filling the context.
         return { content: [{ type: 'text', text: `${done}\n${described.slice(0, 3000)}` }], details: {} };
@@ -387,8 +384,9 @@ export function buildTools(ai: Pi['ai'], state: TurnState, caps: Capabilities): 
   }
 
   /**
-   * A table as a new sheet — or as the workbook, when there is none yet. The
-   * rows go into the op verbatim, as with fetch_url: the replay on the stored
+   * A table as a new sheet — or as the workbook, when there is none yet; for
+   * fetch_url's importAs, query_table's saveAs and read_attachment's importAs
+   * alike. The rows go into the op verbatim: the replay on the stored
    * spec must not depend on an upload still being in memory or a query being
    * re-run against a table that has since changed.
    */
