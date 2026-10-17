@@ -18,7 +18,10 @@ data/
 .Trash/
 
 # Editor / OS
-.vscode/
+# Editor settings stay local, except the two that make Biome format on save.
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
 .idea/
 Thumbs.db
 Desktop.ini
