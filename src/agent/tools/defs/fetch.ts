@@ -7,7 +7,7 @@
 
 import type { AgentTool } from '@earendil-works/pi-agent-core';
 import { fetchUrl, readFetched } from '../../../access/fetch.ts';
-import { describeFetched, tableForImport } from '../fetched.ts';
+import { describeFetched, tableForImport, VERBATIM_HELP } from '../fetched.ts';
 import { textResult } from '../tool-context.ts';
 import type { ToolContext } from '../tool-context.ts';
 
@@ -21,9 +21,10 @@ export function fetchUrlTool({ caps, addTable, schemas: { Type } }: ToolContext)
     parameters: Type.Object({
       url: Type.String({ description: '完整网址，以 http:// 或 https:// 开头' }),
       importAs: Type.Optional(Type.String({ description: '导入为新工作表时的表名；只读内容时省略' })),
+      verbatim: Type.Optional(Type.Boolean({ description: VERBATIM_HELP })),
     }),
     execute: async (_id, args) => {
-      const a = args as { url?: unknown; importAs?: unknown };
+      const a = args as { url?: unknown; importAs?: unknown; verbatim?: unknown };
       const importAs = String(a.importAs ?? '').trim();
       // Refused before the request, not after: a read-only turn has no use
       // for the bytes, and should not cause the traffic.
@@ -47,7 +48,7 @@ export function fetchUrlTool({ caps, addTable, schemas: { Type } }: ToolContext)
         return textResult(hint + described);
       }
 
-      const table = tableForImport(att);
+      const table = tableForImport(att, { verbatim: a.verbatim === true });
       if (!table) throw new Error(`抓到的内容不是表格，不能导入。内容摘要：\n${described.slice(0, 2000)}`);
       const done = addTable(importAs, table.columns, table.rows);
       // The model already has the rows in the table; only a taste is

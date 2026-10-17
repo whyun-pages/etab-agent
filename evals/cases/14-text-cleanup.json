@@ -1,0 +1,55 @@
+{
+  "id": "text-cleanup",
+  "title": "文本清洗：去空格、统一大小写、按格式补邮箱",
+  "source": [
+    {
+      "name": "ExcelDemy — Excel Practice Test for Employment, Exercise 01（数空单元格、按公司格式补 Email）",
+      "url": "https://exceldemy.com/?p=293888"
+    },
+    {
+      "name": "帆软 — 数据清洗：去重、分列与统一格式是最常用的前置步骤",
+      "url": "https://www.fanruan.com/blog/article/1466567/"
+    }
+  ],
+  "tags": ["compute_column", "text-functions", "where"],
+  "given": {
+    "title": "员工邮箱名单",
+    "sheets": [
+      {
+        "name": "员工",
+        "columns": [
+          { "header": "First Name", "type": "text" },
+          { "header": "Last Name", "type": "text" },
+          { "header": "Email", "type": "text" }
+        ],
+        "rows": [
+          [" Alice ", "Zhang", null],
+          ["bob", " LI ", null],
+          ["Carol", "wang", "carol.wang@example.com"],
+          [" DAVID", "Chen ", null]
+        ]
+      }
+    ]
+  },
+  "turns": [
+    {
+      "message": "把 First Name 和 Last Name 前后的空格去掉，并统一成首字母大写、其余小写；然后把空着的 Email 按“名.姓@example.com”全小写的格式补上，已经有 Email 的不要动。",
+      "expect": {
+        "intent": "action",
+        "guarded": false,
+        "rowCount": 4,
+        "cells": [
+          { "row": 1, "column": "^First Name$", "equals": "Alice" },
+          { "row": 2, "column": "^First Name$", "equals": "Bob" },
+          { "row": 2, "column": "^Last Name$", "equals": "Li" },
+          { "row": 4, "column": "^First Name$", "equals": "David" },
+          { "row": 4, "column": "^Last Name$", "equals": "Chen" },
+          { "row": 1, "column": "^Email$", "equals": "alice.zhang@example.com" },
+          { "row": 2, "column": "^Email$", "equals": "bob.li@example.com" },
+          { "row": 3, "column": "^Email$", "equals": "carol.wang@example.com" },
+          { "row": 4, "column": "^Email$", "equals": "david.chen@example.com" }
+        ]
+      }
+    }
+  ]
+}

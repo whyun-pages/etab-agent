@@ -34,8 +34,15 @@ export function toLlm(messages: PiAgentMessage[]): Message[] {
 /** A compact, readable transcript of the loop, for `TurnResult.raw`. */
 export function transcript(messages: PiAgentMessage[]): string {
   const lines: string[] = [];
+  let users = 0;
   for (const m of toLlm(messages)) {
-    if (m.role === 'assistant') {
+    // The first user message is the request itself; any later one was added
+    // inside the turn (the stalled-step nudge) and belongs in the record.
+    if (m.role === 'user' && users++ > 0) {
+      const text =
+        typeof m.content === 'string' ? m.content : m.content.map((c) => (c.type === 'text' ? c.text : '')).join('');
+      lines.push(`user: ${text}`);
+    } else if (m.role === 'assistant') {
       for (const c of m.content) {
         if (c.type === 'text' && c.text.trim()) lines.push(`assistant: ${c.text.trim()}`);
         if (c.type === 'toolCall') lines.push(`call ${c.name} ${JSON.stringify(c.arguments)}`);

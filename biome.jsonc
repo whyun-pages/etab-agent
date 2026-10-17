@@ -3,7 +3,7 @@
   // Respect .gitignore: node_modules, .build, dist and .verify/out stay out.
   "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
   "files": {
-    "includes": ["src/**", "tests/**", "public/js/**", "tools/**", ".verify/**", "*.json", "*.jsonc"]
+    "includes": ["src/**", "tests/**", "public/js/**", "tools/**", ".verify/**", "evals/**", "*.json", "*.jsonc"]
   },
   // Matches the code as it was written by hand before the formatter arrived,
   // so the first format is a reflow, not a restyle.

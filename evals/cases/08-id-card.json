@@ -1,0 +1,57 @@
+{
+  "id": "id-card",
+  "title": "身份证号：提取出生日期、性别，计算周岁",
+  "note": "身份证号全部是编造的，校验位不一定成立；只用前 17 位。",
+  "source": [
+    {
+      "name": "网易号 — Excel 用 MID 和 MOD 从身份证号判断性别",
+      "url": "https://www.163.com/dy/article/EN51MPDF05449WI4.html"
+    },
+    {
+      "name": "CSDN — Excel 从身份证号提取出生日期：MID(身份证,7,8) + TEXT",
+      "url": "https://gitcode.csdn.net/6aa0d89e1a35784c8420655f.html"
+    }
+  ],
+  "tags": ["compute_column", "text-functions", "date"],
+  "given": {
+    "title": "人员名单",
+    "sheets": [
+      {
+        "name": "名单",
+        "columns": [{ "header": "姓名", "type": "text" }, { "header": "身份证号", "type": "text" }],
+        "rows": [
+          ["张伟", "110101199003074512"],
+          ["李娜", "310104198512203326"],
+          ["王磊", "440305200107159130"],
+          ["陈静", "330102199811306044"]
+        ]
+      }
+    ]
+  },
+  "today": "2026-10-17",
+  "turns": [
+    {
+      "message": "从身份证号里提取出生日期（第 7 到 14 位，做成日期类型）和性别（第 17 位是奇数为男、偶数为女），再加一列年龄，按今天 2026 年 10 月 17 日算周岁。",
+      "expect": {
+        "intent": "action",
+        "guarded": false,
+        "rowCount": 4,
+        "columns": ["出生日期", "性别", "年龄"],
+        "columnTypes": { "出生日期": "date" },
+        "cells": [
+          { "row": 1, "column": "出生日期", "equals": "1990-03-07" },
+          { "row": 2, "column": "出生日期", "equals": "1985-12-20" },
+          { "row": 4, "column": "出生日期", "equals": "1998-11-30" },
+          { "row": 1, "column": "性别", "equals": "男" },
+          { "row": 2, "column": "性别", "equals": "女" },
+          { "row": 3, "column": "性别", "equals": "男" },
+          { "row": 4, "column": "性别", "equals": "女" },
+          { "row": 1, "column": "年龄", "equals": 36 },
+          { "row": 2, "column": "年龄", "equals": 40 },
+          { "row": 3, "column": "年龄", "equals": 25 },
+          { "row": 4, "column": "年龄", "equals": 27 }
+        ]
+      }
+    }
+  ]
+}

@@ -15,6 +15,7 @@ import { listenLocal } from '../helpers/listen.ts';
 import { INTENT } from '../../src/agent/agent.ts';
 import { applyOps } from '../../src/workbook/spec-ops.ts';
 import { readAttachment } from '../../src/ingest/ingest.ts';
+import { tableForImport } from '../../src/agent/tools/fetched.ts';
 
 import { turnWith, specWith, rows10 } from '../helpers/agent-turn.ts';
 
@@ -378,6 +379,125 @@ test('runTurn: read_attachment importAs imports every row, and replays without t
   assert.strictEqual(res.ops[0].op, 'create_workbook');
   assert.strictEqual(res.spec!.sheets[0].rows.length, 910);
   assert.deepStrictEqual(applyOps(null, res.ops).spec, res.spec);
+});
+
+test('runTurn: read_attachment importAs with verbatim keeps the text the file holds', async () => {
+  // Inferred, 0.70% is the number 0.007 and the time a date — and TEXT() of
+  // 0.007 is "0.7%": the original can no longer be written back.
+  const csv = '名称,转化率,上架时间\n甲,0.70%,2025-02-20 17:24:51\n乙,100.00%,2024-05-20 11:37:21\n';
+  const att = await csvAttachment('日报.csv', csv);
+  const imported = async (verbatim?: boolean) =>
+    (
+      await turnWith([{ tool: 'read_attachment', args: { name: '日报.csv', importAs: '日报', verbatim } }, '好'], {
+        message: '导入',
+        attachments: [att],
+      })
+    ).spec!.sheets[0];
+
+  const inferred = await imported();
+  // Not even exactly 0.007: 0.70 / 100 is 0.006999999999999999.
+  assert.ok(Math.abs((inferred.rows[0][1] as number) - 0.007) < 1e-12);
+  assert.ok(inferred.rows[0][2] instanceof Date);
+
+  const kept = await imported(true);
+  assert.deepStrictEqual(
+    kept.columns.map((c) => c.type),
+    ['text', 'text', 'text'],
+  );
+  assert.deepStrictEqual(kept.rows, [
+    ['甲', '0.70%', '2025-02-20 17:24:51'],
+    ['乙', '100.00%', '2024-05-20 11:37:21'],
+  ]);
+});
+
+test('tableForImport verbatim: a column already held as numbers stays numeric', () => {
+  // An xlsx number cell is a number in the file; nothing is reinterpreted by keeping it.
+  const att = {
+    name: 'a.xlsx',
+    kind: 'table',
+    table: {
+      header: ['访客数', '跳出率'],
+      rows: [
+        [658, '79.03%'],
+        [null, '70.54%'],
+      ],
+      columns: [
+        { index: 0, label: '访客数', type: 'integer', values: [658] },
+        { index: 1, label: '跳出率', type: 'number', values: [0.7903, 0.7054] },
+      ],
+    },
+  } as any;
+  assert.deepStrictEqual(
+    tableForImport(att, { verbatim: true })!.columns.map((c) => c.type),
+    ['integer', 'text'],
+  );
+});
+
+/** A one-sheet workbook upload, as the reader leaves it. */
+function sheetAttachment(name: string, sheet: string) {
+  const table = {
+    sheet,
+    header: ['商品ID', '访客数'],
+    rows: [['1001', 3]],
+    columns: [
+      { index: 0, label: '商品ID', type: 'text', values: ['1001'] },
+      { index: 1, label: '访客数', type: 'integer', values: [3] },
+    ],
+  };
+  return {
+    name,
+    kind: 'table',
+    meta: { size: 1, ext: '.xlsx', kind: 'table', filename: name },
+    table,
+    sheets: [table],
+  } as any;
+}
+
+test('runTurn: a one-sheet workbook says its sheet name; a workbook sheet name points to read_rows', async () => {
+  // Told to keep the source's sheet name, both models said it was never shown.
+  const att = sheetAttachment('日报.xlsx', '10344229_商品明细');
+  const res = await turnWith(
+    [
+      { tool: 'read_attachment', args: { name: '日报.xlsx' } },
+      { tool: 'read_attachment', args: { name: '日报.xlsx', importAs: '日报' } },
+      { tool: 'read_attachment', args: { name: '日报.xlsx', sheet: '日报' } },
+      { tool: 'read_attachment', args: { name: '日报.xlsx', sheet: '明细', importAs: '明细' } },
+      '好',
+    ],
+    { message: '处理一下', attachments: [att] },
+  );
+  const results = res.contexts[4].messages.filter((m) => m.role === 'toolResult');
+  assert.match(results[0].content[0].text, /工作表：「10344229_商品明细」/);
+  assert.strictEqual(results[2].isError, true);
+  assert.match(
+    results[2].content[0].text,
+    /「日报」是工作簿里的工作表，不是附件「日报\.xlsx」里的。读它请用 read_rows/,
+  );
+  assert.strictEqual(results[3].isError, true);
+  assert.match(results[3].content[0].text, /导入后想叫什么名字请用 importAs/);
+});
+
+test('runTurn: a header-only attachment is said to be empty, not unreadable', async () => {
+  // A day with no sales downloads as a header and nothing else; told only
+  // "共 0 行", a model spent four turns asking for the file in another format.
+  const att = await csvAttachment('日报.csv', '商品ID,商品名称,访客数\n');
+  const res = await turnWith(
+    [
+      { tool: 'read_attachment', args: { name: '日报.csv' } },
+      { tool: 'read_attachment', args: { name: '日报.csv', importAs: '日报' } },
+      '好',
+    ],
+    { message: '处理一下', attachments: [att] },
+  );
+  const results = res.contexts[2].messages.filter((m) => m.role === 'toolResult').map((m) => m.content[0].text);
+  assert.match(results[0], /只有表头（3 列），没有数据行。这是文件本身的内容，不是读取失败/);
+  assert.match(results[0], /列：商品ID\t商品名称\t访客数/);
+  assert.match(results[1], /导入了 0 行）\n这张表只有表头/);
+  assert.match(res.contexts[0].systemPrompt, /不要让用户重新上传或转换格式/);
+  assert.deepStrictEqual(
+    res.spec!.sheets[0].columns.map((c) => c.header),
+    ['商品ID', '商品名称', '访客数'],
+  );
 });
 
 test('runTurn: read_attachment reads a long text attachment page by page', async () => {

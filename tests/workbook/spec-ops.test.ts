@@ -293,6 +293,7 @@ test('every operation the agent offers is implemented', () => {
     'add_columns',
     'remove_columns',
     'update_columns',
+    'select_columns',
     'add_rows',
     'update_cells',
     'delete_rows',
@@ -307,6 +308,62 @@ test('every operation the agent offers is implemented', () => {
   ]) {
     assert.strictEqual(typeof OPS[name], 'function', name);
   }
+});
+
+// ── select_columns ──────────────────────────────────────────────────
+
+test('select_columns: one call orders, renames, adds blanks and removes the rest', () => {
+  const next = run(base(), 'select_columns', {
+    columns: [{ header: '日期' }, { header: '客户名', from: '客户' }, { header: '备注', empty: true }],
+  });
+  const s = next.sheets[0];
+  assert.deepStrictEqual(
+    s.columns.map((c) => c.header),
+    ['日期', '客户名', '备注'],
+  );
+  assert.strictEqual(s.columns[0].type, 'date', 'a kept column keeps its type');
+  assert.deepStrictEqual(
+    s.rows.map((r) => [iso(r[0]), r[1], r[2]]),
+    [
+      ['2026-01-02', '甲', null],
+      ['2026-01-01', '乙', null],
+      [null, '丙', null],
+    ],
+  );
+  // 金额 was the summed column and is gone, so the totals row goes with it.
+  assert.strictEqual(s.totals.enabled, false);
+  assert.match(applyOp(base(), op('select_columns', { columns: ['客户'] })).summary, /删除了 金额、日期/);
+});
+
+test('select_columns: a kept summed column keeps its totals row, under its new name', () => {
+  const s = run(base(), 'select_columns', { columns: [{ header: '销售额', from: '金额' }, '客户'] }).sheets[0];
+  assert.strictEqual(s.totals.enabled, true);
+  assert.deepStrictEqual(s.totals.sumColumns, [0]);
+  assert.strictEqual(s.columns[0].header, '销售额');
+});
+
+test('select_columns: an unknown column, a duplicate or an empty list changes nothing', () => {
+  const spec = base();
+  // A typo is not a new blank column: only `empty` makes one.
+  assert.throws(() => run(spec, 'select_columns', { columns: ['客户', '金 额'] }), /没有列「金 额」/);
+  assert.throws(
+    () => run(spec, 'select_columns', { columns: ['客户', { header: '客户', from: '金额' }] }),
+    /出现了两次/,
+  );
+  assert.throws(
+    () => run(spec, 'select_columns', { columns: [{ header: 'X', from: '客户', empty: true }] }),
+    SpecOpError,
+  );
+  assert.throws(() => run(spec, 'select_columns', { columns: [] }), SpecOpError);
+  assert.strictEqual(spec.sheets[0].columns.length, 3);
+});
+
+test('select_columns: a type given converts the column, through the usual coercion', () => {
+  const s = run(base(), 'select_columns', { columns: [{ header: '金额', type: 'text' }] }).sheets[0];
+  assert.deepStrictEqual(
+    s.rows.map((r) => r[0]),
+    ['100', '300', '200'],
+  );
 });
 
 test('readRows: numbered, clamped to the table, dates as YYYY-MM-DD', () => {

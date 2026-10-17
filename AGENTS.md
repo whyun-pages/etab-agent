@@ -161,7 +161,9 @@ access/     reaching outside the app under rules: fetch (public addresses
             the model here — routes and settings use these too
 workbook/   spec validation and writing, spec-ops, table-query, preview, export
 ingest/     an uploaded or fetched file -> text or rows: one module per kind
-            (csv, json, markup, m3u, image, archive), ingest.ts dispatches
+            (csv, json, markup, m3u, image, archive), ingest.ts dispatches;
+            select.ts finds an attachment by the name a model used and the
+            table inside it (shared by the tools and by http's attachment block)
 formats/    zip, xlsx, xlsx-writer, xls — the file formats themselves
 platform/   SEA assets, open-with-system — usable from any layer
 ```

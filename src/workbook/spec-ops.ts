@@ -324,6 +324,76 @@ function updateColumns(spec: WorkbookSpec | null, args: Record<string, unknown>,
 }
 
 /**
+ * The sheet's columns, all at once: which ones, in what order, under what
+ * names. A column not listed is removed; one listed as `empty` is new and
+ * blank.
+ *
+ * Exists because reshaping a table to a fixed output layout ("these 41
+ * columns, in this order, nothing else") took remove_columns, add_columns,
+ * a rename per column and a full `order` — and a model working through that
+ * list dropped one, misplaced another and forgot to remove three, in a run
+ * that otherwise had every value right. Here the layout is one argument and
+ * is either landed whole or refused.
+ *
+ * A header that names no column is refused unless it is marked `empty`:
+ * a typo for an existing column must not become a blank one, which is the
+ * same rule `rowCells` follows for an unknown key.
+ */
+function selectColumns(spec: WorkbookSpec | null, args: Record<string, unknown>, ctx: OpContext): OpResult {
+  const raw = toRaw(requireSpec(spec));
+  const sheet = findSheet(raw, args.sheet);
+  const wanted = list(args.columns);
+  if (!wanted.length) throw new SpecOpError('select_columns 没有给出任何列。');
+  // Resolved in full before anything changes, so one bad entry changes nothing.
+  const picks = wanted.map((c) => {
+    const src = (c && typeof c === 'object' ? c : { header: c }) as Record<string, unknown>;
+    const header = str(src.header);
+    if (!header) throw new SpecOpError('select_columns 的每一列都要有列名 header。');
+    if (src.empty === true) {
+      if (str(src.from)) throw new SpecOpError(`列「${header}」不能同时给 from 和 empty。`);
+      return { header, from: -1, type: str(src.type) ? columnType(src.type) : 'text' };
+    }
+    const from = findColumn(sheet, str(src.from) || header);
+    return { header, from, type: str(src.type) ? columnType(src.type) : sheet.columns[from].type };
+  });
+  const seen = new Set<string>();
+  for (const p of picks) {
+    if (seen.has(p.header)) throw new SpecOpError(`列「${p.header}」出现了两次。`);
+    seen.add(p.header);
+  }
+
+  const before = sheet.columns.map((c) => c.header);
+  const used = new Set<number>();
+  sheet.columns = picks.map((p) => {
+    // The first use of a column keeps its key, so a totals row over it survives;
+    // a second copy is a new column.
+    if (p.from >= 0 && !used.has(p.from)) {
+      used.add(p.from);
+      return { ...sheet.columns[p.from], header: p.header, type: p.type };
+    }
+    return { key: p.header, header: p.header, type: p.type, format: p.from >= 0 ? sheet.columns[p.from].format : null };
+  });
+  sheet.rows = sheet.rows.map((r) => picks.map((p) => (p.from >= 0 && p.from < r.length ? r[p.from] : null)));
+
+  let note = '';
+  if (sheet.totals) {
+    const keys = new Set(sheet.columns.map((c) => c.key));
+    sheet.totals.sumColumns = sheet.totals.sumColumns.filter((k) => keys.has(k));
+    // As in removeColumns: an empty list would mean "every numeric column".
+    if (!sheet.totals.sumColumns.length) {
+      sheet.totals = false;
+      note = '（被合计的列都已删除，合计行一并去掉）';
+    }
+  }
+  const removed = before.filter((_h, i) => !used.has(i));
+  const blank = picks.filter((p) => p.from < 0).map((p) => p.header);
+  const parts = [`「${sheet.name}」现在是 ${picks.length} 列`];
+  if (removed.length) parts.push(`删除了 ${removed.join('、')}`);
+  if (blank.length) parts.push(`新增空列 ${blank.join('、')}`);
+  return finish(ctx, raw, parts.join('；') + note);
+}
+
+/**
  * Column widths, in Excel's units (characters of the default font).
  *
  * Not a model tool: this is what dragging a column edge in the preview sends.
@@ -686,6 +756,7 @@ export const OPS: Record<
   add_columns: addColumns,
   remove_columns: removeColumns,
   update_columns: updateColumns,
+  select_columns: selectColumns,
   add_rows: addRows,
   update_cells: updateCells,
   delete_rows: deleteRows,

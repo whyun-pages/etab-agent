@@ -198,8 +198,22 @@ function same(a: unknown, b: unknown): boolean {
   return cellText(a).trim() === cellText(b).trim();
 }
 
-/** Sums of decimals drift (0.1 + 0.2); nobody should be shown that. */
+/**
+ * Past this, `n * 1e6` is beyond the integers a double holds exactly, and the
+ * round trip moves `n` itself.
+ */
+const ROUND6_LIMIT = Number.MAX_SAFE_INTEGER / 1e6;
+
+/**
+ * Sums of decimals drift (0.1 + 0.2); nobody should be shown that.
+ *
+ * An integer is returned as it is, and so is anything too large to scale:
+ * `Math.round(n * 1e6) / 1e6` turned the product ID 10147810868016 into
+ * 10147810868016.002 — every ID or order number that went through an
+ * expression came out changed, and still looked like itself at a glance.
+ */
 export function round6(n: number): number {
+  if (Number.isInteger(n) || Math.abs(n) >= ROUND6_LIMIT) return n;
   return Math.round(n * 1e6) / 1e6;
 }
 
@@ -451,7 +465,9 @@ const METRIC_LABEL: Record<string, string> = {
 export const EXPRESSION_HELP =
   '表达式：用 [列名] 引用本行的值；运算 + - * / %，比较 = != > >= < <=，逻辑 and or not，& 连接文本；' +
   '函数 IF ROUND ABS MIN MAX SUM AVG LEN LEFT RIGHT MID UPPER LOWER TRIM CONCAT CONTAINS REPLACE YEAR MONTH DAY DATE DATEDIFF ADDDAYS TEXT NUMBER ISBLANK COALESCE ROW。' +
-  '文本用引号 "…"。例：[单价]*[数量]、IF([金额]>1000,"大单","普通")、YEAR([下单日期])&"-"&MONTH([下单日期])';
+  '文本用引号 "…"；日期常量用 DATE(2025,5,3) 或带引号的 "2025/5/3"；ROW() 是本行的行号，从 1 开始；' +
+  'TEXT(值, 格式) 按格式写成文本，格式可用 0、0.00、#,##0.00、0.00%、yyyy/m/d、yyyy-mm-dd hh:mm:ss。' +
+  '例：[单价]*[数量]、IF([金额]>1000,"大单","普通")、YEAR([下单日期])&"-"&MONTH([下单日期])、"编号-"&ROW()';
 
 type Node =
   | { t: 'lit'; v: unknown }
@@ -554,7 +570,7 @@ const FUNCTIONS: Record<string, { min: number; max: number }> = {
   DATE: { min: 3, max: 3 },
   DATEDIFF: { min: 2, max: 2 },
   ADDDAYS: { min: 2, max: 2 },
-  TEXT: { min: 1, max: 1 },
+  TEXT: { min: 1, max: 2 },
   NUMBER: { min: 1, max: 1 },
   ISBLANK: { min: 1, max: 1 },
   COALESCE: { min: 1, max: 64 },
@@ -739,6 +755,86 @@ function dateOf(v: unknown): Date {
 
 const DAY_MS = 86_400_000;
 
+/** A number format TEXT understands: digits, an optional thousands comma, decimals, percent. */
+const NUMBER_FORMAT_RE = /^(#,##)?0(\.(0+))?(%)?$/;
+/** The date/time pieces TEXT understands; `mm` after `h` (or before `ss`) is minutes, as in Excel. */
+const DATE_TOKEN_RE = /yyyy|yy|mm|m|dd|d|hh|h|ss|s/g;
+
+/**
+ * TEXT(value, format) — the part of Excel's format language a table needs.
+ *
+ * Numbers: `0`, `0.00`, `#,##0.00`, `0%`, `0.00%`. Dates: `yyyy/m/d`,
+ * `yyyy-mm-dd hh:mm:ss` and the like. Without it there was no way to write
+ * "two decimals as text" at all: `ROUND(8, 2)` is 8, and two models asked
+ * for 8.00 tried `TEXT(x, "0.00")`, were refused, and one built the digits
+ * by hand out of LEFT and MID — 7.96 came out "8.-4". Anything else is
+ * refused, naming what works, rather than guessed at.
+ */
+function formatText(value: unknown, format: string): string | null {
+  if (isBlank(value)) return null;
+  const f = format.trim();
+  const n = NUMBER_FORMAT_RE.exec(f);
+  if (n) {
+    const decimals = n[3] ? n[3].length : 0;
+    const scaled = num(value) * (n[4] ? 100 : 1);
+    // EPSILON nudges a half that binary cannot hold (7.955 is 7.95499…) up, as Excel rounds it.
+    const fixed = (
+      Math.round((scaled + Math.sign(scaled) * Number.EPSILON * Math.abs(scaled)) * 10 ** decimals) /
+      10 ** decimals
+    ).toFixed(decimals);
+    const [int, frac] = fixed.split('.');
+    const grouped = n[1] ? int.replace(/\B(?=(\d{3})+(?!\d))/g, ',') : int;
+    return `${grouped}${frac ? `.${frac}` : ''}${n[4] ? '%' : ''}`;
+  }
+  if (/[yd]/i.test(f) || /h/i.test(f)) {
+    const d = dateTimeOf(value);
+    const tokens = [...f.matchAll(DATE_TOKEN_RE)].map((m) => m[0]);
+    let i = -1;
+    return f.replace(DATE_TOKEN_RE, (tok) => {
+      i++;
+      const pad = (x: number) => String(x).padStart(2, '0');
+      const minutes = tok[0] === 'm' && (tokens[i - 1]?.[0] === 'h' || tokens[i + 1]?.[0] === 's');
+      switch (tok) {
+        case 'yyyy':
+          return String(d.getUTCFullYear());
+        case 'yy':
+          return pad(d.getUTCFullYear() % 100);
+        case 'mm':
+          return pad(minutes ? d.getUTCMinutes() : d.getUTCMonth() + 1);
+        case 'm':
+          return String(minutes ? d.getUTCMinutes() : d.getUTCMonth() + 1);
+        case 'dd':
+          return pad(d.getUTCDate());
+        case 'd':
+          return String(d.getUTCDate());
+        case 'hh':
+          return pad(d.getUTCHours());
+        case 'h':
+          return String(d.getUTCHours());
+        case 'ss':
+          return pad(d.getUTCSeconds());
+        default:
+          return String(d.getUTCSeconds());
+      }
+    });
+  }
+  throw new RowError(
+    `TEXT 不认识格式「${f}」。可用：0、0.00、#,##0.00、0%、0.00%，或日期 yyyy/m/d、yyyy-mm-dd hh:mm:ss`,
+  );
+}
+
+/** A date, keeping the time of day when the text carries one (toDate keeps only the day). */
+function dateTimeOf(v: unknown): Date {
+  if (typeof v === 'string') {
+    const m = /^(\d{4})[-/](\d{1,2})[-/](\d{1,2})[ T](\d{1,2}):(\d{2})(?::(\d{2}))?/.exec(v.trim());
+    if (m) {
+      const [y, mo, d, h, mi, s] = m.slice(1).map((x) => Number(x || 0));
+      return new Date(Date.UTC(y, mo - 1, d, h, mi, s));
+    }
+  }
+  return dateOf(v);
+}
+
 function evaluate(n: Node, row: unknown[], rowNo: number): unknown {
   switch (n.t) {
     case 'lit':
@@ -879,7 +975,7 @@ function call(n: Extract<Node, { t: 'call' }>, row: unknown[], rowNo: number): u
     case 'ADDDAYS':
       return isBlank(v[0]) ? null : new Date(dateOf(v[0]).getTime() + Math.round(num(v[1])) * DAY_MS);
     case 'TEXT':
-      return s(0);
+      return v.length > 1 ? formatText(v[0], s(1)) : s(0);
     case 'NUMBER':
       return isBlank(v[0]) ? null : num(v[0]);
     case 'ISBLANK':
@@ -895,6 +991,35 @@ function call(n: Extract<Node, { t: 'call' }>, row: unknown[], rowNo: number): u
 export type Compiled = (row: unknown[], rowNo: number) => unknown;
 
 /**
+ * A date written without quotes — `2025/5/3`, `2025-05-03` — anywhere in the
+ * expression, or null.
+ *
+ * It parses, as two divisions or two subtractions, and evaluates to 135 or
+ * 2017. Seen in a real run: a column meant to read 2025/5/3 came out 135 in
+ * every row, and nothing said so. No one means year/month/day as arithmetic,
+ * so it is refused with the two spellings that work. Recognised only as
+ * three literals, a plausible year first, under one repeated operator.
+ */
+function bareDate(n: Node): { text: string; value: number; parts: number[] } | null {
+  if (n.t === 'bin' && (n.op === '/' || n.op === '-') && n.a.t === 'bin' && n.a.op === n.op) {
+    const parts = [n.a.a, n.a.b, n.b].map((x) => (x.t === 'lit' && typeof x.v === 'number' ? x.v : NaN));
+    const [y, m, d] = parts;
+    if (Number.isInteger(y) && y >= 1900 && y <= 2200 && m >= 1 && m <= 12 && d >= 1 && d <= 31) {
+      if (Number.isInteger(m) && Number.isInteger(d)) {
+        const value = n.op === '/' ? y / m / d : y - m - d;
+        return { text: parts.join(n.op), value, parts };
+      }
+    }
+  }
+  const kids = n.t === 'un' ? [n.a] : n.t === 'bin' ? [n.a, n.b] : n.t === 'call' ? n.args : [];
+  for (const k of kids) {
+    const hit = bareDate(k);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+/**
  * Compile an expression against a table's header.
  *
  * Column references are resolved now, so a typo in a column name is one
@@ -902,6 +1027,13 @@ export type Compiled = (row: unknown[], rowNo: number) => unknown;
  */
 export function compileExpression(t: QueryTable, src: string): Compiled {
   const node = parse(t, String(src ?? ''));
+  const date = bareDate(node);
+  if (date) {
+    throw new QueryError(
+      `表达式里的 ${date.text} 没有引号，会被当成算式（结果是 ${round6(date.value)}）。` +
+        `要写日期，请用 DATE(${date.parts.join(',')})，或写成带引号的文本 "${date.text}"。`,
+    );
+  }
   return (row, rowNo) => {
     const v = evaluate(node, row, rowNo);
     if (typeof v === 'number') return Number.isFinite(v) ? round6(v) : null;

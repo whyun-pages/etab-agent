@@ -1,0 +1,68 @@
+{
+  "id": "attendance",
+  "title": "考勤统计：缺勤天数、考勤状态与按天计数",
+  "source": [
+    {
+      "name": "ExcelDemy — Excel Practice Test for Employment, Exercise 07（三天课程考勤）",
+      "url": "https://exceldemy.com/?p=293888"
+    },
+    {
+      "name": "人人都是产品经理 — Excel 数据处理：COUNTIF / COUNTIFS 条件计数",
+      "url": "https://www.woshipm.com/data-analysis/5748189.html"
+    }
+  ],
+  "tags": ["compute_column", "query_table", "answer"],
+  "given": {
+    "title": "培训考勤表",
+    "sheets": [
+      {
+        "name": "考勤",
+        "columns": [
+          { "header": "姓名", "type": "text" },
+          { "header": "第1天", "type": "text" },
+          { "header": "第2天", "type": "text" },
+          { "header": "第3天", "type": "text" }
+        ],
+        "rows": [
+          ["陈明", "出勤", "出勤", "出勤"],
+          ["周丽", "缺勤", "出勤", "出勤"],
+          ["吴刚", "缺勤", "缺勤", "缺勤"],
+          ["郑爽", "出勤", "缺勤", "出勤"],
+          ["孙洁", "出勤", "出勤", "出勤"],
+          ["马超", "缺勤", "缺勤", "出勤"],
+          ["朱琳", "出勤", "出勤", "缺勤"],
+          ["胡杨", "缺勤", "缺勤", "缺勤"]
+        ]
+      }
+    ]
+  },
+  "turns": [
+    {
+      "message": "加一列缺勤天数，统计每个人三天里缺勤了几天；再加一列考勤状态：缺勤 0 天写“全勤”，缺勤 3 天写“未参加”，其余写“部分出勤”。",
+      "expect": {
+        "intent": "action",
+        "guarded": false,
+        "rowCount": 8,
+        "columns": ["缺勤天数", "状态"],
+        "cells": [
+          { "row": 1, "column": "缺勤天数", "equals": 0 },
+          { "row": 3, "column": "缺勤天数", "equals": 3 },
+          { "row": 6, "column": "缺勤天数", "equals": 2 },
+          { "row": 7, "column": "缺勤天数", "equals": 1 },
+          { "row": 1, "column": "状态", "matches": "全勤" },
+          { "row": 3, "column": "状态", "matches": "未参加" },
+          { "row": 6, "column": "状态", "matches": "部分出勤" },
+          { "row": 8, "column": "状态", "matches": "未参加" }
+        ]
+      }
+    },
+    {
+      "message": "每一天各有多少人缺勤？",
+      "expect": {
+        "intent": "answer",
+        "ops": "none",
+        "reply": ["4", "3"]
+      }
+    }
+  ]
+}

@@ -18,7 +18,8 @@ import type { QueryTable } from '../../../workbook/table-query.ts';
 import { isoDay } from '../../../workbook/workbook.ts';
 import type { WorkbookSpec } from '../../../workbook/workbook.ts';
 import type { Attachment } from '../../types.ts';
-import { findAttachment, attachmentTable, attachmentFrame } from '../attachments.ts';
+import { findAttachment, attachmentTable } from '../../../ingest/select.ts';
+import { attachmentFrame } from '../attachments.ts';
 import { textResult } from '../tool-context.ts';
 import type { ToolContext } from '../tool-context.ts';
 

@@ -1,0 +1,63 @@
+{
+  "id": "filter-sort",
+  "title": "筛选与排序：只留金额大于阈值的记录，按金额降序",
+  "source": [
+    {
+      "name": "ExcelDemy — Excel Practice Test for Employment, Exercise 05（Filter and Sort）",
+      "url": "https://exceldemy.com/?p=293888"
+    },
+    {
+      "name": "Microsoft Excel Practical Exercises Questions（高亮超过阈值的销售额）",
+      "url": "https://www.mcsprogram.org/index.jsp/u14A20/242460/Microsoft Excel Practical Exercises Questions.pdf"
+    }
+  ],
+  "tags": ["delete_rows", "sort_rows", "guard", "boundary"],
+  "given": {
+    "title": "一季度销售明细",
+    "sheets": [
+      {
+        "name": "销售明细",
+        "columns": [
+          { "header": "日期", "type": "date" },
+          { "header": "销售员", "type": "text" },
+          { "header": "产品", "type": "text" },
+          { "header": "数量", "type": "integer" },
+          { "header": "单价", "type": "currency" },
+          { "header": "金额", "type": "currency" }
+        ],
+        "rows": [
+          ["2026-01-05", "张伟", "打印机", 2, 1500, 3000],
+          ["2026-01-12", "李娜", "显示器", 5, 1200, 6000],
+          ["2026-01-20", "王芳", "打印机", 1, 1500, 1500],
+          ["2026-02-03", "张伟", "笔记本", 3, 5000, 15000],
+          ["2026-02-11", "李娜", "打印机", 4, 1500, 6000],
+          ["2026-02-18", "赵强", "显示器", 2, 1200, 2400],
+          ["2026-02-25", "王芳", "笔记本", 1, 5000, 5000],
+          ["2026-03-02", "张伟", "显示器", 6, 1200, 7200],
+          ["2026-03-09", "赵强", "笔记本", 2, 5000, 10000],
+          ["2026-03-15", "李娜", "笔记本", 1, 5000, 5000],
+          ["2026-03-21", "王芳", "显示器", 3, 1200, 3600],
+          ["2026-03-28", "赵强", "打印机", 2, 1500, 3000]
+        ]
+      }
+    ]
+  },
+  "turns": [
+    {
+      "message": "只保留金额大于 5000 的记录，其余的删掉，然后按金额从大到小排。",
+      "expect": {
+        "intent": "action",
+        "guarded": false,
+        "rowCount": 5,
+        "sortedBy": { "column": "^金额$", "order": "desc" },
+        "cells": [
+          { "row": 1, "column": "^金额$", "equals": 15000 },
+          { "row": 1, "column": "销售员", "equals": "张伟" },
+          { "row": 2, "column": "^金额$", "equals": 10000 },
+          { "row": 3, "column": "^金额$", "equals": 7200 },
+          { "row": 5, "column": "^金额$", "equals": 6000 }
+        ]
+      }
+    }
+  ]
+}

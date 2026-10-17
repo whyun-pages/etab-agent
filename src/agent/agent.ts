@@ -133,15 +133,108 @@ export type { ExportRequest } from './types.ts';
  */
 export const TURN_IDLE_TIMEOUT_MS = 60_000;
 export const TURN_STREAM_IDLE_TIMEOUT_MS = 180_000;
-export const TURN_TOTAL_TIMEOUT_MS = 300_000;
+export const TURN_TOTAL_TIMEOUT_MS = 600_000;
 
 /**
  * Model calls per turn. A normal edit is one or two (call the tools, then say
- * what was done); a correction after a refused call adds one. Twelve leaves
- * room for a multi-step request while stopping a model that loops on the same
- * failing call long before the total clock would.
+ * what was done); a correction after a refused call adds one.
+ *
+ * It was twelve, and a request that reshapes a downloaded report — import it
+ * and a lookup table, drop the summary row, look up a column, compute four,
+ * lay out forty — hit twelve on the first turn in three runs out of three:
+ * several models call one tool per reply even when told they may batch. 24
+ * still stops a model that loops on the same failing call; the total clock
+ * (TURN_TOTAL_TIMEOUT_MS) rose with it, since a capped turn keeps its edits
+ * and a timed-out one loses them.
  */
-export const MAX_STEPS = 12;
+export const MAX_STEPS = 24;
+
+/** Said when the model came back with nothing, retried once, and did it again. */
+const SILENT_TWICE = '模型这次没有给出任何回复（已自动重试一次）。可以再发一次，或换个模型试试。';
+
+/** Steps listed in the step-cap note; the rest are counted. */
+const CAP_NOTE_ITEMS = 8;
+
+/** The step-cap note: that the turn stopped, what it got done, and how to go on. */
+function capNoteOf(summaries: string[]): string {
+  const head = `（操作步数达到上限（${MAX_STEPS} 步），这一轮停在中途。`;
+  if (!summaries.length) return `\n\n${head}还没有改动表格。回复「继续」可以接着做。）`;
+  const shown = summaries.slice(-CAP_NOTE_ITEMS);
+  const earlier = summaries.length - shown.length;
+  return `\n\n${head}已完成：${earlier ? `（前面还有 ${earlier} 步）` : ''}${shown.join('；')}。回复「继续」可以接着做。）`;
+}
+
+/** Nudges per run of the loop; each is a step, so the step cap still bounds them. */
+const MAX_NUDGES = 2;
+
+/**
+ * Sent when a step ended in thought alone. It names both ways out, so a
+ * model that had in fact finished says so instead of inventing more work.
+ */
+const NUDGE =
+  '（系统提示）你上一条回复只有思考，没有调用工具，也没有给出回复。如果还有没做完的步骤，请现在调用工具接着做；如果已经全部完成，用一两句话告诉用户做了什么。';
+
+/** Sent when a step's reasoning used up the output budget before any call or word. */
+const NUDGE_CUT =
+  '（系统提示）你上一条回复在思考阶段就用完了输出长度，被截断了，没有调用工具。不要再从头分析：直接调用工具做下一步，每次只想清楚下一步；如果已经全部完成，用一两句话告诉用户做了什么。';
+
+/**
+ * How a step ended with nothing in it but reasoning — no tool call, no words
+ * for the user — or null when it did not.
+ *
+ * - `cut`: the reasoning ran into the output cap (`stopReason: 'length'`).
+ *   This is most of what looked like a model "stopping to think": in 12
+ *   MiniMax runs of a multi-step reshape, 8 turns ended on reasoning of
+ *   20–28 thousand characters — the whole 8192-token budget — broken off
+ *   mid-sentence ("…Then</think>"). Asked again from scratch it thinks the
+ *   same length again, so it is nudged even before any tool has run, and
+ *   told to stop re-planning.
+ * - `thought`: the model ended the step itself with only a plan in it, as if
+ *   the plan were the work. Nudged only once a tool has run; before that, an
+ *   empty reply is `silentRun`'s to retry.
+ *
+ * There must BE reasoning. A reply that is simply empty after an edit is a
+ * model that finished without words, and that is fine: the reply is then
+ * described from the change. Nudging it would cost a request for nothing.
+ */
+function stalled(reply: AssistantMessage): 'cut' | 'thought' | null {
+  if (reply.stopReason !== 'stop' && reply.stopReason !== 'length') return null;
+  if (reply.content.some((c) => c.type === 'toolCall')) return null;
+  const text = textOf(reply);
+  // A reply cut off mid-thought may never close its <think>: the rest is still reasoning.
+  if (
+    stripReasoning(text)
+      .replace(/<think\b[^>]*>[\s\S]*$/i, '')
+      .trim()
+  )
+    return null;
+  const thought = reply.content.some((c) => c.type === 'thinking' && c.thinking.trim()) || /<think\b/i.test(text);
+  if (!thought) return null;
+  return reply.stopReason === 'length' ? 'cut' : 'thought';
+}
+
+function lastAssistant(messages: PiAgentMessage[]): AssistantMessage | undefined {
+  const assistants = messages.filter((m): m is AssistantMessage => (m as { role?: string }).role === 'assistant');
+  return assistants[assistants.length - 1];
+}
+
+/**
+ * A run that came back with nothing at all: no edit, no question, nothing to
+ * save or write, and no words — or a stream that closed empty.
+ *
+ * Worth one more try. Measured against MiniMax over a 16-turn session: 6
+ * replies empty, and the same message sent again answered properly every
+ * time. A failed provider call (401, 429, timeout) is NOT silence and is not
+ * retried — `maxRetries: 0` holds for those, for the reason given there.
+ */
+function silentRun(last: AssistantMessage | undefined, state: TurnState): boolean {
+  if (state.ops.length || state.question || state.exports.length || state.writes.length) return false;
+  if (!last) return true;
+  if (last.stopReason === 'aborted') return false;
+  if (last.stopReason === 'error') return toLlmError(last).code === 'empty';
+  if (last.stopReason === 'toolUse') return false;
+  return isEmptyReply(last) || !proseReply(stripReasoning(textOf(last)).trim()).reply;
+}
 
 /**
  * Run one agent turn.
@@ -182,7 +275,7 @@ export async function runTurn({
   const { ai, agent } = pi;
   const model = modelOverride || modelFromSecrets({ ...secrets, api: secrets.api || 'openai-completions' });
 
-  const state: TurnState = {
+  const freshState = (): TurnState => ({
     draft: spec,
     ops: [],
     notes: [],
@@ -192,7 +285,8 @@ export async function runTurn({
     writes: [],
     loaded: [],
     today,
-  };
+  });
+  let state = freshState();
   const [system, user] = agentMessages({ history, message, spec, rowBudget, changes });
 
   // Streamed, and judged by silence rather than by total time — every event
@@ -200,9 +294,15 @@ export async function runTurn({
   // and TURN_STREAM_IDLE_TIMEOUT_MS for why the window depends on the event.
   const clocks = createClocks({ timeoutMs: TURN_TOTAL_TIMEOUT_MS, idleTimeoutMs, signal });
   let steps = 0;
-  let messages: PiAgentMessage[];
-  try {
-    messages = await agent.runAgentLoop(
+  // Per run of the loop, for the stalled-step nudge: whether a tool has run, the
+  // reply that ended the last step, and how many nudges have been sent.
+  let worked = false;
+  let lastReply: AssistantMessage | undefined;
+  let nudges = 0;
+  let messages: PiAgentMessage[] = [];
+  // One run of the loop over a fresh `state`; see the retry below.
+  const runLoop = (): Promise<PiAgentMessage[]> =>
+    agent.runAgentLoop(
       [
         // pi 1.x carries the system prompt in the transcript, not beside it.
         // Sent with the prompt rather than seeded into the context so the loop
@@ -250,7 +350,18 @@ export async function runTurn({
         // land on a spec the other had already replaced.
         toolExecution: 'sequential',
         convertToLlm: toLlm,
-        finishTurn: () => (++steps >= MAX_STEPS ? { action: 'end' } : undefined),
+        finishTurn: (turn) => {
+          lastReply = turn.message;
+          if (turn.message.content.some((c) => c.type === 'toolCall')) worked = true;
+          return ++steps >= MAX_STEPS ? { action: 'end' } : undefined;
+        },
+        // Asked when the loop is about to stop. See `stalled`.
+        getFollowUpMessages: async () => {
+          const how = lastReply && nudges < MAX_NUDGES ? stalled(lastReply) : null;
+          if (!how || (how === 'thought' && !worked)) return [];
+          nudges++;
+          return [{ role: 'user', content: how === 'cut' ? NUDGE_CUT : NUDGE, timestamp: 0 }];
+        },
       },
       (event) => {
         clocks.touch(streamingReply(event) ? streamIdleTimeoutMs : idleTimeoutMs);
@@ -258,12 +369,26 @@ export async function runTurn({
       clocks.signal,
       pi.streamSimple,
     );
+
+  let retried = false;
+  try {
+    // At most twice: once, and once more when the first came back with
+    // nothing in it. See `silentRun`.
+    for (;;) {
+      state = freshState();
+      steps = 0;
+      worked = false;
+      lastReply = undefined;
+      nudges = 0;
+      messages = await runLoop();
+      if (retried || clocks.reason() || !silentRun(lastAssistant(messages), state)) break;
+      retried = true;
+    }
   } finally {
     clocks.dispose();
   }
 
-  const assistants = messages.filter((m): m is AssistantMessage => (m as { role?: string }).role === 'assistant');
-  const last = assistants[assistants.length - 1];
+  const last = lastAssistant(messages);
   // A provider failure anywhere in the loop fails the turn, edits and all: a
   // half-finished multi-step change is not something the user asked for.
   if (clocks.reason()) throw toLlmError({ stopReason: 'aborted' }, clocks);
@@ -272,11 +397,13 @@ export async function runTurn({
   if (isEmptyReply(last) && !state.ops.length) throw new LlmError(EMPTY_REPLY, { code: 'empty' });
 
   const raw = transcript(messages);
-  const said = stripReasoning(textOf(last)).trim();
   // Stopped by the step cap with tool calls still pending: what landed is kept
-  // (and still guarded), but the user is told it may be incomplete.
+  // (and still guarded), but the user is told it may be incomplete — and what
+  // DID land, since the model's last words were the lead-in to calls that never
+  // ran ("接下来把组件列填上：") and read as a report of work not done.
   const capped = steps >= MAX_STEPS && last.stopReason === 'toolUse';
-  const capNote = capped ? '\n\n（操作步数达到上限，可能没有全部完成。）' : '';
+  const said = capped ? '' : stripReasoning(textOf(last)).trim();
+  const capNote = capped ? capNoteOf(state.summaries) : '';
   const reason = state.summaries.join('；');
   // What every outcome carries unless it says otherwise; each return below
   // spells out only how it differs.
@@ -302,9 +429,12 @@ export async function runTurn({
     // reply, where it will be seen.
     const prose = proseReply(said);
     const claimNote = prose.claimed ? '\n\n（本次回复没有形成可执行的修改，预览未发生变化。）' : '';
+    // Nothing said, twice: that is the model, not the user's sentence. Saying
+    // "I did not understand" sent users rewording a request that was fine.
+    const blank = capped ? '' : retried ? SILENT_TWICE : '抱歉，我没有理解这句。可以换个说法吗？';
     return result({
       intent: INTENT.ANSWER,
-      reply: (prose.reply || '抱歉，我没有理解这句。可以换个说法吗？') + claimNote + capNote,
+      reply: ((prose.reply || blank) + claimNote + capNote).trim(),
       reason: prose.reply ? '' : '模型返回了空内容',
     });
   }

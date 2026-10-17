@@ -35,6 +35,23 @@ test('an answer turn leaves the spec null and does not persist one', async (t) =
   assert.strictEqual(back.json.session.messages.length, 2, 'both sides of the turn are recorded');
 });
 
+test('a turn returns its tool trace only when asked', async (t) => {
+  const { base } = await startServer(t, { replies: [ACTION, ACTION] });
+  const { json: created } = await post(base, '/api/sessions', {});
+  const id = created.session.id;
+
+  const plain = await post(base, `/api/sessions/${id}/turn`, { message: '做一个销售台账' });
+  assert.strictEqual(plain.json.trace, undefined);
+
+  const traced = await post(base, `/api/sessions/${id}/turn`, { message: '再做一遍', trace: true });
+  assert.ok(Array.isArray(traced.json.trace));
+  assert.ok(
+    traced.json.trace.some((l) => l.startsWith('call create_workbook ')),
+    traced.json.trace.join('\n'),
+  );
+  assert.ok(traced.json.trace.some((l) => l.startsWith('result create_workbook: ')));
+});
+
 test('an action turn with confirmation ON holds the change', async (t) => {
   const { base } = await startServer(t, { replies: [ACTION], chatConfirmEdits: true });
   const { json: created } = await post(base, '/api/sessions', {});

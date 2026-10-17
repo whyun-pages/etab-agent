@@ -184,6 +184,94 @@ test('runTurn: a model that never stops calling tools is cut off at the step cap
   assert.match(res.reply, /步数达到上限/);
 });
 
+test('runTurn: the step-cap note says what landed and how to go on, not the cut-off lead-in', async () => {
+  const calls = Array.from({ length: MAX_STEPS }, (_, i) => ({
+    text: '接下来改金额：',
+    calls: [{ tool: 'update_cells', args: { cells: [{ row: 1, column: '金额', value: i + 1 }] } }],
+  }));
+  const res = await turnWith(calls, { message: '把甲的金额一步步改', spec: rows10() });
+  assert.strictEqual(res.intent, INTENT.ACTION, 'the edits that landed are kept');
+  assert.match(res.reply, new RegExp(`步数达到上限（${MAX_STEPS} 步）`));
+  assert.match(res.reply, /已完成：（前面还有 \d+ 步）/);
+  assert.match(res.reply, /回复「继续」可以接着做/);
+  assert.doesNotMatch(res.reply, /接下来改金额/);
+});
+
+// ── a step that ends in thought alone ────────────────────────────────
+
+const edit = (row, value) => ({ tool: 'update_cells', args: { cells: [{ row, column: '金额', value }] } });
+
+test('runTurn: a step that ends in thought alone is nudged to carry on, inside the turn', async () => {
+  const res = await turnWith([edit(1, 11), '<think>接下来把第二行也改掉。</think>', edit(2, 22), '两行都改好了。'], {
+    message: '把前两行的金额改成 11 和 22',
+    spec: rows10(),
+  });
+  assert.strictEqual(res.contexts.length, 4);
+  const nudge = res.contexts[2].messages.at(-1);
+  assert.strictEqual(nudge.role, 'user');
+  assert.match(String(nudge.content), /只有思考，没有调用工具/);
+  assert.strictEqual(res.intent, INTENT.ACTION);
+  assert.deepStrictEqual(
+    res.spec!.sheets[0].rows.slice(0, 2).map((r) => r[1]),
+    [11, 22],
+  );
+  assert.strictEqual(res.reply, '两行都改好了。');
+  assert.match(res.raw, /^user: （系统提示）你上一条回复只有思考/m, 'the nudge is in the transcript');
+});
+
+test('runTurn: the nudge is bounded, and the edits made before it are kept', async () => {
+  const think = '<think>还有一步……</think>';
+  const res = await turnWith([edit(1, 11), think, think, think, '多余的'], {
+    message: '把第一行的金额改成 11',
+    spec: rows10(),
+  });
+  assert.strictEqual(res.contexts.length, 4, 'one step, then two nudges, then it stops');
+  assert.strictEqual(res.intent, INTENT.ACTION);
+  assert.strictEqual(res.spec!.sheets[0].rows[0][1], 11);
+});
+
+test('runTurn: reasoning cut off at the output cap is nudged to act, even before any tool ran', async () => {
+  // 8 of 12 MiniMax runs: 20–28 thousand characters of planning, then the cap.
+  const cut = { text: '<think>先分析一下……然后', stopReason: 'length' };
+  const res = await turnWith([cut, edit(1, 11), '改好了。'], { message: '把第一行的金额改成 11', spec: rows10() });
+  assert.strictEqual(res.contexts.length, 3, 'nudged, not restarted');
+  assert.match(String(res.contexts[1].messages.at(-1).content), /思考阶段就用完了输出长度.*不要再从头分析/);
+  assert.strictEqual(res.spec!.sheets[0].rows[0][1], 11);
+  assert.strictEqual(res.reply, '改好了。');
+});
+
+test('runTurn: thought alone before any tool ran is not nudged; that is an empty reply, retried', async () => {
+  const res = await turnWith(['<think>嗯</think>', '我能帮你做表格。'], { message: '你能做什么' });
+  assert.strictEqual(res.contexts.length, 2);
+  assert.ok(
+    res.contexts[1].messages.every((m) => !/只有思考/.test(String(m.content))),
+    'the retry starts over; it is not a nudge',
+  );
+  assert.strictEqual(res.reply, '我能帮你做表格。');
+});
+
+test('runTurn: an empty reply is asked again once, and the second answer is the turn', async () => {
+  const res = await turnWith(['', '我能帮你做表格。'], { message: '你能做什么' });
+  assert.strictEqual(res.contexts.length, 2);
+  assert.strictEqual(res.reply, '我能帮你做表格。');
+});
+
+test('runTurn: empty twice says the model was silent, not that the user was unclear', async () => {
+  const res = await turnWith(['', ''], { message: '你能做什么' });
+  assert.strictEqual(res.contexts.length, 2, 'retried once, not more');
+  assert.match(res.reply, /模型这次没有给出任何回复（已自动重试一次）/);
+  assert.doesNotMatch(res.reply, /没有理解/);
+});
+
+test('runTurn: a reply that did something is not retried, words or not', async () => {
+  const res = await turnWith([{ tool: 'update_cells', args: { cells: [{ row: 1, column: '金额', value: 5 }] } }, ''], {
+    message: '把甲的金额改成 5',
+    spec: rows10(),
+  });
+  assert.strictEqual(res.contexts.length, 2);
+  assert.strictEqual(res.intent, INTENT.ACTION);
+});
+
 test("runTurn: a provider error fails the turn with the provider's words", async () => {
   await assert.rejects(
     () => turnWith([{ error: '401 Incorrect API key provided' }], { message: '你好' }),

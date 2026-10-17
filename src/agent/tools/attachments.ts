@@ -1,12 +1,15 @@
 'use strict';
 /**
- * Reading the session's uploads for the model: finding the one it named,
- * picking a table out of it, paging rows or text, describing one in a line.
- * Shared by read_attachment, query_table and import_file (defs/).
+ * What the tools say about an upload: paging its rows or text, describing it
+ * in a line, the not-instructions framing. Shared by read_attachment,
+ * query_table and import_file (defs/). Finding the upload a model named and
+ * the table inside it is src/ingest/select.ts — that is not wording, and the
+ * HTTP layer needs it too.
  */
 
+import { attachmentTable, headerOnlyNote } from '../../ingest/select.ts';
 import { tsvCell } from '../../workbook/table-query.ts';
-import type { Attachment, AttachmentTable } from '../types.ts';
+import type { Attachment } from '../types.ts';
 
 /** Rows per `read_attachment` page; the same cap as `read_rows`. */
 const ATTACH_PAGE_ROWS = 200;
@@ -14,53 +17,6 @@ const ATTACH_PAGE_ROWS = 200;
 const ATTACH_PAGE_CHARS = 20_000;
 
 // ---------------------------------------------------------- attachments
-
-/**
- * The upload a model named.
- *
- * Exact first, then ignoring case, then a unique prefix-less match — a model
- * that drops the folder of `订单/BTCP.xlsx` or the extension still means one
- * file. An ambiguous or missing name lists what there is, so the next call can
- * be right.
- */
-export function findAttachment(list: Attachment[], name: string): Attachment {
-  const want = name.trim();
-  const lower = want.toLowerCase();
-  const stem = (n: string) =>
-    n
-      .toLowerCase()
-      .replace(/^.*[\\/]/, '')
-      .replace(/\.[^.]+$/, '');
-  for (const match of [
-    (a: Attachment) => a.name === want,
-    (a: Attachment) => a.name.toLowerCase() === lower,
-    (a: Attachment) => stem(a.name) === stem(want),
-  ]) {
-    const hits = list.filter(match);
-    if (hits.length === 1) return hits[0];
-    if (hits.length > 1)
-      throw new Error(`有 ${hits.length} 个附件都叫「${want}」，请用完整的名字：${hits.map((a) => a.name).join('、')}`);
-  }
-  throw new Error(`没有名为「${want}」的附件。现有：${list.map((a) => a.name).join('、')}`);
-}
-
-/** The table of an attachment, or of one of its sheets; null for a text file. */
-export function attachmentTable(att: Attachment, sheet: unknown): AttachmentTable | null {
-  const want = sheet == null ? '' : String(sheet).trim();
-  if (want) {
-    const hit = (att.sheets || []).find((t) => String(t.sheet || '').toLowerCase() === want.toLowerCase());
-    if (!hit) {
-      const names = (att.sheets || []).map((t) => t.sheet).filter(Boolean);
-      throw new Error(
-        names.length
-          ? `附件「${att.name}」里没有工作表「${want}」。现有：${names.join('、')}`
-          : `附件「${att.name}」只有一张表，不用指定 sheet。`,
-      );
-    }
-    return hit;
-  }
-  return att.kind === 'table' || att.table ? att.table || null : null;
-}
 
 /**
  * What `read_attachment` hands back when it is not importing.
@@ -89,10 +45,13 @@ export function readAttachmentPart(att: Attachment, a: Record<string, unknown>):
   const sheets =
     (att.sheets && att.sheets.length > 1
       ? `\n文件里有多个工作表：${att.sheets.map((s) => s.sheet).join('、')}；下面是「${t.sheet}」。`
-      : '') + (att.note ? `\n（${att.note}）` : '');
+      : t.sheet
+        ? `\n工作表：「${t.sheet}」。`
+        : '') + (att.note ? `\n（${att.note}）` : '');
   const total = t.rows.length;
   const from = Math.max(1, Math.trunc(Number(a.from) || 1));
   const to = Math.min(total, Math.trunc(Number(a.to) || from + ATTACH_PAGE_ROWS - 1), from + ATTACH_PAGE_ROWS - 1);
+  if (!total) return `${head}${sheets}\n${headerOnlyNote(t.header.length)}\n列：${t.header.map(tsvCell).join('\t')}`;
   if (from > total) return `${head}${sheets}\n共 ${total} 行，没有第 ${from} 行。`;
   const body: string[] = [];
   let size = 0;
@@ -112,12 +71,17 @@ export function readAttachmentPart(att: Attachment, a: Record<string, unknown>):
 export function describeLoaded(att: Attachment): string {
   const t = att.table;
   if (att.kind === 'table' && t) {
-    const sheets = att.sheets && att.sheets.length > 1 ? `，工作表：${att.sheets.map((s) => s.sheet).join('、')}` : '';
+    const sheets =
+      att.sheets && att.sheets.length > 1
+        ? `，工作表：${att.sheets.map((s) => s.sheet).join('、')}`
+        : t.sheet
+          ? `，工作表：${t.sheet}`
+          : '';
     const sample = t.rows
       .slice(0, 3)
       .map((r) => r.map(tsvCell).join('\t'))
       .join(' / ');
-    const note = att.note ? `（${att.note}）` : '';
+    const note = (att.note ? `（${att.note}）` : '') + (t.rows.length ? '' : `（${headerOnlyNote(t.header.length)}）`);
     return `${att.name}：表格 ${t.rows.length} 行${sheets}${note}；列：${t.header.join('、')}${sample ? `；前几行：${sample.slice(0, 300)}` : ''}`;
   }
   const text = String(att.text || '');

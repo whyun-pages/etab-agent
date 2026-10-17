@@ -56,6 +56,8 @@ export function view(ai, context) {
 export function step(ai, s) {
   if (typeof s === 'string') return ai.fauxAssistantMessage(s);
   if (s && s.error) return ai.fauxAssistantMessage([], { stopReason: 'error', errorMessage: s.error });
+  // Text that ended for another reason, e.g. `{ text, stopReason: 'length' }`: cut off at the output cap.
+  if (s && s.stopReason && !s.calls) return ai.fauxAssistantMessage(s.text || '', { stopReason: s.stopReason });
   const calls = Array.isArray(s) ? s : s.calls || [s];
   const content = calls.map((c) => ai.fauxToolCall(c.tool, c.args));
   if (s.text) content.unshift(ai.fauxText(s.text));

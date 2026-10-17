@@ -1,0 +1,85 @@
+{
+  "id": "dept-salary",
+  "title": "跨文件查找再汇总：用附件里的部门表给员工表补部门，按部门汇总工资",
+  "source": [
+    {
+      "name": "Microsoft Excel Practical Exercises Questions（数据透视表：按部门汇总工资总额）",
+      "url": "https://www.mcsprogram.org/index.jsp/u14A20/242460/Microsoft Excel Practical Exercises Questions.pdf"
+    },
+    {
+      "name": "Exercise for Excel Practice（透视表：各部门平均工资）",
+      "url": "https://podcast.chasejarvis.com/2024/exercise-for-excel-practice"
+    },
+    {
+      "name": "ExcelDemy — Excel Practice Test for Employment, Exercise 02（按工号 VLOOKUP / INDEX-MATCH 带出信息）",
+      "url": "https://exceldemy.com/?p=293888"
+    }
+  ],
+  "tags": ["attachments", "read_attachment", "lookup_columns", "query_table", "saveAs"],
+  "given": {
+    "title": "员工工资",
+    "sheets": [
+      {
+        "name": "员工",
+        "columns": [
+          { "header": "工号", "type": "text" },
+          { "header": "姓名", "type": "text" },
+          { "header": "部门编码", "type": "text" },
+          { "header": "工资", "type": "currency" }
+        ],
+        "rows": [
+          ["E001", "张伟", "D01", 8000],
+          ["E002", "李娜", "D02", 12000],
+          ["E003", "王芳", "D03", 9000],
+          ["E004", "赵强", "D01", 7500],
+          ["E005", "刘洋", "D02", 15000],
+          ["E006", "陈静", "D01", 6500],
+          ["E007", "周杰", "D03", 11000],
+          ["E008", "吴刚", "D04", 7000]
+        ]
+      }
+    ]
+  },
+  "attachments": [
+    {
+      "filename": "部门表.xlsx",
+      "spec": {
+        "title": "部门表",
+        "sheets": [
+          {
+            "name": "部门",
+            "columns": [{ "header": "部门编码", "type": "text" }, { "header": "部门名称", "type": "text" }],
+            "rows": [["D01", "销售部"], ["D02", "技术部"], ["D03", "财务部"], ["D04", "行政部"]]
+          }
+        ]
+      }
+    }
+  ],
+  "turns": [
+    {
+      "message": "根据附件「部门表.xlsx」把部门名称带到员工表里，然后按部门名称汇总工资总额、人数和平均工资，做成新工作表“部门汇总”，按工资总额从高到低排。",
+      "expect": {
+        "intent": "action",
+        "guarded": false,
+        "sheet": "^员工$",
+        "rowCount": 8,
+        "columns": ["部门名称|^部门$"],
+        "cells": [
+          { "row": 1, "column": "部门名称|^部门$", "equals": "销售部" },
+          { "row": 5, "column": "部门名称|^部门$", "equals": "技术部" },
+          { "row": 8, "column": "部门名称|^部门$", "equals": "行政部" },
+          { "sheet": "部门汇总", "row": 1, "column": "部门", "equals": "技术部" },
+          { "sheet": "部门汇总", "row": 1, "column": "总额|合计", "equals": 27000 },
+          { "sheet": "部门汇总", "row": 1, "column": "人数", "equals": 2 },
+          { "sheet": "部门汇总", "row": 1, "column": "平均", "equals": 13500 },
+          { "sheet": "部门汇总", "row": 2, "column": "部门", "equals": "销售部" },
+          { "sheet": "部门汇总", "row": 2, "column": "总额|合计", "equals": 22000 },
+          { "sheet": "部门汇总", "row": 2, "column": "人数", "equals": 3 },
+          { "sheet": "部门汇总", "row": 2, "column": "平均", "approx": 7333.33, "tolerance": 0.01 },
+          { "sheet": "部门汇总", "row": 4, "column": "部门", "equals": "行政部" },
+          { "sheet": "部门汇总", "row": 4, "column": "总额|合计", "equals": 7000 }
+        ]
+      }
+    }
+  ]
+}

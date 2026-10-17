@@ -22,9 +22,9 @@ import type { ExportFile } from '../../workbook/export.ts';
 import { specStats } from '../../workbook/workbook.ts';
 import type { WorkbookSpec } from '../../workbook/workbook.ts';
 import { previewOf, toUpload } from '../app-state.ts';
-import type { AppState, UploadedAttachment } from '../app-state.ts';
+import type { AppState } from '../app-state.ts';
 import { fail, jsonBody, bodyOf, isLocalRequest, messageOf, sessionOr404, noSession } from '../respond.ts';
-import { publicAttachment, publicMessages, publicSession } from '../projections.ts';
+import { attachmentContext, publicMessages, publicSession } from '../projections.ts';
 import type { RouteDeps } from './index.ts';
 import type { Session, ChangeRecord } from '../../store/session-store.ts';
 import type { FetchOptions } from '../../access/fetch.ts';
@@ -310,6 +310,11 @@ export function turnRoutes(router: Router, { state }: RouteDeps): void {
       messages: publicMessages(final.messages),
       preview: saved.spec ? previewOf(state, saved.spec) : null,
       proposed: pending && spec ? { rows: specStats(spec).rows, preview: previewOf(state, spec) } : null,
+      // Asked for, never by default: it is the model's whole working, tool
+      // arguments included, and a client has no use for it. A check that
+      // drives the API does — without it, "the 组件 column starts at 0" could
+      // only be guessed at from the reply.
+      ...(bodyOf(ctx).trace === true ? { trace: traceOf(turn.raw) } : {}),
     };
   });
 
@@ -461,39 +466,13 @@ function localDay(d: Date): string {
 
 // ------------------------------------------------------------- attachments
 
-/**
- * The current attachments, as the text the model reads this turn.
- *
- * Composed HERE, per turn, and never stored. It used to be composed in the
- * client (NOTES.md #59) and sent as part of the user's message, which meant the
- * server saved it as what the user said: the block showed up in the chat bubble,
- * was saved again on every turn while the file stayed attached, and then ate the
- * history budget on every turn after that. The user's message is what they
- * typed; the attachment is context for the turn, the same way the spec is.
- *
- * Built from `publicAttachment` so the model sees exactly what the chips
- * describe — the same five preview rows, the same text cap — not a richer view
- * the user has no way to check.
- */
-function attachmentContext(uploads: UploadedAttachment[]): string {
-  const blocks = uploads.map((u) => {
-    const a = publicAttachment(u);
-    const head = `【附件：${a.name}】`;
-    if (a.kind === 'table' || a.kind === 'sheet') {
-      const cols = ((a.columns as Array<{ label: string }> | undefined) || []).map((c) => c.label).join('、');
-      const rows = ((a.preview as unknown[][] | undefined) || []).map((r) => r.join('\t')).join('\n');
-      const more = a.rowCount ? `（共 ${a.rowCount} 行，下面只给前几行；全部内容用 read_attachment 读取）` : '';
-      // A table's note says what was NOT read (rows past the grid limit).
-      const note = a.note ? `\n（${a.note}）` : '';
-      return `${head}${more}${note}\n列：${cols}\n${rows}`;
-    }
-    if (a.textPreview) {
-      const full = String(u.text || '').length;
-      const cut =
-        full > String(a.textPreview).length ? `\n（共 ${full} 字，上面只是开头；全部内容用 read_attachment 读取）` : '';
-      return `${head}\n${String(a.textPreview)}${cut}`;
-    }
-    return `${head}（${a.note || '无法预览内容'}）`;
-  });
-  return blocks.length ? `--- 附件资料 ---\n${blocks.join('\n\n')}` : '';
+/** Characters kept of one trace line: an import's arguments can carry every row. */
+const TRACE_LINE_CHARS = 2000;
+
+/** A turn's transcript (`TurnResult.raw`) as lines, each one cut to a readable size. */
+function traceOf(raw: string): string[] {
+  return String(raw || '')
+    .split('\n')
+    .filter(Boolean)
+    .map((l) => (l.length > TRACE_LINE_CHARS ? `${l.slice(0, TRACE_LINE_CHARS)}…（共 ${l.length} 字）` : l));
 }

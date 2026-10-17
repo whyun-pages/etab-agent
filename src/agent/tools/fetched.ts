@@ -10,6 +10,7 @@ import type { Fetched } from '../../access/fetch.ts';
 import { TYPES, isoDay } from '../../workbook/workbook.ts';
 import type { CellValue } from '../../workbook/workbook.ts';
 import { tsvCell } from '../../workbook/table-query.ts';
+import { headerOnlyNote } from '../../ingest/select.ts';
 
 /** Rows of a fetched table shown to the model; an import takes all of them. */
 const PREVIEW_ROWS = 300;
@@ -27,8 +28,9 @@ export function describeFetched(f: Fetched, att: Attachment): string {
   const t = att.table;
   if (att.kind === 'table' && t && t.header.length) {
     const shown = t.rows.slice(0, PREVIEW_ROWS);
-    const more =
-      t.rows.length > shown.length
+    const more = !t.rows.length
+      ? `（${headerOnlyNote(t.header.length)}）`
+      : t.rows.length > shown.length
         ? `（共 ${t.rows.length} 行，只列出前 ${shown.length} 行；导入时会导入全部行）`
         : `（共 ${t.rows.length} 行）`;
     const sheets =
@@ -46,6 +48,10 @@ export function describeFetched(f: Fetched, att: Attachment): string {
   return `${head}\n（${att.note || '没有可读的文本或表格内容'}）`;
 }
 
+/** What the model reads about `verbatim`, shared by every tool that imports a table. */
+export const VERBATIM_HELP =
+  '导入时为 true：保持原表写法，不把文本里的数字、百分比、日期转换类型（0.70% 仍是 0.70%）；用户要求和原表一致、或结果要原样交给别人时使用。省略则按推测的类型导入，便于计算。';
+
 /**
  * A fetched table as `create_workbook` / `add_sheet` arguments.
  *
@@ -54,14 +60,41 @@ export function describeFetched(f: Fetched, att: Attachment): string {
  * the stored table is exactly what this turn saw. Column types come from the
  * reader's inference, mapped onto the spec's type names; anything unknown is
  * text, and normalisation then coerces the cells by those types.
+ *
+ * `verbatim` keeps what the file says. The inference reads "0.70%" as the
+ * number 0.007 and "2025-02-20 17:24:51" as a date, which is right for a
+ * table someone wants to add up and wrong for one that is passed on: the
+ * text cannot be got back — `TEXT` of 0.007 is "0.7%", the trailing zero is
+ * gone. Measured on a day report reshaped column by column: ~1,900 cells
+ * equal in value and different in the file. So a column keeps its inferred
+ * type only when every cell in it already IS that kind of value in the file
+ * (a number cell, a date cell); a column holding any text becomes text, and
+ * its cells stay as written.
  */
 export function tableForImport(
   att: Attachment,
+  { verbatim = false }: { verbatim?: boolean } = {},
 ): { columns: Array<{ header: string; type: string }>; rows: CellValue[][] } | null {
   const t = att.table;
   if (att.kind !== 'table' || !t || !t.header.length) return null;
   const known = TYPES as readonly string[];
-  const columns = t.columns.map((c) => ({ header: c.label, type: known.includes(c.type) ? c.type : 'text' }));
+  const columns = t.columns.map((c, i) => {
+    const type = known.includes(c.type) ? c.type : 'text';
+    return { header: c.label, type: verbatim && !storedAs(t.rows, i, type) ? 'text' : type };
+  });
   const rows = t.rows.map((r) => r.map((v) => (v instanceof Date ? isoDay(v) : v)));
   return { columns, rows };
+}
+
+/** Whether every filled cell of column `i` is already held as a `type` value, so nothing is reinterpreted. */
+function storedAs(rows: unknown[][], i: number, type: string): boolean {
+  const is =
+    type === 'date'
+      ? (v: unknown) => v instanceof Date
+      : type === 'boolean'
+        ? (v: unknown) => typeof v === 'boolean'
+        : type === 'text' || type === 'url'
+          ? () => true
+          : (v: unknown) => typeof v === 'number';
+  return rows.every((r) => r[i] === null || r[i] === undefined || r[i] === '' || is(r[i]));
 }

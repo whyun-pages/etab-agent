@@ -1,0 +1,56 @@
+{
+  "id": "dedupe",
+  "title": "去重：按手机号删除重复的客户记录",
+  "source": [
+    {
+      "name": "帆软 — Excel 数据清洗：删除重复项 / 条件格式标记重复值",
+      "url": "https://www.fanruan.com/blog/article/1466567/"
+    },
+    {
+      "name": "ExcelDemy — Excel VLOOKUP Exercises, Problem 8（找出重复项）",
+      "url": "https://www.exceldemy.com/excel-vlookup-exercises/"
+    }
+  ],
+  "tags": ["delete_rows", "query_table", "guard"],
+  "given": {
+    "title": "客户名单",
+    "sheets": [
+      {
+        "name": "客户",
+        "columns": [
+          { "header": "客户名称", "type": "text" },
+          { "header": "联系人", "type": "text" },
+          { "header": "手机号", "type": "text" },
+          { "header": "城市", "type": "text" }
+        ],
+        "rows": [
+          ["杭州云图科技", "王磊", "13800001111", "杭州"],
+          ["上海临港数据", "陈静", "13900002222", "上海"],
+          ["杭州云图科技有限公司", "王磊", "13800001111", "杭州"],
+          ["深圳前海智算", "李强", "13700003333", "深圳"],
+          ["北京星河软件", "张敏", "13600004444", "北京"],
+          ["上海临港数据服务", "陈静", "13900002222", "上海"],
+          ["成都锦城信息", "刘芳", "13500005555", "成都"],
+          ["广州珠江物流", "黄伟", "13400006666", "广州"]
+        ]
+      }
+    ]
+  },
+  "turns": [
+    {
+      "message": "按手机号去重，删除重复的客户记录，每个手机号只保留最早出现的那一条。",
+      "expect": {
+        "intent": "action",
+        "guarded": false,
+        "rowCount": 6,
+        "unique": "手机号",
+        "cells": [
+          { "row": 1, "column": "客户名称", "equals": "杭州云图科技" },
+          { "row": 2, "column": "客户名称", "equals": "上海临港数据" },
+          { "row": 3, "column": "客户名称", "equals": "深圳前海智算" },
+          { "row": 6, "column": "客户名称", "equals": "广州珠江物流" }
+        ]
+      }
+    }
+  ]
+}

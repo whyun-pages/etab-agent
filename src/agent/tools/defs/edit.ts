@@ -84,6 +84,23 @@ const EDIT_TOOLS: Record<string, EditTool> = {
         order: Type.Optional(Type.Array(Type.String(), { description: '全部列名的新顺序' })),
       }),
   },
+  select_columns: {
+    label: '整理列',
+    description:
+      '一次给出工作表最终的全部列：按给出的顺序排列，没列出的列删除。from 是取值的原列名（改名时用，省略则与 header 相同）；empty 为 true 表示新增一个空列。按固定的输出格式整理表格时用它，不要逐列增删改名。',
+    params: ({ Type, Sheet, ColType }) =>
+      Type.Object({
+        sheet: Sheet,
+        columns: Type.Array(
+          Type.Object({
+            header: Type.String({ description: '结果里的列名' }),
+            from: Type.Optional(Type.String({ description: '取值的原列名；省略则与 header 相同' })),
+            empty: Type.Optional(Type.Boolean({ description: 'true：新增的空列' })),
+            type: Type.Optional(ColType),
+          }),
+        ),
+      }),
+  },
   add_rows: {
     label: '新增行',
     description: '新增一行或多行，每行按列顺序给出值。before 是行号，插在该行之前；省略则加在末尾。',

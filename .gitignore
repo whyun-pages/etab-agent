@@ -26,3 +26,6 @@ data/
 Thumbs.db
 Desktop.ini
 *.log
+
+# Eval runs against a real model (evals/run.js): replies, ops and result specs
+evals/out/

@@ -31,7 +31,8 @@ src/
   cli.ts server.ts desktop.ts   入口：npm bin、HTTP 服务、桌面窗口
   desktop/    桌面入口的各部分：参数、查找 Edge、单实例、窗口
   formats/    zip / xlsx / xlsx-writer / xls 编解码
-  ingest/     把上传或抓取的文件读成文本或行：每种格式一个模块，ingest.ts 负责分发
+  ingest/     把上传或抓取的文件读成文本或行：每种格式一个模块，ingest.ts 负责分发；
+              select.ts 按模型说的名字找附件、挑出其中的表
   workbook/   spec 校验与落笔、编辑操作（spec-ops）、表查询、预览、导出
   agent/      一轮对话（agent 及其各部分）、模型接入（llm / model / pi）；
               tools/ 是模型能调用的工具：编辑表格、抓取网页、本机文件、pi 的文件与 shell 工具
@@ -232,7 +233,7 @@ OpenAI 兼容协议默认按保守的兼容设置发请求（系统提示用 `sy
 | POST | `/api/sessions` | 新建会话 |
 | GET | `/api/sessions/:id` | 会话详情 + 当前预览 |
 | DELETE | `/api/sessions/:id` | 删除会话 |
-| POST | `/api/sessions/:id/turn` | 发一句话，返回意图 / 回复 / 待确认的修改 / 已保存的文件路径（`saved`） |
+| POST | `/api/sessions/:id/turn` | 发一句话，返回意图 / 回复 / 待确认的修改 / 已保存的文件路径（`saved`）；请求体带 `trace: true` 时另附本轮的工具调用记录（`trace`） |
 | POST | `/api/sessions/:id/apply` | 确认或放弃待确认的修改；确认时执行该轮登记的保存 |
 | GET | `/api/sessions/:id/workbook.(xlsx\|csv\|json)` | 下载当前表格；`?sheet=` 指定工作表（CSV 默认第一个） |
 | POST | `/api/sessions/:id/attachments` | 给该会话添加附件：`multipart`，字段 `files`（可多个） |

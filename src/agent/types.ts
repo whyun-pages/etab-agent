@@ -100,7 +100,7 @@ export interface RunTurnArgs {
   fetchOptions?: FetchOptions;
   /**
    * The session's parsed uploads. The message carries only a preview of each
-   * (src/http/server.ts `attachmentContext`); `read_attachment` reads the rest from
+   * (src/http/projections.ts `attachmentContext`); `read_attachment` reads the rest from
    * here. None means the tool is not offered.
    */
   attachments?: Attachment[];

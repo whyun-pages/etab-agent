@@ -110,6 +110,53 @@ test('expressions: arithmetic, text, dates, IF laziness', () => {
   assert.strictEqual(ev('not ([金额] > 100) and LEN([订单]) = 2', t.rows[3]), true);
 });
 
+test('expressions: a date without quotes is refused, not computed as 2025/5/3 = 135', () => {
+  assert.throws(() => compileExpression(t, '2025/5/3'), /2025\/5\/3 没有引号.*135.*DATE\(2025,5,3\)/);
+  assert.throws(() => compileExpression(t, '2025-5-3'), /2025-5-3 没有引号.*2017/);
+  // Anywhere in the expression, not only on its own.
+  assert.throws(() => compileExpression(t, 'IF([金额] > 0, 2025/5/3, "")'), QueryError);
+  // The spellings that work, and arithmetic that only looks similar, still compile.
+  const ev = (src) => compileExpression(t, src)(t.rows[0], 1);
+  assert.strictEqual(ev('"2025/5/3"'), '2025/5/3');
+  assert.ok(ev('DATE(2025,5,3)') instanceof Date);
+  assert.strictEqual(ev('[金额]/5/3'), 80);
+  assert.strictEqual(ev('100/5/2'), 10);
+  assert.strictEqual(ev('2025/13/3'), 51.923077, 'no month 13: not a date');
+});
+
+test('expressions: a large integer comes out exactly as it went in', () => {
+  // round6 scaled by 1e6 first: 10147810868016 came back as 10147810868016.002.
+  const ids = { header: ['商品ID'], rows: [['10147810868016'], ['10143326869328']] };
+  for (const src of ['NUMBER([商品ID])', '[商品ID] * 1', '[商品ID] + 0']) {
+    assert.strictEqual(compileExpression(ids, src)(ids.rows[0], 1), 10147810868016, src);
+    assert.strictEqual(compileExpression(ids, src)(ids.rows[1], 2), 10143326869328, src);
+  }
+  assert.strictEqual(compileExpression(t, '0.1 + 0.2')(t.rows[0], 1), 0.3, 'small decimals are still tidied');
+});
+
+test('expressions: TEXT with a format writes numbers and dates the way Excel does', () => {
+  const row = [7.955, '2025-02-20 17:04:05', 0.007, 1234567.891, 8];
+  const tt = { header: ['x', 'd', 'p', 'big', 'n'], rows: [row] };
+  const ev = (src) => compileExpression(tt, src)(row, 1);
+  assert.strictEqual(ev('TEXT([x], "0.00")'), '7.96', 'a half rounds up even when binary holds it as 7.95499…');
+  assert.strictEqual(ev('TEXT([n], "0.00")'), '8.00');
+  assert.strictEqual(ev('TEXT([big], "#,##0.00")'), '1,234,567.89');
+  assert.strictEqual(ev('TEXT([p], "0.00%")'), '0.70%');
+  assert.strictEqual(ev('TEXT(-2.5, "0")'), '-3');
+  assert.strictEqual(ev('TEXT([d], "yyyy/m/d")'), '2025/2/20');
+  assert.strictEqual(ev('TEXT([d], "yyyy-mm-dd hh:mm:ss")'), '2025-02-20 17:04:05', 'mm next to hh or ss is minutes');
+  assert.strictEqual(ev('TEXT(DATE(2025,5,3), "yyyy年m月d日")'), '2025年5月3日');
+  assert.strictEqual(ev('TEXT([x])'), '7.955', 'one argument is plain text, as before');
+  // An unknown format fails the row, naming the formats that work.
+  const { values, failed } = computeRows(tt, 'TEXT([x], "abc")', [0]);
+  assert.strictEqual(values.get(0), null);
+  assert.match(failed[0].reason, /TEXT 不认识格式「abc」。可用：0、0\.00/);
+});
+
+test('expressions: ROW() is the 1-based row number', () => {
+  assert.strictEqual(compileExpression(t, '"FY25Q1-" & ROW()')(t.rows[0], 1), 'FY25Q1-1');
+});
+
 test('computeRows: a row that cannot compute is null and reported, the rest compute', () => {
   const { values, failed } = computeRows(t, '[金额] / 10', [0, 4]);
   assert.strictEqual(values.get(0), 120);

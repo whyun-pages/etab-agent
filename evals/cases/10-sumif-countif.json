@@ -1,0 +1,71 @@
+{
+  "id": "sumif-countif",
+  "title": "条件求和与计数：只问不改（SUMIF / COUNTIF / SUMIFS）",
+  "source": [
+    {
+      "name": "人人都是产品经理 — Excel 数据处理：SUMIF / SUMIFS / COUNTIF / COUNTIFS",
+      "url": "https://www.woshipm.com/data-analysis/5748189.html"
+    },
+    {
+      "name": "ExcelDemy — Excel Practice Test for Employment, Exercise 04（用公式算销售统计）",
+      "url": "https://exceldemy.com/?p=293888"
+    }
+  ],
+  "tags": ["query_table", "answer", "no-edit"],
+  "given": {
+    "title": "一季度销售明细",
+    "sheets": [
+      {
+        "name": "销售明细",
+        "columns": [
+          { "header": "日期", "type": "date" },
+          { "header": "销售员", "type": "text" },
+          { "header": "产品", "type": "text" },
+          { "header": "数量", "type": "integer" },
+          { "header": "单价", "type": "currency" },
+          { "header": "金额", "type": "currency" }
+        ],
+        "rows": [
+          ["2026-01-05", "张伟", "打印机", 2, 1500, 3000],
+          ["2026-01-12", "李娜", "显示器", 5, 1200, 6000],
+          ["2026-01-20", "王芳", "打印机", 1, 1500, 1500],
+          ["2026-02-03", "张伟", "笔记本", 3, 5000, 15000],
+          ["2026-02-11", "李娜", "打印机", 4, 1500, 6000],
+          ["2026-02-18", "赵强", "显示器", 2, 1200, 2400],
+          ["2026-02-25", "王芳", "笔记本", 1, 5000, 5000],
+          ["2026-03-02", "张伟", "显示器", 6, 1200, 7200],
+          ["2026-03-09", "赵强", "笔记本", 2, 5000, 10000],
+          ["2026-03-15", "李娜", "笔记本", 1, 5000, 5000],
+          ["2026-03-21", "王芳", "显示器", 3, 1200, 3600],
+          ["2026-03-28", "赵强", "打印机", 2, 1500, 3000]
+        ]
+      }
+    ]
+  },
+  "turns": [
+    {
+      "message": "张伟一共卖了多少钱？卖了几单？",
+      "expect": {
+        "intent": "answer",
+        "ops": "none",
+        "reply": ["25,?200", "3"]
+      }
+    },
+    {
+      "message": "笔记本在 2 月和 3 月一共卖了多少钱？",
+      "expect": {
+        "intent": "answer",
+        "ops": "none",
+        "reply": ["35,?000"]
+      }
+    },
+    {
+      "message": "有几单金额超过 5000？",
+      "expect": {
+        "intent": "answer",
+        "ops": "none",
+        "reply": ["5"]
+      }
+    }
+  ]
+}
